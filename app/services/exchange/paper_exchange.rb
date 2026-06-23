@@ -23,7 +23,7 @@ module Exchange
         symbol: attrs[:symbol],
         side: attrs[:side],
         quantity: attrs[:quantity],
-        order_type: attrs[:order_type],
+        order_type: attrs[:kind],
         instrument_type: attrs[:instrument_type],
         option_type: attrs[:option_type],
         strike_price: attrs[:strike_price],

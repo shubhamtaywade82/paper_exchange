@@ -3,7 +3,7 @@ module PaperExchange
     self.table_name = "paper_exchange_orders"
 
     enum :side, { buy: 0, sell: 1 }
-    enum :order_type, { market: 0, limit: 1, stop_loss: 2 }
+    enum :kind, { market: 0, limit: 1, stop_loss: 2 }
     enum :status, {
       pending: 0,
       open: 1,
@@ -19,7 +19,7 @@ module PaperExchange
 
     validates :symbol, presence: true
     validates :side, presence: true
-    validates :order_type, presence: true
+    validates :kind, presence: true
     validates :quantity,
       presence: true,
       numericality: { only_integer: true, greater_than: 0 }

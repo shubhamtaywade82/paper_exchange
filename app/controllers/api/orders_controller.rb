@@ -15,6 +15,8 @@ module Api
 
     def create
       attrs = order_params.merge(account_id: @account_id)
+      # Map API-facing order_type to the internal kind column
+      attrs[:kind] = attrs.delete(:order_type) if attrs.key?(:order_type)
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       result = exchange.submit_order(attrs)
 
@@ -51,7 +53,7 @@ module Api
         quantity: order.quantity,
         filled_quantity: order.filled_quantity,
         remaining_quantity: order.remaining_quantity,
-        order_type: order.order_type,
+        order_type: order.kind,
         status: order.status,
         price: order.price,
         trigger_price: order.trigger_price,

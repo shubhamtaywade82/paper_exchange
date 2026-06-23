@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2025_06_23_001000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_153540) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -84,8 +84,8 @@ ActiveRecord::Schema[8.1].define(version: 2025_06_23_001000) do
     t.datetime "filled_at"
     t.integer "filled_quantity", default: 0, null: false
     t.string "instrument_type", default: "EQUITY", null: false
+    t.integer "kind", default: 0, null: false
     t.string "option_type"
-    t.integer "order_type", default: 0, null: false
     t.datetime "placed_at"
     t.decimal "price", precision: 18, scale: 2
     t.integer "quantity", null: false

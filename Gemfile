@@ -110,4 +110,6 @@ group :development, :test do
   gem "faker"
   gem "webmock"
   gem "vcr"
+  gem "shoulda-matchers"
+  gem "simplecov", require: false
 end
