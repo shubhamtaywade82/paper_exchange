@@ -13,7 +13,7 @@ class CreatePaperExchangeTrades < ActiveRecord::Migration[8.0]
 
       t.timestamps
     end
-    add_index :paper_exchange_trades, :paper_order_id
-    add_index :paper_exchange_trades, :paper_position_id
+    add_index :paper_exchange_trades, :paper_order_id, if_not_exists: true
+    add_index :paper_exchange_trades, :paper_position_id, if_not_exists: true
   end
 end

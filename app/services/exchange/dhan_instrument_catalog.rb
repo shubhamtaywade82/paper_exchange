@@ -1,79 +1,57 @@
 module Exchange
   class DhanInstrumentCatalog
-    # Dhan exchangeSegment enum values relevant to Indian markets
-    SEGMENTS = {
-      idx: 0,           # IDX_I - Index Value
-      nse_eq: 1,        # NSE_EQ - Equity Cash
-      nse_fno: 2,       # NSE_FNO - Futures & Options
-      nse_currency: 3,  # NSE_CURRENCY - Currency
-      bse_eq: 4,        # BSE_EQ - Equity Cash
-      mcx: 5,           # MCX_COMM - Commodity
-      bse_currency: 7,  # BSE_CURRENCY - Currency
-      bse_fno: 8        # BSE_FNO - Futures & Options
-    }.freeze
+    # Hard-coded index underlyings — indices are derivative-only.
+    INDEX_SYMBOLS = %w[NIFTY BANKNIFTY SENSEX FINNIFTY MIDCPNIFTY NIFTYNXT50].freeze
 
-    # Dhan instrumentType values
-    INSTRUMENT_TYPES = %w[
-      INDEX
-      FUTIDX
-      OPTIDX
-      EQUITY
-      FUTSTK
-      OPTSTK
-      FUTCOM
-      OPTFUT
-      FUTCUR
-      OPTCUR
-    ].freeze
+    # Delegate enum to the DhanHQ gem so we stay in sync with the SDK.
+    def self.valid_instrument_types
+      DhanHQ::Constants::InstrumentType::ALL
+    end
+    INSTRUMENT_TYPES = valid_instrument_types.freeze
 
-    # Index underlyings that are only tradeable via F&O derivatives.
-    # Must use FUTIDX/OPTIDX on NSE_FNO(2) or BSE_FNO(8), never INDEX or EQUITY.
-    INDEX_UNDERLYINGS = %w[
-      NIFTY
-      BANKNIFTY
-      SENSEX
-      FINNIFTY
-      MIDCPNIFTY
-      NIFTYNXT50
-    ].freeze
+    def self.index_underlying?(symbol)
+      INDEX_SYMBOLS.include?(symbol.to_s.upcase)
+    end
 
-    # Map index symbol -> allowed exchange segments for F&O trading
-    INDEX_FNO_SEGMENTS = [SEGMENTS[:nse_fno], SEGMENTS[:bse_fno]].freeze
+    # Fetch all instruments for a Dhan exchange segment (e.g. "NSE_FNO", "IDX_I").
+    def self.by_segment(exchange_segment)
+      DhanHQ::Models::Instrument.by_segment(exchange_segment.to_s)
+    end
 
-    class << self
-      def index_underlying?(symbol)
-        symbol = symbol.to_s.upcase.strip
-        INDEX_UNDERLYINGS.include?(symbol)
+    # Find a single instrument by segment and symbol.
+    def self.find(exchange_segment, symbol)
+      DhanHQ::Models::Instrument.find(exchange_segment.to_s, symbol.to_s)
+    end
+
+    # Search across all common segments for a symbol.
+    def self.find_anywhere(symbol)
+      DhanHQ::Models::Instrument.find_anywhere(symbol.to_s)
+    end
+
+    # Guard-rails for order placement.
+    def self.validate_tradeable!(symbol:, instrument_type:, exchange_segment:)
+      instrument = find(exchange_segment.to_s, symbol.to_s)
+      raise ArgumentError, "Instrument not found for #{symbol} on #{exchange_segment}" unless instrument
+
+      allowed = if index_underlying?(symbol)
+        %w[FUTIDX OPTIDX]
+      else
+        [
+          DhanHQ::Constants::InstrumentType::EQUITY,
+          DhanHQ::Constants::InstrumentType::FUTSTK,
+          DhanHQ::Constants::InstrumentType::OPTSTK,
+          DhanHQ::Constants::InstrumentType::FUTCOM,
+          DhanHQ::Constants::InstrumentType::OPTFUT,
+          DhanHQ::Constants::InstrumentType::FUTCUR,
+          DhanHQ::Constants::InstrumentType::OPTCUR
+        ]
       end
 
-      # Indices are never tradeable as cash/spot (INDEX or EQUITY instrument type).
-      # They must be traded as FUTIDX or OPTIDX on NSE_FNO/BSE_FNO segments only.
-      def derivative_only?(symbol)
-        index_underlying?(symbol)
+      unless allowed.include?(instrument_type)
+        raise ArgumentError, "Instrument #{symbol} does not support #{instrument_type}. Allowed: #{allowed.join(", ")}"
       end
 
-      def valid_instrument_types(symbol)
-        return %w[FUTIDX OPTIDX] if index_underlying?(symbol)
-        INSTRUMENT_TYPES
-      end
-
-      def valid_segments(symbol, instrument_type:)
-        return INDEX_FNO_SEGMENTS if index_underlying?(symbol) && %w[FUTIDX OPTIDX].include?(instrument_type)
-        SEGMENTS.values
-      end
-
-      # Enforce the hard rule: index underlyings cannot be cash/spot traded
-      def validate_tradeable!(symbol:, instrument_type:, exchange_segment:)
-        return unless index_underlying?(symbol)
-
-        unless %w[FUTIDX OPTIDX].include?(instrument_type)
-          raise ArgumentError, "Index #{symbol} is derivative-only. Allowed instrument types: FUTIDX, OPTIDX only. Got: #{instrument_type}"
-        end
-
-        unless INDEX_FNO_SEGMENTS.include?(exchange_segment)
-          raise ArgumentError, "Index #{symbol} must trade on NSE_FNO(2) or BSE_FNO(8). Got segment: #{exchange_segment}"
-        end
-      end
+      instrument
     end
   end
 end

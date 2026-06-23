@@ -5,7 +5,7 @@ gem "rails", "~> 8.1.3"
 # Use postgresql as the database for Active Record
 gem "pg", "~> 1.1"
 # Use the Puma web server [https://github.com/puma/puma]
-gem "puma", ">= 5.0"
+gem "puma", "~> 6.4"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
@@ -65,6 +65,12 @@ gem "faraday-retry"
 # Environment
 # ─────────────────────────────────────────────────────────────────────────────
 gem "dotenv-rails"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exchange Clients
+# ─────────────────────────────────────────────────────────────────────────────
+gem "DhanHQ", path: "/home/nemesis/project/trading-workspace/dhanhq-client", require: "dhan_hq"
+gem "coindcx-client", path: "/home/nemesis/project/trading-workspace/coindcx/coindcx-client", require: "coindcx"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Search

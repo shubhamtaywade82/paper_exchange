@@ -1,5 +1,7 @@
 require 'rails'
 require 'action_controller/railtie'
+require 'active_record/railtie'
+require 'active_job/railtie'
 
 module PaperExchange
   class Application < Rails::Application
@@ -8,3 +10,5 @@ module PaperExchange
     config.autoload_paths << Rails.root.join('app/services')
   end
 end
+
+Bundler.require(*Rails.groups)
