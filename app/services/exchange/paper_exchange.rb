@@ -32,22 +32,20 @@ module Exchange
         context: attrs.fetch(:context, {})
       )
 
-      result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
-      passed, rejected = result
-      if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
-        raise "Risk check failed: #{Array(rejected).join(", ")}"
-      end
-
       order = ::PaperExchange::PaperOrder.new(
         order_attrs.merge(account_id: account_id, placed_at: Time.current)
       )
       order.save!
-      order.rejected!("Risk check failed") unless passed == :passed && Array(rejected).none? { |sym| sym.to_s.end_with?("_REJECTED") }
+      order.open!
 
-      return order.rejected!("Risk check failed") if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+      result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+      _passed, rejected = result
+      if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+        order.rejected!("Risk check failed: #{Array(rejected).join(", ")}")
+        raise "Risk check failed: #{Array(rejected).join(", ")}"
+      end
 
       ::PaperExchange::PaperOrder.transaction do
-        order.open!
         result = @matching.execute(order)
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 

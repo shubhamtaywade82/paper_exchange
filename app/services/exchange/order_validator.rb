@@ -17,7 +17,9 @@ module Exchange
     end
 
     def self.call(attrs)
-      result = Schema.call(attrs)
+      # ActionController::Parameters returns string keys; Dry::Schema expects symbols
+      symbolized = attrs.is_a?(Hash) ? attrs.to_h.symbolize_keys : attrs.to_h.symbolize_keys
+      result = Schema.call(symbolized)
       return [false, result.errors.to_h] unless result.errors.empty?
 
       symbol = attrs[:symbol].to_s.upcase.strip

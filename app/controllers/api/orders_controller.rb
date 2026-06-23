@@ -15,14 +15,10 @@ module Api
 
     def create
       order_raw = params[:order]
-      STDERR.puts ">>> RAW order params keys=#{order_raw.keys.inspect} order=#{order_raw.inspect}"
       received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
-      STDERR.puts ">>> PERMITTED received=#{received.inspect}"
       received[:account_id] = @account_id
       received[:order_kind] = received.delete(:order_type) if received.key?(:order_type)
-      STDERR.puts ">>> AFTER_MERGE received=#{received.inspect}"
       valid, errors = Exchange::OrderValidator.call(received)
-      STDERR.puts ">>> VALIDATOR valid=#{valid} errors=#{errors.inspect}"
       raise "Invalid order: #{errors.inspect}" unless valid
 
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
