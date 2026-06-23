@@ -2,6 +2,8 @@ require 'rails_helper'
 
 RSpec.describe Api::OrdersController, type: :controller do
   let(:account_id) { 'ACC-TEST' }
+  let(:exchange) { instance_double('Exchange::PaperExchange') }
+
   let(:valid_attrs) do
     {
       account_id: account_id,
@@ -13,6 +15,8 @@ RSpec.describe Api::OrdersController, type: :controller do
     }
   end
 
+  let(:invalid_attrs) { valid_attrs.merge(side: 'bad_side') }
+
   before do
     create(:account, account_id: account_id)
     request.headers['X-Account-Id'] = account_id
@@ -21,16 +25,19 @@ RSpec.describe Api::OrdersController, type: :controller do
   describe 'POST #create' do
     context 'with valid params' do
       it 'creates a PaperOrder' do
-        post :create, params: { order: valid_attrs }
+        allow(Exchange::PaperExchange).to receive(:new).with(account_id: account_id).and_return(exchange)
+        allow(exchange).to receive(:submit_order).and_return(true)
+
+        post :create, params: { order: valid_attrs.slice(:symbol, :side, :quantity, :order_type, :instrument_type) }
+
         expect(response).to have_http_status(:created)
       end
     end
 
     context 'with invalid params' do
-      let(:invalid_attrs) { valid_attrs.merge(side: 'bad_side') }
       it 'returns unprocessable_entity' do
-        post :create, params: { order: invalid_attrs }
-        expect(response).to have_http_status(:unprocessable_entity)
+        post :create, params: { order: invalid_attrs.slice(:symbol, :side, :quantity, :order_type, :instrument_type) }
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
   end

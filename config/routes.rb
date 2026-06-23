@@ -5,7 +5,7 @@ Rails.application.routes.draw do
     resources :orders, only: %i[index show create destroy]
     resources :positions, only: %i[index show]
     resources :risk_events, only: %i[index]
-    resource :performance, only: %i[show]
+    get "performance", to: "performance#show"
     resources :ledger, only: %i[index]
   end
 end
