@@ -7,5 +7,6 @@ FactoryBot.define do
     expiry_date { Date.today + 30 }
     oi { 500 }
     volume { 100 }
+    snapshot_at { Time.current }
   end
 end
