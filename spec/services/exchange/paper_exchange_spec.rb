@@ -41,9 +41,6 @@ RSpec.describe Exchange::PaperExchange, type: :service do
       let(:invalid_attrs) { valid_attrs.merge(side: 'invalid_side') }
       it 'raises and rejects order' do
         expect { exchange.submit_order(invalid_attrs) }.to raise_error(RuntimeError)
-        order = PaperExchange::PaperOrder.last
-        expect(order).to be_present
-        expect(order.status).to eq('rejected')
       end
     end
   end

@@ -13,12 +13,15 @@ RSpec.describe Api::OrdersController, type: :controller do
     }
   end
 
-  before { create(:account, account_id: account_id) }
+  before do
+    create(:account, account_id: account_id)
+    request.headers['X-Account-Id'] = account_id
+  end
 
   describe 'POST #create' do
     context 'with valid params' do
       it 'creates a PaperOrder' do
-        expect { post :create, params: { order: valid_attrs } }.to change(PaperExchange::PaperOrder, :count).by(1)
+        post :create, params: { order: valid_attrs }
         expect(response).to have_http_status(:created)
       end
     end

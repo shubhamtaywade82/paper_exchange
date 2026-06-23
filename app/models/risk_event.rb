@@ -3,5 +3,4 @@ class RiskEvent < ApplicationRecord
 
   validates :account_id, presence: true
   validates :event_type, presence: true
-  validates :created_at, presence: true
 end

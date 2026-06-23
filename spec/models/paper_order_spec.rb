@@ -56,14 +56,16 @@ RSpec.describe PaperExchange::PaperOrder, type: :model do
   end
 
   describe '#cancel!' do
-    let(:attrs) { { status: :open } }
+    let(:attrs) { { status: :open, instrument_type: 'EQUITY', symbol: 'RELIANCE' } }
     it 'cancels the order' do
+      order.save!
       order.cancel!
       expect(order.reload.status).to eq('cancelled')
     end
   end
 
   describe '#rejected!' do
+    let(:attrs) { { status: :open, instrument_type: 'EQUITY', symbol: 'RELIANCE' } }
     it 'marks order rejected' do
       order.save!
       order.rejected!('test reason')

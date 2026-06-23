@@ -34,7 +34,7 @@ module Ledger
         payload: {
           trade_id: trade.id,
           order_id: trade.paper_order_id,
-          position_id: trade.paper_position_id,
+          position_id: trade.is_a?(PaperExchange::PaperTrade) ? trade.paper_position_id : nil,
           symbol: trade.paper_order&.symbol,
           quantity: trade.quantity,
           price: trade.price,
@@ -45,6 +45,17 @@ module Ledger
         reference_id: trade.id.to_s,
         occurred_at: trade.traded_at
       )
+
+      LedgerEntry.create!(
+        account_id: account_id,
+        event_type: "POSITION_UPDATE",
+        payload: entry.payload.merge(event_type: "POSITION_UPDATE"),
+        debit: entry.debit,
+        credit: entry.credit,
+        reference_id: trade.id.to_s,
+        occurred_at: trade.traded_at
+      )
+
       account = Account.find_by!(account_id: account_id)
       account.update!(
         unrealized_pnl: compute_unrealized_pnl(account_id),
@@ -68,7 +79,9 @@ module Ledger
     def self.compute_realized_pnl(account_id)
       ::PaperExchange::PaperTrade.joins(:paper_position)
         .where(paper_exchange_positions: { account_id: account_id })
-        .sum("paper_trades.quantity * (paper_trades.price - paper_exchange_positions.avg_price) * CASE WHEN paper_trades.side = 'buy' THEN 1 ELSE -1 END")
+        .sum(
+          "paper_exchange_trades.quantity * (paper_exchange_trades.price - paper_exchange_positions.avg_price) * CASE WHEN paper_exchange_trades.side = 'buy' THEN 1 ELSE -1 END"
+        )
     end
   end
 end

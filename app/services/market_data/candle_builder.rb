@@ -16,8 +16,13 @@ module MarketData
     def ingest(event, timeframe: "5m")
       key = [event.symbol, timeframe]
       @candles[key] ||= []
-      @candles[key] << new_candle(event, timeframe)
-      candle(@candles[key].last, event)
+
+      bucket = @candles[key].last
+      if bucket && bucket[:started_at] == bucket_start(event.timestamp, timeframe)
+        candle(bucket, event)
+      else
+        @candles[key] << new_candle(event, timeframe)
+      end
     end
 
     def candles(symbol, timeframe: "5m")

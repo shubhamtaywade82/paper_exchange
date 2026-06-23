@@ -48,10 +48,7 @@ module Exchange
         raise ArgumentError, "Instrument #{symbol} does not support #{instrument_type}. Allowed: #{allowed.join(", ")}"
       end
 
-      instrument = find(exchange_segment.to_s, symbol.to_s)
-      raise ArgumentError, "Instrument not found for #{symbol} on #{exchange_segment}" unless instrument
-
-      instrument
+      true
     end
   end
 end

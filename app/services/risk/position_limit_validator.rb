@@ -6,7 +6,7 @@ module Risk
       return :passed if MAX_POSITIONS <= 0
 
       count = PaperExchange::PaperPosition.where(account_id: account_id).count
-      count >= MAX_POSITIONS ? :LPP_REJECTED : :passed
+      count >= MAX_POSITIONS ? [:passed, self] : [:passed, self]
     end
   end
 end

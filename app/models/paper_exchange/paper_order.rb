@@ -66,13 +66,11 @@ module PaperExchange
     end
 
     def rejected!(reason)
-      transaction do
-        update!(
-          status: :rejected,
-          rejected_at: Time.current,
-          rejection_reason: reason
-        )
-      end
+      update_columns(
+        status: :rejected,
+        rejected_at: Time.current,
+        rejection_reason: reason
+      )
       self
     end
 

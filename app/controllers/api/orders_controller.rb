@@ -15,11 +15,13 @@ module Api
 
     def create
       attrs = order_params.merge(account_id: @account_id)
-      # Map API-facing order_type to the internal kind column
+      # Map API-facing order_type to the internal order_kind column before validation
       attrs[:order_kind] = attrs.delete(:order_type) if attrs.key?(:order_type)
-      exchange = Exchange::PaperExchange.new(account_id: @account_id)
-      result = exchange.submit_order(attrs)
+      valid, errors = Exchange::OrderValidator.call(attrs)
+      raise "Invalid order: #{errors.inspect}" unless valid
 
+      exchange = Exchange::PaperExchange.new(account_id: @account_id)
+      exchange.submit_order(attrs)
       order = ::PaperExchange::PaperOrder.where(account_id: @account_id, symbol: attrs[:symbol]).order(placed_at: :desc).first
       render json: order_json(order), status: :created
     rescue => e

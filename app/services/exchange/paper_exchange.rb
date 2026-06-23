@@ -32,8 +32,11 @@ module Exchange
         context: attrs.fetch(:context, {})
       )
 
-      passed, _ = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
-      raise "Risk check failed" unless passed
+      result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+      passed, rejected = result
+      if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+        raise "Risk check failed: #{Array(rejected).join(", ")}"
+      end
 
       order = ::PaperExchange::PaperOrder.new(
         order_attrs.merge(account_id: account_id, placed_at: Time.current)
@@ -67,6 +70,8 @@ module Exchange
       )
 
       order
+    rescue ArgumentError
+      raise
     rescue => e
       order.rejected!(e.message) if order&.persisted?
       raise
