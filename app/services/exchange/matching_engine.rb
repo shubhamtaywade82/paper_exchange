@@ -31,11 +31,12 @@ module Exchange
       case order.order_kind
       when "market"
         qty = order.remaining_quantity
-        price = if order.side == "buy"
-          @slippage.price_for_buy(ask: book[:ask], quantity: qty)
-        else
-          @slippage.price_for_sell(bid: book[:bid], quantity: qty)
-        end
+        price = @slippage.fill_price(
+          market_snapshot: book,
+          side: order.side,
+          instrument_type: order.instrument_type,
+          quantity: qty
+        )
         [qty, price]
       when "bounded"
         marketable?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [:unfilled, nil]
@@ -48,15 +49,15 @@ module Exchange
 
     def marketable?(order, book)
       case order.side
-      when "buy"  then book[:ask] <= order.price
-      when "sell" then book[:bid] >= order.price
+      when "buy"  then book[:ask] && book[:ask] <= order.price
+      when "sell" then book[:bid] && book[:bid] >= order.price
       else false end
     end
 
     def triggered?(order, book)
       case order.side
-      when "buy"  then book[:ask] >= order.trigger_price
-      when "sell" then book[:bid] <= order.trigger_price
+      when "buy"  then book[:ask] && book[:ask] >= order.trigger_price
+      when "sell" then book[:bid] && book[:bid] <= order.trigger_price
       else false end
     end
   end

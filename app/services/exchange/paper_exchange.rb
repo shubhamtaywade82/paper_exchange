@@ -49,37 +49,36 @@ module Exchange
           PositionManager.apply!(account_id: account_id, symbol: order.symbol, side: order.side, quantity: order.side == "buy" ? fill_qty : -fill_qty, avg_price: fill_price) if trade
           Ledger::Ledger.record_trade(account_id: account_id, trade: trade) if trade
           @settlement.settle(order, fill_qty: fill_qty, fill_price: fill_price)
+          order.filled!
         end
-
-        MarketData::OrderEvent.new(
-          order_id: order.id,
-          account_id: account_id,
-          symbol: order.symbol,
-          side: order.side,
-          order_type: order.order_kind,
-          quantity: order.quantity,
-          price: order.price,
-          trigger_price: order.trigger_price,
-          status: order.status,
-          timestamp: Time.current
-        )
-        result
       end
+
+      MarketData::OrderEvent.new(
+        order_id: order.id,
+        account_id: account_id,
+        symbol: order.symbol,
+        side: order.side,
+        order_type: order.order_kind,
+        quantity: order.quantity,
+        price: order.price,
+        trigger_price: order.trigger_price,
+        status: order.status,
+        timestamp: Time.current
+      )
+
+      order
     rescue => e
       order.rejected!(e.message) if order&.persisted?
       raise
     end
 
     def cancel_order(order_id)
-      order = ::PaperExchange::PaperOrder.lock.find_by(id: order_id, account_id: account_id)
-      raise "Order not found" unless order
-      raise "Cannot cancel" unless order.pending? || order.open?
+      order = ::PaperExchange::PaperOrder.find(order_id)
       order.cancel!
     end
 
     def market_event(event)
-      case event
-      when MarketData::MarketEvent
+      if event.respond_to?(:symbol) && event.respond_to?(:bid) && event.respond_to?(:ask)
         @order_book.apply_snapshot(
           event.symbol,
           bid: event.bid,

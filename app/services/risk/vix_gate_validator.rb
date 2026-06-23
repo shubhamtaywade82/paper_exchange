@@ -6,9 +6,9 @@ module Risk
 
     def evaluate(account_id, signal)
       vix = signal.to_h.dig(:context, :vix)
-      return [:passed, self] unless vix
+      return :passed unless vix
 
-      vix <= @max_vix ? [:passed, self] : [:VIX_REJECTED, self]
+      vix <= @max_vix ? :passed : :VIX_REJECTED
     end
   end
 end

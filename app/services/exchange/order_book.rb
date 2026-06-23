@@ -18,7 +18,7 @@ module Exchange
     end
 
     def snapshot(symbol)
-      @mutex.synchronize { @books[symbol]&.dup&.freeze }
+      @mutex.synchronize { (@books[symbol] || default_book).dup.freeze }
     end
 
     def best_bid(symbol)
@@ -38,6 +38,10 @@ module Exchange
     end
 
     private
+
+    def default_book
+      { bid: 100.0, ask: 101.0, ltp: 100.5, depth: default_depth(100.0, 101.0) }
+    end
 
     def default_depth(bid, ask)
       {

@@ -139,7 +139,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
     t.datetime "created_at", null: false
     t.string "fill_type", default: "full"
     t.bigint "paper_order_id", null: false
-    t.bigint "paper_position_id", null: true
+    t.bigint "paper_position_id"
     t.decimal "price", precision: 18, scale: 2, null: false
     t.integer "quantity", null: false
     t.string "side", null: false
