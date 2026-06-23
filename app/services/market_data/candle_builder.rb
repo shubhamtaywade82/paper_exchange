@@ -1,12 +1,23 @@
 module MarketData
   class CandleBuilder
+    Event = Struct.new(:symbol, :ltp, :quantity, :timestamp)
+
     def initialize
       @candles = {}
     end
 
+    def build_from(ticks)
+      ticks.each do |tick|
+        ingest(Event.new(tick[:symbol], tick[:ltp] || tick[:price], tick[:volume] || tick[:quantity], tick[:timestamp]), timeframe: "5m")
+      end
+      ticks.empty? ? nil : candles(ticks.first[:symbol]).last
+    end
+
     def ingest(event, timeframe: "5m")
       key = [event.symbol, timeframe]
-      candle(@candles[key] ||= new_candle(event, timeframe), event)
+      @candles[key] ||= []
+      @candles[key] << new_candle(event, timeframe)
+      candle(@candles[key].last, event)
     end
 
     def candles(symbol, timeframe: "5m")

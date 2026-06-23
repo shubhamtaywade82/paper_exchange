@@ -1,11 +1,12 @@
 module MarketData
   class TickProcessor
-    def initialize(redis:)
+    def initialize(redis: nil)
       @redis = redis
       @stream = "paper_exchange:market:ticks"
     end
 
     def enqueue(event)
+      return unless @redis
       @redis.xadd(@stream, event.to_h, id: "*", maxlen: 100_000, approximate: true)
     end
 

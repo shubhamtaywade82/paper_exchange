@@ -30,9 +30,6 @@ module Exchange
 
     # Guard-rails for order placement.
     def self.validate_tradeable!(symbol:, instrument_type:, exchange_segment:)
-      instrument = find(exchange_segment.to_s, symbol.to_s)
-      raise ArgumentError, "Instrument not found for #{symbol} on #{exchange_segment}" unless instrument
-
       allowed = if index_underlying?(symbol)
         %w[FUTIDX OPTIDX]
       else
@@ -50,6 +47,9 @@ module Exchange
       unless allowed.include?(instrument_type)
         raise ArgumentError, "Instrument #{symbol} does not support #{instrument_type}. Allowed: #{allowed.join(", ")}"
       end
+
+      instrument = find(exchange_segment.to_s, symbol.to_s)
+      raise ArgumentError, "Instrument not found for #{symbol} on #{exchange_segment}" unless instrument
 
       instrument
     end

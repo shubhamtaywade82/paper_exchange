@@ -24,7 +24,7 @@ RSpec.describe PaperExchange::PaperOrder, type: :model do
   end
 
   context 'index derivative-only rule' do
-    let(:attrs) { { symbol: 'NIFTY', instrument_type: 'EQUITY', kind: :market } }
+    let(:attrs) { { symbol: 'NIFTY', instrument_type: 'EQUITY', order_kind: :market } }
     it 'rejects cash index orders' do
       expect(order.valid?).to be_falsey
       expect(order.errors[:instrument_type]).to include(
@@ -65,6 +65,7 @@ RSpec.describe PaperExchange::PaperOrder, type: :model do
 
   describe '#rejected!' do
     it 'marks order rejected' do
+      order.save!
       order.rejected!('test reason')
       expect(order.reload.status).to eq('rejected')
       expect(order.rejection_reason).to eq('test reason')
