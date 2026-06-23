@@ -4,6 +4,7 @@ module Projections
       def for_account(account_id)
         ::PaperExchange::PaperPosition.where(account_id: account_id).map do |pos|
           {
+            id: pos.id,
             account_id: pos.account_id,
             symbol: pos.symbol,
             side: pos.side,
