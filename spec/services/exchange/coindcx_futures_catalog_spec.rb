@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe Exchange::CoinDCXFuturesCatalog, type: :service do
+RSpec.describe Exchange::CoinDcxFuturesCatalog, type: :service do
   describe '.fetch_instruments' do
     let(:response_body) do
       [
