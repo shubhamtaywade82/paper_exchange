@@ -14,24 +14,24 @@ module Api
     end
 
     def create
-      received = params[:order].permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
+      order_raw = params[:order]
+      STDERR.puts ">>> RAW order params keys=#{order_raw.keys.inspect} order=#{order_raw.inspect}"
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
+      STDERR.puts ">>> PERMITTED received=#{received.inspect}"
       received[:account_id] = @account_id
       received[:order_kind] = received.delete(:order_type) if received.key?(:order_type)
+      STDERR.puts ">>> AFTER_MERGE received=#{received.inspect}"
       valid, errors = Exchange::OrderValidator.call(received)
+      STDERR.puts ">>> VALIDATOR valid=#{valid} errors=#{errors.inspect}"
       raise "Invalid order: #{errors.inspect}" unless valid
 
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       order = exchange.submit_order(received)
       render json: order_json(order), status: :created
-    rescue => e
-      render_error(:unprocessable_entity, e.message)
-    end
-
-    def order_params
-      params.require(:order).permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
     rescue ActionController::ParameterMissing => e
       render_error(:bad_request, e.message)
-      {}
+    rescue => e
+      render_error(:unprocessable_entity, e.message)
     end
 
     def destroy
