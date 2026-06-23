@@ -12,12 +12,5 @@ module PaperExchange
     validates :quantity, numericality: { only_integer: true }
     validates :avg_price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
     validates :current_price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
-
-    before_save :compute_pnl
-
-    def compute_pnl
-      price = current_price || avg_price || 0
-      self.unrealized_pnl = PnLEngine.unrealized_pnl(self, price)
-    end
   end
 end
