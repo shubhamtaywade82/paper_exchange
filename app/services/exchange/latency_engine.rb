@@ -13,5 +13,12 @@ module Exchange
     def offset_from(signal_time)
       signal_time + rand(@min_ms..@max_ms) / 1000.0
     end
+
+    # Public: sleep for approximately ms milliseconds and yield block.
+    def delay(ms)
+      sleep([ms / 1000.0, 0.001].max)
+      yield if block_given?
+      self
+    end
   end
 end
