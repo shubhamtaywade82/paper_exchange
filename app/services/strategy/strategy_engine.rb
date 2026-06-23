@@ -7,8 +7,8 @@ module Strategy
     end
 
     def evaluate(signal)
-      results = @risk_manager.evaluate(account_id: signal.account_id, signal: signal)
-      results.empty? ? signal : nil
+      results, _events = @risk_manager.evaluate(account_id: signal.account_id, signal: signal)
+      Array(results).empty? ? nil : signal
     end
   end
 end
