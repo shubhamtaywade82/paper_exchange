@@ -1,5 +1,5 @@
 FactoryBot.define do
-  factory :paper_trade do
+  factory :paper_trade, class: 'PaperExchange::PaperTrade' do
     association :paper_order, factory: :paper_order
     association :paper_position, factory: :paper_position
     account_id { "ACC-TEST" }

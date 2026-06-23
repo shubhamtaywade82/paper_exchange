@@ -10,7 +10,7 @@ module Exchange
       @exchange_txn = ENV.fetch("PAPER_EXCHANGE_EXCHANGE_TXN", "0.00145").to_f / 100
     end
 
-    def for(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
+    def calculate(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
       segment_class = segment_class_for(instrument_type)
       turnover = trade_price * quantity
 
@@ -36,8 +36,14 @@ module Exchange
         sebi: sebi.round(2),
         stamp_duty: (stamp || 0.0).round(2),
         exchange_txn: exchange.round(2),
-        total: total.round(2)
+        total: total.round(2),
+        notional: turnover.round(2)
       }
+    end
+
+    def margin_required_for(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
+      fees = for(trade_price: trade_price, quantity: quantity, side: side, symbol: symbol, instrument_type: instrument_type)
+      fees[:notional] + fees[:total]
     end
 
     private

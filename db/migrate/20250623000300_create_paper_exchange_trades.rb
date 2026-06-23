@@ -2,7 +2,7 @@ class CreatePaperExchangeTrades < ActiveRecord::Migration[8.0]
   def change
     create_table :paper_exchange_trades do |t|
       t.references :paper_order, null: false, foreign_key: { to_table: :paper_exchange_orders }
-      t.references :paper_position, null: false, foreign_key: { to_table: :paper_exchange_positions }
+      t.references :paper_position, null: true, foreign_key: { to_table: :paper_exchange_positions }
       t.string :side, null: false
       t.integer :quantity, null: false
       t.decimal :price, precision: 18, scale: 2, null: false

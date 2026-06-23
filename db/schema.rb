@@ -14,6 +14,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
+  create_table "accounts", force: :cascade do |t|
+    t.string "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "currency", default: "INR", null: false
+    t.decimal "current_equity", precision: 18, scale: 4, default: "0.0", null: false
+    t.decimal "margin", precision: 18, scale: 4, default: "0.0", null: false
+    t.string "name", null: false
+    t.decimal "realized_pnl", precision: 18, scale: 4, default: "0.0", null: false
+    t.decimal "unrealized_pnl", precision: 18, scale: 4, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_accounts_on_account_id", unique: true
+  end
+
   create_table "ledger_entries", force: :cascade do |t|
     t.string "account_id", null: false
     t.decimal "balance_after", precision: 18, scale: 4
@@ -126,7 +139,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
     t.datetime "created_at", null: false
     t.string "fill_type", default: "full"
     t.bigint "paper_order_id", null: false
-    t.bigint "paper_position_id", null: false
+    t.bigint "paper_position_id", null: true
     t.decimal "price", precision: 18, scale: 2, null: false
     t.integer "quantity", null: false
     t.string "side", null: false

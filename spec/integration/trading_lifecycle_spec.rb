@@ -17,15 +17,6 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
         instrument_type: 'EQUITY'
       }
     end
-      {
-        account_id: account_id,
-        symbol: 'RELIANCE',
-        side: 'buy',
-        quantity: 10,
-        order_type: 'market',
-        instrument_type: 'EQUITY'
-      }
-    end
 
     it 'submits, fills, and records trade + ledger entries' do
       expect { exchange.submit_order(attrs) }.to change(PaperExchange::PaperOrder, :count).by(1)
@@ -46,19 +37,10 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
     let(:attrs) do
       {
         account_id: account_id,
-        symbol: 'RELIANCE',
-        side: 'buy',
-        quantity: 10,
-        order_kind: 'market',
-        instrument_type: 'EQUITY'
-      }
-    end
-      {
-        account_id: account_id,
         symbol: 'NIFTY',
         side: 'buy',
         quantity: 1,
-        order_type: 'market',
+        order_kind: 'market',
         instrument_type: 'FUTIDX'
       }
     end

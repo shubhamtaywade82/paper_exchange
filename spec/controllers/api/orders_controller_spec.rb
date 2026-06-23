@@ -12,15 +12,6 @@ RSpec.describe Api::OrdersController, type: :controller do
       instrument_type: 'EQUITY'
     }
   end
-    {
-      account_id: account_id,
-      symbol: 'RELIANCE',
-      side: 'buy',
-      quantity: 10,
-      order_type: 'market',
-      instrument_type: 'EQUITY'
-    }
-  end
 
   before { create(:account, account_id: account_id) }
 

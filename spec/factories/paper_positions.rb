@@ -1,5 +1,5 @@
 FactoryBot.define do
-  factory :paper_position do
+  factory :paper_position, class: 'PaperExchange::PaperPosition' do
     account_id { "ACC-TEST" }
     symbol { "NIFTY" }
     side { :long }

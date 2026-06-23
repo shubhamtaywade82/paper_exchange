@@ -1,5 +1,5 @@
 FactoryBot.define do
-  factory :paper_order do
+  factory :paper_order, class: PaperExchange::PaperOrder do
     account_id { "ACC-TEST" }
     symbol { "NIFTY" }
     side { :buy }

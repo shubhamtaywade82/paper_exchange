@@ -10,7 +10,7 @@ RSpec.describe Exchange::OrderValidator, type: :service do
         symbol: 'NIFTY',
         side: 'buy',
         quantity: 50,
-        order_kind: 'FUTIDX',
+        order_kind: 'market',
         instrument_type: 'FUTIDX'
       }
     end
@@ -50,9 +50,7 @@ RSpec.describe Exchange::OrderValidator, type: :service do
       let(:attrs) { base_attrs.merge(symbol: 'NIFTY', instrument_type: 'EQUITY') }
       it 'returns false with derivative-only error' do
         expect(call.first).to be_falsey
-        expect(call.last[:instrument_type]).to include(
-          a_string_matching(/Indices must be traded via F&O derivatives only/)
-        )
+        expect(call.last[:instrument_type]).to match(/Indices must be traded via F&O derivatives only/)
       end
     end
 

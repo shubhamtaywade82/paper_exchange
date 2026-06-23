@@ -12,11 +12,11 @@ module Exchange
       side == "buy" ? price + impact : price - impact
     end
 
-    def fill_price(market_snapshot:, side:, instrument_type: "EQUITY")
+    def fill_price(market_snapshot:, side:, instrument_type: "EQUITY", quantity: 1)
       raise "Missing bid" if side == "sell" && market_snapshot[:bid].nil?
       raise "Missing ask" if side == "buy" && market_snapshot[:ask].nil?
       base = side == "buy" ? market_snapshot[:ask] : market_snapshot[:bid]
-      apply(price: base, quantity: 1, side: side, instrument_type: instrument_type)
+      apply(price: base, quantity: quantity, side: side, instrument_type: instrument_type)
     end
 
     private

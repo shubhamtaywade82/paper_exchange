@@ -1,5 +1,5 @@
 FactoryBot.define do
-  factory :account do
+  factory :account, class: 'Account' do
     account_id { "ACC-#{SecureRandom.hex(4).upcase}" }
     name { "Test Account" }
     currency { "INR" }

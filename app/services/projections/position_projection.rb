@@ -18,7 +18,36 @@ module Projections
       end
 
       def apply_from_ledger(ledger_entry)
-        # Placeholder: reconcile ledger events into position snapshots
+        return unless ledger_entry.payload
+
+        trade_id = ledger_entry.payload["trade_id"] || ledger_entry.payload[:trade_id]
+        trade = ::PaperExchange::PaperTrade.find_by(id: trade_id)
+        return unless trade
+
+        order = trade.paper_order
+        position = ::PaperExchange::PaperPosition.find_or_initialize_by(
+          account_id: ledger_entry.account_id,
+          symbol: order.symbol,
+          side: order.side == "buy" ? "long" : "short"
+        )
+        position.instrument_type = order.instrument_type
+        position.option_type = order.option_type
+        position.strike_price = order.strike_price
+        position.expiry_date = order.expiry_date
+
+        delta = order.side == "buy" ? trade.quantity : -trade.quantity
+        position.quantity = (position.quantity || 0) + delta
+
+        if position.quantity.zero?
+          position.current_price = 0
+          position.avg_price = 0
+        elsif delta > 0
+          total = (position.avg_price || 0) * (position.quantity - delta) + (trade.price * delta)
+          position.avg_price = total / position.quantity if position.quantity > 0
+        end
+
+        position.current_price = trade.price
+        position.save!
       end
     end
   end

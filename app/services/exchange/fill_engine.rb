@@ -8,7 +8,12 @@ module Exchange
       qty = quantity || order.remaining_quantity
       return [:unfilled, 0] if qty <= 0
 
-      price = @slippage.fill_price(market_snapshot: market_snapshot, side: order.side, instrument_type: instrument_type)
+      price = @slippage.fill_price(
+        market_snapshot: market_snapshot,
+        side: order.side,
+        instrument_type: instrument_type,
+        quantity: qty
+      )
       charges = BrokerageCalculator.new.for(
         trade_price: price,
         quantity: qty,

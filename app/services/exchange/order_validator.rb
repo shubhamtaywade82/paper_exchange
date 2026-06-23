@@ -5,8 +5,8 @@ module Exchange
       required(:symbol).filled(:string)
       required(:side).filled(:string, included_in?: %w[buy sell])
       required(:quantity).filled(:integer, gt?: 0)
-      required(:order_kind).filled(:string, included_in?: %w[market limit stop_loss])
-      required(:instrument_type).filled(:string, included_in?: DhanInstrumentCatalog::INSTRUMENT_TYPES)
+      required(:order_kind).filled(:string, included_in?: %w[market bounded stop_loss])
+      required(:instrument_type).filled(:string)
       optional(:option_type).maybe(:string, included_in?: %w[CE PE])
       optional(:strike_price).maybe(:decimal)
       optional(:expiry_date).maybe(:date)
@@ -21,12 +21,27 @@ module Exchange
       return [false, result.errors.to_h] unless result.errors.empty?
 
       symbol = attrs[:symbol].to_s.upcase.strip
-      if DhanInstrumentCatalog.index_underlying?(symbol) && attrs[:instrument_type] && !%w[FUTIDX OPTIDX].include?(attrs[:instrument_type])
+      if !%w[FUTIDX OPTIDX].include?(attrs[:instrument_type]) && Exchange::DhanInstrumentCatalog.index_underlying?(symbol)
         errors = { instrument_type: "Indices must be traded via F&O derivatives only (FUTIDX/OPTIDX). Got: #{attrs[:instrument_type]}" }
         return [false, errors]
       end
 
       [true, result.to_h]
+    end
+
+    def self.margin_ok?(attrs)
+      account = Account.find_by(account_id: attrs[:account_id])
+      return true unless account
+
+      price = (attrs[:ltp] || attrs[:price] || 0).to_f
+      required = BrokerageCalculator.new.margin_required_for(
+        trade_price: price,
+        quantity: attrs[:quantity],
+        side: attrs[:side],
+        symbol: attrs[:symbol],
+        instrument_type: (attrs[:instrument_type] || "EQUITY")
+      )
+      required <= account.margin
     end
   end
 end

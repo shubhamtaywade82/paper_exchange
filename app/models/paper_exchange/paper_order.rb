@@ -26,7 +26,7 @@ module PaperExchange
     validates :price,
       numericality: { greater_than: 0 },
       allow_nil: true,
-      if: -> { limit? || stop_loss? }
+      if: -> { bounded? || stop_loss? }
     validates :trigger_price,
       numericality: { greater_than: 0 },
       allow_nil: true,
@@ -35,13 +35,13 @@ module PaperExchange
       numericality: { only_integer: true, greater_than_or_equal_to: 0 }
     validates :instrument_type,
       presence: true,
-      inclusion: { in: DhanInstrumentCatalog::INSTRUMENT_TYPES }
+      inclusion: { in: proc { Exchange::DhanInstrumentCatalog::INSTRUMENT_TYPES } }
     validate :enforce_derivative_only_for_indices
 
     def enforce_derivative_only_for_indices
       return unless symbol.present? && instrument_type.present?
 
-      if DhanInstrumentCatalog.index_underlying?(symbol) && !%w[FUTIDX OPTIDX].include?(instrument_type)
+      if Exchange::DhanInstrumentCatalog.index_underlying?(symbol) && !%w[FUTIDX OPTIDX].include?(instrument_type)
         errors.add(:instrument_type, "Indices must be traded via F&O derivatives only (FUTIDX/OPTIDX). Got: #{instrument_type}")
       end
     end
