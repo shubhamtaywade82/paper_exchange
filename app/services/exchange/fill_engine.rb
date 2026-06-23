@@ -4,7 +4,7 @@ module Exchange
       @slippage = slippage
     end
 
-    def fill(order, market_snapshot:, instrument_type: "equity", quantity: nil)
+    def fill(order, market_snapshot:, instrument_type: "EQUITY", quantity: nil)
       qty = quantity || order.remaining_quantity
       return [:unfilled, 0] if qty <= 0
 

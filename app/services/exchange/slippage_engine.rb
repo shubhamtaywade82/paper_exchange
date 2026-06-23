@@ -6,17 +6,26 @@ module Exchange
       @max_slippage = max_slippage
     end
 
-    def apply(price:, quantity:, side:, instrument_type: "equity")
-      factor = instrument_type == "option" ? @option_impact_factor : @equity_impact_factor
-      impact = (quantity * factor).clamp(0, @max_slippage * price)
+    def apply(price:, quantity:, side:, instrument_type: "EQUITY")
+      impact_factor = impact_factor_for(instrument_type)
+      impact = (quantity * impact_factor).clamp(0, @max_slippage * price)
       side == "buy" ? price + impact : price - impact
     end
 
-    def fill_price(market_snapshot:, side:, instrument_type: "equity")
+    def fill_price(market_snapshot:, side:, instrument_type: "EQUITY")
       raise "Missing bid" if side == "sell" && market_snapshot[:bid].nil?
       raise "Missing ask" if side == "buy" && market_snapshot[:ask].nil?
       base = side == "buy" ? market_snapshot[:ask] : market_snapshot[:bid]
       apply(price: base, quantity: 1, side: side, instrument_type: instrument_type)
+    end
+
+    private
+
+    def impact_factor_for(instrument_type)
+      case instrument_type
+      when "OPTIDX", "OPTSTK", "OPTCUR" then @option_impact_factor
+      else @equity_impact_factor
+      end
     end
   end
 end

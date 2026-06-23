@@ -10,12 +10,14 @@ module Exchange
       @exchange_txn = ENV.fetch("PAPER_EXCHANGE_EXCHANGE_TXN", "0.00145").to_f / 100
     end
 
-    def for(trade_price:, quantity:, side:, symbol:, instrument_type: "equity")
+    def for(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
+      segment_class = segment_class_for(instrument_type)
       turnover = trade_price * quantity
-      stt = if instrument_type == "equity" && side == "buy"
-        turnover * @stt_delivery
-      elsif instrument_type == "equity"
-        turnover * @stt_intraday
+
+      stt = if segment_class == "equity"
+        side == "buy" ? turnover * @stt_delivery : turnover * @stt_intraday
+      elsif side == "sell"
+        futures_or_options_stt(turnover, instrument_type)
       else
         0.0
       end
@@ -39,6 +41,24 @@ module Exchange
     end
 
     private
+
+    def segment_class_for(instrument_type)
+      case instrument_type
+      when "EQUITY" then "equity"
+      when "FUTIDX", "FUTSTK", "FUTCUR", "FUTCOM", "OPTFUT" then "future"
+      when "OPTIDX", "OPTSTK", "OPTCUR" then "option"
+      else "other"
+      end
+    end
+
+    def futures_or_options_stt(turnover, instrument_type)
+      case instrument_type
+      when "OPTIDX", "OPTSTK", "OPTCUR"
+        turnover * 0.0005
+      else
+        turnover * 0.0001
+      end
+    end
 
     def gst_on(amount)
       amount * @gst_rate
