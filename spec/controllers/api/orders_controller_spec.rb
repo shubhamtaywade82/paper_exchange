@@ -1,8 +1,9 @@
 require 'rails_helper'
 
-# Minimal repro
 RSpec.describe Api::OrdersController, type: :controller do
   let(:account_id) { 'ACC-TEST' }
+  let(:exchange) { instance_double('Exchange::PaperExchange') }
+
   let(:valid_attrs) do
     { symbol: 'RELIANCE', side: 'buy', quantity: 10, order_type: 'market', instrument_type: 'EQUITY' }
   end
@@ -12,11 +13,9 @@ RSpec.describe Api::OrdersController, type: :controller do
     request.headers['X-Account-Id'] = account_id
   end
 
-  it 'shows what order_params returns' do
+  it 'debugs the create call' do
     post :create, params: { order: valid_attrs.slice(:symbol, :side, :quantity, :order_type, :instrument_type) }
-    puts "=== OUTER RESPONSE BODY ==="
-    puts response.body[0..500]
-    puts "=== END ==="
-    puts "=== STATUS: #{response.status}"
+    puts "STATUS=#{response.status}"
+    puts "BODY=#{response.body[0..300]}"
   end
 end
