@@ -33,6 +33,10 @@ module PaperExchange
       if: -> { stop_loss? }
     validates :filled_quantity,
       numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+    validates :instrument_type, presence: true
+    validates :option_type, inclusion: { in: %w[CE PE] }, allow_nil: true
+    validates :strike_price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+    validates :expiry_date, presence: true, if: -> { option_type.present? }
 
     before_validation :set_placed_at, on: :create
 

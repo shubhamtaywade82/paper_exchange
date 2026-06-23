@@ -15,6 +15,26 @@ module Exchange
     end
 
     def submit_order(order_attrs)
+      valid, attrs = Exchange::OrderValidator.call(order_attrs)
+      raise "Invalid order: #{attrs.inspect}" unless valid
+
+      signal = Strategy::Signal.new(
+        account_id: account_id,
+        symbol: attrs[:symbol],
+        side: attrs[:side],
+        quantity: attrs[:quantity],
+        order_type: attrs[:order_type],
+        instrument_type: attrs[:instrument_type],
+        option_type: attrs[:option_type],
+        strike_price: attrs[:strike_price],
+        expiry_date: attrs[:expiry_date],
+        ltp: attrs[:ltp],
+        context: attrs.fetch(:context, {})
+      )
+
+      passed, _ = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+      raise "Risk check failed" unless passed
+
       order = ::PaperExchange::PaperOrder.new(
         order_attrs.merge(account_id: account_id, placed_at: Time.current)
       )
@@ -25,7 +45,9 @@ module Exchange
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
         if fill_qty && fill_qty.positive?
-          @fill_engine.fill(order, market_snapshot: @order_book.snapshot(order.symbol), instrument_type: order.instrument_type, quantity: fill_qty)
+          fill_qty, fill_price, trade = @fill_engine.fill(order, market_snapshot: @order_book.snapshot(order.symbol), instrument_type: order.instrument_type, quantity: fill_qty)
+          PositionManager.apply!(account_id: account_id, symbol: order.symbol, side: order.side, quantity: order.side == "buy" ? fill_qty : -fill_qty, avg_price: fill_price) if trade
+          Ledger::Ledger.record_trade(account_id: account_id, trade: trade) if trade
           @settlement.settle(order, fill_qty: fill_qty, fill_price: fill_price)
         end
 

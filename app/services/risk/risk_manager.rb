@@ -9,12 +9,12 @@ module Risk
 
         events = results.select { |r| r.is_a?(Symbol) && r.to_s.end_with?("_REJECTED") }
         if events.empty?
-          results.last.is_a?(Hash) ? results : []
+          [results, nil]
         else
           events.each do |event|
             RiskEvent.create!(account_id: account_id, event_type: event, details: { signal: signal.to_h })
           end
-          []
+          [[], events]
         end
       rescue => ex
         RiskEvent.create!(account_id: account_id, event_type: "RISK_EVALUATION_ERROR", details: { error: ex.message, signal: signal.to_h })

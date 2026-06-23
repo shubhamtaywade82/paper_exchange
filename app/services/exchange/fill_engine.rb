@@ -9,11 +9,21 @@ module Exchange
       return [:unfilled, 0] if qty <= 0
 
       price = @slippage.fill_price(market_snapshot: market_snapshot, side: order.side, instrument_type: instrument_type)
+      charges = BrokerageCalculator.new.for(
+        trade_price: price,
+        quantity: qty,
+        side: order.side,
+        symbol: order.symbol,
+        instrument_type: instrument_type
+      )
+
       trade = ::PaperExchange::PaperTrade.create!(
         paper_order: order,
         side: order.side,
         quantity: qty,
         price: price,
+        charges: charges,
+        total_charges: charges[:total],
         fill_type: "full",
         traded_at: Time.current
       )

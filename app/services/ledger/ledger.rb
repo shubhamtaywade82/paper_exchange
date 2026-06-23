@@ -29,7 +29,7 @@ module Ledger
           trade_id: trade.id,
           order_id: trade.paper_order_id,
           position_id: trade.paper_position_id,
-          symbol: trade.paper_order&.symbol || order.symbol,
+          symbol: trade.paper_order&.symbol,
           quantity: trade.quantity,
           price: trade.price,
           charges: trade.charges
