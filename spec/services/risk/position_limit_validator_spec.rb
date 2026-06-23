@@ -9,6 +9,6 @@ RSpec.describe Risk::PositionLimitValidator, type: :service do
 
   it 'passes when under limit' do
     5.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
-    expect(validator.evaluate(account_id, signal)).to eq(:passed)
+    expect(validator.evaluate(account_id, signal)).to eq([:passed, validator])
   end
 end

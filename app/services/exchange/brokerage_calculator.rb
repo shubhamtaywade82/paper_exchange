@@ -42,7 +42,7 @@ module Exchange
     end
 
     def margin_required_for(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
-      fees = for(trade_price: trade_price, quantity: quantity, side: side, symbol: symbol, instrument_type: instrument_type)
+      fees = calculate(trade_price: trade_price, quantity: quantity, side: side, symbol: symbol, instrument_type: instrument_type)
       fees[:notional] + fees[:total]
     end
 

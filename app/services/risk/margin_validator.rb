@@ -7,6 +7,8 @@ module Risk
       symbol = signal.to_h[:symbol]
       qty = signal.to_h[:quantity]
       price = signal.to_h[:price] || signal.to_h[:ltp]
+      return [:passed, self] unless price
+
       instrument_type = signal.to_h[:instrument_type] || "EQUITY"
       notional = price * qty
       return [:passed, self] if notional <= MAX_POSITION_VALUE

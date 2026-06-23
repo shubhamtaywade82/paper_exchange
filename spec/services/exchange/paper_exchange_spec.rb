@@ -21,6 +21,16 @@ RSpec.describe Exchange::PaperExchange, type: :service do
       }
     end
 
+    before do
+      exchange.market_event(MarketData::MarketEvent.new(
+        symbol: 'RELIANCE',
+        bid: 100,
+        ask: 101,
+        ltp: 100.5,
+        timestamp: Time.current
+      ))
+    end
+
     it 'creates a paper order and returns result' do
       expect { exchange.submit_order(valid_attrs) }.to change(PaperExchange::PaperOrder, :count).by(1)
       order = PaperExchange::PaperOrder.last
@@ -47,7 +57,7 @@ RSpec.describe Exchange::PaperExchange, type: :service do
   end
 
   describe '#market_event' do
-    let(:event) { instance_double('MarketData::MarketEvent', symbol: 'NIFTY', bid: 100, ask: 101, ltp: 100.5, depth: nil, timestamp: Time.current) }
+    let(:event) { MarketData::MarketEvent.new(symbol: 'NIFTY', bid: 100, ask: 101, ltp: 100.5, timestamp: Time.current) }
     it 'applies snapshot to order book' do
       expect { exchange.market_event(event) }.not_to raise_error
     end

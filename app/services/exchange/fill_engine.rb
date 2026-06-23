@@ -14,7 +14,7 @@ module Exchange
         instrument_type: instrument_type,
         quantity: qty
       )
-      charges = BrokerageCalculator.new.for(
+      charges = BrokerageCalculator.new.calculate(
         trade_price: price,
         quantity: qty,
         side: order.side,

@@ -2,7 +2,8 @@ require 'rails_helper'
 
 RSpec.describe Exchange::FillEngine, type: :service do
   let(:fill_engine) { described_class.new(slippage: Exchange::SlippageEngine.new) }
-  let(:order) { instance_double('PaperExchange::PaperOrder', id: 1, symbol: 'NIFTY', side: 'buy', instrument_type: 'EQUITY', quantity: 50) }
+  let(:account) { create(:account) }
+  let(:order) { create(:paper_order, account_id: account.account_id, status: :open, quantity: 100, filled_quantity: 0) }
   let(:snapshot) { { bid: 100, ask: 101, ltp: 100.5 } }
 
   describe '#fill' do

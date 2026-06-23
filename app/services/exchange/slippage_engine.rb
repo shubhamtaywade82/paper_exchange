@@ -1,6 +1,6 @@
 module Exchange
   class SlippageEngine
-    def initialize(equity_impact_factor: 0.0002, option_impact_factor: 0.00005, max_slippage: 0.01)
+    def initialize(equity_impact_factor: 0.0002, option_impact_factor: 0.0005, max_slippage: 0.01)
       @equity_impact_factor = equity_impact_factor
       @option_impact_factor = option_impact_factor
       @max_slippage = max_slippage
