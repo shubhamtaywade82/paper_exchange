@@ -1,5 +1,5 @@
 module Exchange
-  class BinanceUsdmFuturesCatalog
+  class BinanceUSDMFuturesCatalog
     BaseUrl = "https://fapi.binance.com".freeze
 
     class << self

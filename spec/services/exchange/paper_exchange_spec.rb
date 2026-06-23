@@ -15,7 +15,7 @@ RSpec.describe Exchange::PaperExchange, type: :service do
         symbol: 'RELIANCE',
         side: 'buy',
         quantity: 10,
-        kind: 'market',
+        order_kind: 'market',
         instrument_type: 'EQUITY',
         price: nil
       }

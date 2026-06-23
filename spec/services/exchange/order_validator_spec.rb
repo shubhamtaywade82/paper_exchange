@@ -10,7 +10,7 @@ RSpec.describe Exchange::OrderValidator, type: :service do
         symbol: 'NIFTY',
         side: 'buy',
         quantity: 50,
-        kind: 'FUTIDX',
+        order_kind: 'FUTIDX',
         instrument_type: 'FUTIDX'
       }
     end

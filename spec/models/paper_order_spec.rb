@@ -2,21 +2,21 @@ require 'rails_helper'
 
 RSpec.describe PaperExchange::PaperOrder, type: :model do
   subject(:order) { build(:paper_order, attrs) }
-  let(:attrs) { { kind: :market, instrument_type: 'EQUITY', option_type: nil } }
+  let(:attrs) { { order_kind: :market, instrument_type: 'EQUITY', option_type: nil } }
 
   it { is_expected.to validate_presence_of(:symbol) }
   it { is_expected.to validate_presence_of(:side) }
-  it { is_expected.to validate_presence_of(:kind) }
+  it { is_expected.to validate_presence_of(:order_kind) }
   it { is_expected.to validate_presence_of(:quantity) }
   it { is_expected.to validate_numericality_of(:quantity).only_integer.is_greater_than(0) }
 
   context 'when instrument_type is missing' do
-    let(:attrs) { { kind: :market, instrument_type: nil } }
+    let(:attrs) { { order_kind: :market, instrument_type: nil } }
     it { is_expected.to validate_presence_of(:instrument_type) }
   end
 
   context 'when instrument_type is invalid' do
-    let(:attrs) { { kind: :market, instrument_type: 'INVALID_TYPE' } }
+    let(:attrs) { { order_kind: :market, instrument_type: 'INVALID_TYPE' } }
     it 'is not valid' do
       expect(order.valid?).to be_falsey
       expect(order.errors[:instrument_type]).to be_present

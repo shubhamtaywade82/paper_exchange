@@ -13,7 +13,7 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
         symbol: 'RELIANCE',
         side: 'buy',
         quantity: 10,
-        kind: 'market',
+        order_kind: 'market',
         instrument_type: 'EQUITY'
       }
     end
@@ -49,7 +49,7 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
         symbol: 'RELIANCE',
         side: 'buy',
         quantity: 10,
-        kind: 'market',
+        order_kind: 'market',
         instrument_type: 'EQUITY'
       }
     end

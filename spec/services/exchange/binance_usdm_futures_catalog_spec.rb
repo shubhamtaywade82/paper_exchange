@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe Exchange::BinanceUsdmFuturesCatalog, type: :service do
+RSpec.describe Exchange::BinanceUSDMFuturesCatalog, type: :service do
   describe '.fetch_instruments' do
     let(:response_body) do
       {

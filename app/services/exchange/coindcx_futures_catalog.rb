@@ -1,7 +1,7 @@
 require "coindcx"
 
 module Exchange
-  class CoinDcxFuturesCatalog
+  class CoinDCXFuturesCatalog
     DEFAULT_MARGIN_CURRENCIES = %w[USDT USDC BUSD].freeze
 
     # Fetch all active futures instruments for the given margin currencies.

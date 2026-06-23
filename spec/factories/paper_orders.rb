@@ -4,7 +4,7 @@ FactoryBot.define do
     symbol { "NIFTY" }
     side { :buy }
     quantity { 50 }
-    kind { :market }
+    order_kind { :market }
     instrument_type { "OPTIDX" }
     option_type { "CE" }
     strike_price { 26000 }

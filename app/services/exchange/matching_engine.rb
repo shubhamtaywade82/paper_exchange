@@ -7,7 +7,7 @@ module Exchange
     end
 
     def execute(order)
-      raise "Unsupported order type" unless ::PaperExchange::PaperOrder.kinds.key?(order.kind)
+      raise "Unsupported order type" unless ::PaperExchange::PaperOrder.order_kinds.key?(order.order_kind)
 
       @latency.simulate
       book = @order_book.snapshot(order.symbol)
@@ -28,7 +28,7 @@ module Exchange
     private
 
     def compute_fill(order, book)
-      case order.kind
+      case order.order_kind
       when "market"
         qty = order.remaining_quantity
         price = if order.side == "buy"
@@ -37,10 +37,10 @@ module Exchange
           @slippage.price_for_sell(bid: book[:bid], quantity: qty)
         end
         [qty, price]
-      when "limit"
-        marketable?(order, book) ? compute_fill(order.dup.tap { |o| o.kind = "market" }, book) : [:unfilled, nil]
+      when "bounded"
+        marketable?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [:unfilled, nil]
       when "stop_loss"
-        triggered?(order, book) ? compute_fill(order.dup.tap { |o| o.kind = "market" }, book) : [:unfilled, nil]
+        triggered?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [:unfilled, nil]
       else
         [:rejected, "unsupported"]
       end

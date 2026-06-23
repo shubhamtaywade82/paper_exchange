@@ -5,7 +5,7 @@ module Exchange
       required(:symbol).filled(:string)
       required(:side).filled(:string, included_in?: %w[buy sell])
       required(:quantity).filled(:integer, gt?: 0)
-      required(:kind).filled(:string, included_in?: %w[market limit stop_loss])
+      required(:order_kind).filled(:string, included_in?: %w[market limit stop_loss])
       required(:instrument_type).filled(:string, included_in?: DhanInstrumentCatalog::INSTRUMENT_TYPES)
       optional(:option_type).maybe(:string, included_in?: %w[CE PE])
       optional(:strike_price).maybe(:decimal)
