@@ -20,25 +20,85 @@ gem "solid_queue"
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
 
-# Deploy this application anywhere as a Docker container [https://kamal-deploy.org]
+# Deploy this application anywhere as a Docker container [https://kamal-deploy]
 gem "kamal", require: false
 
 # Add HTTP asset caching/compression and X-Sendfile acceleration to Puma [https://github.com/basecamp/thruster/]
 gem "thruster", require: false
 
-# Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
-# gem "rack-cors"
+# ─────────────────────────────────────────────────────────────────────────────
+# Authentication
+# ─────────────────────────────────────────────────────────────────────────────
+gem "devise"
+gem "devise-jwt"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# API
+# ─────────────────────────────────────────────────────────────────────────────
+gem "rack-cors"
+gem "oj"
+gem "blueprinter"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Validation
+# ─────────────────────────────────────────────────────────────────────────────
+gem "dry-validation"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Background Jobs
+# ─────────────────────────────────────────────────────────────────────────────
+gem "sidekiq"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WebSockets / Market Feed
+# ─────────────────────────────────────────────────────────────────────────────
+gem "async-websocket"
+gem "websocket-client-simple"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Trading
+# ─────────────────────────────────────────────────────────────────────────────
+gem "faraday"
+gem "faraday-retry"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Environment
+# ─────────────────────────────────────────────────────────────────────────────
+gem "dotenv-rails"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Search
+# ─────────────────────────────────────────────────────────────────────────────
+gem "ransack"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitoring (development & test only — overhead not needed in production)
+# ─────────────────────────────────────────────────────────────────────────────
 group :development, :test do
-  # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
+  # Debugging
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
 
-  # Audits gems for known security defects (use config/bundler-audit.yml to ignore issues)
+  # Security auditing
   gem "bundler-audit", require: false
-
-  # Static analysis for security vulnerabilities [https://brakemanscanner.org/]
   gem "brakeman", require: false
 
-  # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
+  # Linting
   gem "rubocop-rails-omakase", require: false
+
+  # N+1 query detection
+  gem "bullet"
+
+  # Request profiling
+  gem "rack-mini-profiler"
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Testing (development & test only)
+# ─────────────────────────────────────────────────────────────────────────────
+group :development, :test do
+  gem "rspec-rails"
+  gem "factory_bot_rails"
+  gem "faker"
+  gem "webmock"
+  gem "vcr"
 end
