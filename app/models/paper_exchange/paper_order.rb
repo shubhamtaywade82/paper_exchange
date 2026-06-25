@@ -10,7 +10,8 @@ module PaperExchange
       partially_filled: 2,
       filled: 3,
       cancelled: 4,
-      rejected: 5
+      rejected: 5,
+      expired: 6
     }, default: :pending
 
     has_many :paper_trades,
@@ -65,11 +66,41 @@ module PaperExchange
       self
     end
 
+    def open!
+      update!(status: :open)
+      self
+    end
+
+    def filled!
+      update!(
+        status: :filled,
+        filled_at: Time.current,
+        filled_quantity: quantity
+      )
+      self
+    end
+
+    def partially_filled!(fill_qty)
+      update!(
+        status: :partially_filled,
+        filled_quantity: (filled_quantity || 0) + fill_qty
+      )
+      self
+    end
+
     def rejected!(reason)
       update_columns(
         status: :rejected,
         rejected_at: Time.current,
         rejection_reason: reason
+      )
+      self
+    end
+
+    def expired!
+      update!(
+        status: :expired,
+        expired_at: Time.current
       )
       self
     end

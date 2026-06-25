@@ -5,12 +5,7 @@ module Exchange
     end
 
     def settle(order, fill_qty:, fill_price:)
-      Ledger::Ledger.record_order_placed(
-        account_id: @account_id,
-        order: order,
-        fill_qty: fill_qty,
-        fill_price: fill_price
-      )
+      # Ledger and projections are already updated by the fill/trade path.
     end
   end
 end

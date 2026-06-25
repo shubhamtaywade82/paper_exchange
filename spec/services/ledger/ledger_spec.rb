@@ -8,6 +8,6 @@ RSpec.describe Ledger::Ledger, type: :service do
   before { create(:account, account_id: account_id) }
 
   it 'records a trade and creates ledger entries' do
-    expect { described_class.record_trade(account_id: account_id, trade: trade) }.to change(LedgerEntry, :count).by(2)
+    expect { described_class.record_trade(account_id: account_id, trade: trade) }.to change(LedgerEntry, :count).by(1)
   end
 end

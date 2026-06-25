@@ -21,7 +21,7 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
     it 'submits, fills, and records trade + ledger entries' do
       expect { exchange.submit_order(attrs) }.to change(PaperExchange::PaperOrder, :count).by(1)
                                                     .and change(PaperExchange::PaperTrade, :count).by(1)
-                                                    .and change(LedgerEntry, :count).by(3)
+                                                    .and change(LedgerEntry, :count).by(1)
                                                     .and change(PaperExchange::PaperPosition, :count).by(1)
 
       order = PaperExchange::PaperOrder.last

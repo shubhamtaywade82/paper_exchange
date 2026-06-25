@@ -30,7 +30,7 @@ module Ledger
     def self.record_trade(account_id:, trade:)
       entry = LedgerEntry.create!(
         account_id: account_id,
-        event_type: "TRADE_EXECUTED",
+        event_type: "trade",
         payload: {
           trade_id: trade.id,
           order_id: trade.paper_order_id,
@@ -40,48 +40,41 @@ module Ledger
           price: trade.price,
           charges: trade.charges
         },
-        debit: trade.side == "buy" ? trade.price * trade.quantity : 0,
-        credit: trade.side == "sell" ? trade.price * trade.quantity : 0,
-        reference_id: trade.id.to_s,
-        occurred_at: trade.traded_at
-      )
-
-      LedgerEntry.create!(
-        account_id: account_id,
-        event_type: "POSITION_UPDATE",
-        payload: entry.payload.merge(event_type: "POSITION_UPDATE"),
-        debit: entry.debit,
-        credit: entry.credit,
+        debit: trade.side == "buy" ? (trade.price * trade.quantity + (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0,
+        credit: trade.side == "sell" ? (trade.price * trade.quantity - (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0,
         reference_id: trade.id.to_s,
         occurred_at: trade.traded_at
       )
 
       account = Account.find_by!(account_id: account_id)
+      unrealized = compute_unrealized_pnl(account_id)
+      realized = compute_realized_pnl(account_id)
       account.update!(
-        unrealized_pnl: compute_unrealized_pnl(account_id),
-        realized_pnl: compute_realized_pnl(account_id),
-        current_equity: account.balance_after
+        unrealized_pnl: unrealized,
+        realized_pnl: realized,
+        current_equity: account.margin + unrealized + realized
       )
       entry
     end
 
+    def self.compute_realized_pnl(account_id)
+      trade_entries = LedgerEntry.where(account_id: account_id, event_type: "trade")
+      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).round(2)
+    rescue
+      0.0
+    end
+
     def self.compute_pnl(position, current_price)
       return 0 if position.quantity.zero? || current_price.nil?
+      avg_price = position.avg_price
+      return 0 if avg_price.nil?
       multiplier = position.long? ? 1 : -1
-      (current_price - position.avg_price) * position.quantity * multiplier
+      (current_price - avg_price) * position.quantity * multiplier
     end
 
     def self.compute_unrealized_pnl(account_id)
       positions = ::PaperExchange::PaperPosition.where(account_id: account_id)
       positions.sum { |p| Ledger.compute_pnl(p, p.current_price || 0) }
-    end
-
-    def self.compute_realized_pnl(account_id)
-      ::PaperExchange::PaperTrade.joins(:paper_position)
-        .where(paper_exchange_positions: { account_id: account_id })
-        .sum(
-          "paper_exchange_trades.quantity * (paper_exchange_trades.price - paper_exchange_positions.avg_price) * CASE WHEN paper_exchange_trades.side = 'buy' THEN 1 ELSE -1 END"
-        )
     end
   end
 end

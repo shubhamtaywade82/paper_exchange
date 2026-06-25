@@ -6,8 +6,8 @@ class Account < ApplicationRecord
   validates :currency, presence: true, inclusion: { in: %w[INR USD] }
   validates :margin, numericality: { greater_than_or_equal_to: 0 }
   validates :current_equity, numericality: { greater_than_or_equal_to: 0 }
-  validates :realized_pnl, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
-  validates :unrealized_pnl, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :realized_pnl, numericality: true, allow_nil: true
+  validates :unrealized_pnl, numericality: true, allow_nil: true
 
   after_initialize :set_defaults
 

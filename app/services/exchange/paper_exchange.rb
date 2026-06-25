@@ -84,6 +84,11 @@ module Exchange
       order.cancel!
     end
 
+    def expire_order(order_id)
+      order = ::PaperExchange::PaperOrder.find(order_id)
+      order.expired!
+    end
+
     def market_event(event)
       if event.respond_to?(:symbol) && event.respond_to?(:bid) && event.respond_to?(:ask)
         @order_book.apply_snapshot(
