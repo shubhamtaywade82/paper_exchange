@@ -69,8 +69,8 @@ gem "dotenv-rails"
 # ─────────────────────────────────────────────────────────────────────────────
 # Exchange Clients
 # ─────────────────────────────────────────────────────────────────────────────
-gem "DhanHQ", path: "/home/nemesis/project/trading-workspace/dhanhq-client", require: "dhan_hq"
-gem "coindcx-client", path: "/home/nemesis/project/trading-workspace/coindcx/coindcx-client", require: "coindcx"
+gem "DhanHQ", path: "/home/nemesis/project/trading-workspace/sdk/dhanhq-client", require: "dhan_hq"
+gem "coindcx-client", path: "/home/nemesis/project/trading-workspace/sdk/coindcx-client", require: "coindcx"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Search
