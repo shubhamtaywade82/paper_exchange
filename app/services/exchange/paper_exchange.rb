@@ -124,6 +124,7 @@ module Exchange
               strike_price: order.strike_price,
               expiry_date: order.expiry_date
             )
+            trade.update!(paper_position: position)
             release_order_margin!(order) unless internal
             MarginEngine.sync_position!(position, account_id: account_id)
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade)

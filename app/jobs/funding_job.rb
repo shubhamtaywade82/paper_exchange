@@ -8,21 +8,26 @@
 # shorts. `amount` on the resulting records is signed from the account's own
 # point of view — positive means the account paid, negative means it
 # received.
+#
+# Idempotency: when `funding_time` is supplied (Binance's settlement
+# timestamp), FundingPayment is keyed unique on (paper_position_id,
+# funding_time). A retry of the same event hits the existing record and
+# skips the ledger post — no double-charge.
 class FundingJob < ApplicationJob
   queue_as :risk
 
-  def perform(symbol, funding_rate, mark_price = nil)
+  def perform(symbol, funding_rate, mark_price = nil, funding_time = nil)
     positions = ::PaperExchange::PaperPosition
       .where(symbol: symbol)
       .where("leverage > 1 AND quantity <> 0")
     return if positions.none?
 
-    positions.find_each { |position| apply_funding!(position, funding_rate.to_f, mark_price) }
+    positions.find_each { |position| apply_funding!(position, funding_rate.to_f, mark_price, funding_time) }
   end
 
   private
 
-  def apply_funding!(position, funding_rate, mark_price)
+  def apply_funding!(position, funding_rate, mark_price, funding_time)
     mark_price = mark_price.to_f if mark_price
     mark_price = MarketData::MarkPriceStore.get(position.symbol) || position.current_price.to_f if mark_price.to_f.zero?
 
@@ -30,15 +35,19 @@ class FundingJob < ApplicationJob
     direction = position.long? ? 1 : -1
     amount = notional * funding_rate * direction
 
-    FundingPayment.create!(
+    dedup_attrs = { paper_position: position, funding_time: funding_time }
+    payment = FundingPayment.find_or_initialize_by(dedup_attrs)
+    already_existed = payment.persisted?
+    payment.assign_attributes(
       account_id: position.account_id,
-      paper_position: position,
       symbol: position.symbol,
       funding_rate: funding_rate,
       position_notional: notional,
       amount: amount,
       occurred_at: Time.current
     )
+    payment.save! unless already_existed
+    return if already_existed
 
     payload = {
       position_id: position.id,

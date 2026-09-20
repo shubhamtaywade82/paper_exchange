@@ -9,4 +9,7 @@ class FundingPayment < ApplicationRecord
   validates :position_notional, numericality: { greater_than_or_equal_to: 0 }
   validates :amount, numericality: true
   validates :occurred_at, presence: true
+  # funding_time is the agent-supplied idempotency key (Binance's funding
+  # settlement timestamp). When present, (paper_position_id, funding_time)
+  # is unique — see the migration. Absent for legacy callers.
 end

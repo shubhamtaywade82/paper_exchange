@@ -118,8 +118,10 @@ async function runSmokeTest() {
   // 7. FUNDING RATE EVENT
   console.log('\n--- Step 7: Funding Rate Event (0.01% @ 63k) ---');
   // Notional: 0.05 * 63000 = 3150. Funding Fee = 3150 * 0.0001 = 0.315
+  // funding_time is the idempotency key — agent retries don't double-charge.
   await http.post('/funding_events?sync=true', {
-    symbol: SYMBOL, funding_rate: '0.0001', mark_price: '63000.0'
+    symbol: SYMBOL, funding_rate: '0.0001', mark_price: '63000.0',
+    funding_time: '2026-09-20T08:00:00Z'
   });
 
   account = (await http.get('/account')).data;
