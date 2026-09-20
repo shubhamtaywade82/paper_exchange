@@ -36,6 +36,7 @@ module PaperExchange
       numericality: { greater_than_or_equal_to: 0 }
     validates :leverage, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
     validates :margin_type, inclusion: { in: %w[cross isolated] }
+    validates :client_order_id, uniqueness: { scope: :account_id }, allow_nil: true
     validates :instrument_type,
       presence: true,
       inclusion: { in: proc { Exchange::DhanInstrumentCatalog::INSTRUMENT_TYPES + Exchange::CryptoInstrumentCatalog::INSTRUMENT_TYPES } }

@@ -15,6 +15,11 @@ module Exchange
       optional(:trigger_price).maybe(:decimal, gt?: 0)
       optional(:leverage).maybe(:integer, gteq?: 1)
       optional(:margin_type).maybe(:string, included_in?: %w[cross isolated])
+      optional(:client_order_id).maybe(:string)
+      # Bot-supplied reference price for this specific fill — the broker has
+      # no live market data of its own for crypto symbols (see README), so
+      # this is how the caller pins the price a market order executes near.
+      optional(:execution_price).maybe(:decimal, gt?: 0)
       optional(:context).maybe(:hash)
     end
 

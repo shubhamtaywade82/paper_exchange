@@ -27,8 +27,8 @@ module Ledger
 
       # Refresh the account's cached equity snapshot now that a real cash
       # event has happened. This is a low-frequency event (a fill), not a
-      # price tick — it must never be driven from the market data feed (see
-      # MarketData::MarkPriceStore / bin/market_data_daemon), which only
+      # price tick — it must never be driven from a mark price push (see
+      # MarketData::MarkPriceStore / Api::MarkPricesController), which only
       # updates Redis and triggers in-memory liquidation checks.
       refresh_cached_equity!(account_id)
 

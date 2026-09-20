@@ -2,6 +2,16 @@ module Exchange
   class PaperExchange
     attr_reader :account_id
 
+    # Keys accepted by OrderValidator's schema that are NOT PaperOrder
+    # columns (ltp/execution_price/client_order_id-adjacent inputs used only
+    # to derive a reference price or for idempotency, and context, used only
+    # for Strategy::Signal). Passing these straight into PaperOrder.new would
+    # raise ActiveRecord::UnknownAttributeError.
+    ORDER_COLUMN_KEYS = %i[
+      symbol side quantity order_kind instrument_type option_type strike_price
+      expiry_date price trigger_price leverage margin_type client_order_id
+    ].freeze
+
     def initialize(account_id:)
       @account_id = account_id
       @books = {}
@@ -15,6 +25,12 @@ module Exchange
     end
 
     def submit_order(order_attrs)
+      client_order_id = order_attrs[:client_order_id].presence
+      if client_order_id
+        existing = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id)
+        return existing if existing
+      end
+
       valid, attrs = Exchange::OrderValidator.call(order_attrs)
       raise "Invalid order: #{attrs.inspect}" unless valid
 
@@ -33,12 +49,32 @@ module Exchange
       )
 
       order = ::PaperExchange::PaperOrder.new(
-        order_attrs.merge(account_id: account_id, placed_at: Time.current)
+        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Time.current)
       )
-      order.save!
+      begin
+        order.save!
+      rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
+        # A concurrent request with the same client_order_id won — this one
+        # is the retry, not a genuinely new order. Replay its result instead
+        # of erroring or double-submitting.
+        if client_order_id && (replay = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id))
+          return replay
+        end
+        raise
+      end
       order.open!
 
-      reference_price = (order.price || attrs[:ltp]).to_f
+      # No live market data feed lives in this broker for crypto symbols —
+      # the bot owns the Binance connection and either pushes mark prices
+      # (POST /api/mark_prices) or pins the exact price for this specific
+      # fill via `execution_price`. Seed the in-process order book with it so
+      # matching/slippage use a real reference instead of the equity stub.
+      if attrs[:execution_price].present?
+        execution_price = attrs[:execution_price].to_f
+        @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
+      end
+
+      reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
       required_margin = order.required_margin(reference_price)
       Ledger::MarginLedger.lock_margin!(
         account_id: account_id,

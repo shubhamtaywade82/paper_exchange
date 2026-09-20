@@ -14,10 +14,7 @@ production:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
 
-  # Binance USD-M perpetual futures settle funding at 00:00 / 08:00 / 16:00
-  # UTC — anchor to those exact wall-clock hours rather than "every 8 hours"
-  # (which would instead drift with whenever Solid Queue last booted).
-  perpetual_futures_funding_settlement:
-    class: FundingJob
-    queue: risk
-    schedule: "0 0,8,16 * * *"
+  # Funding settlement is event-driven, not scheduled here — the trading bot
+  # (which owns the Binance market-data connection) posts to
+  # POST /api/funding_events when a funding event occurs, which enqueues
+  # FundingJob directly. See Api::FundingEventsController.

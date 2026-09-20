@@ -1,12 +1,14 @@
 module Risk
   # In-memory cache of open leveraged positions, checked against every
-  # incoming mark-price tick with zero database access on the hot path.
-  # `refresh_cache!` is called periodically (see bin/market_data_daemon) to
-  # pick up new/closed positions; `check_symbol!` is the per-tick check.
+  # mark price the trading agent pushes via POST /api/mark_prices (this
+  # broker has no market-data connection of its own — see README "Crypto
+  # market data ownership"). `refresh_cache!` is called on every push (see
+  # Api::MarkPricesController) to pick up new/closed positions;
+  # `check_symbol!` is the per-price check.
   #
   # When a position's liquidation price is breached this only enqueues
   # LiquidationJob — the actual force-close (a DB write, an exchange fill) is
-  # never performed on the WebSocket callback thread.
+  # never performed inline on the request thread.
   class LiquidationEngine
     class << self
       def refresh_cache!

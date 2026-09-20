@@ -15,7 +15,7 @@ module Api
 
     def create
       order_raw = params[:order]
-      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type)
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price)
       received[:account_id] = @account_id
       received[:order_kind] = received.delete(:order_type) if received.key?(:order_type)
       valid, errors = Exchange::OrderValidator.call(received)
@@ -44,7 +44,7 @@ module Api
     end
 
     def order_params
-      params.require(:order).permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type)
+      params.require(:order).permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price)
     rescue ActionController::ParameterMissing => e
       render_error(:bad_request, e.message)
     end
@@ -52,6 +52,7 @@ module Api
     def order_json(order)
       {
         id: order.id,
+        client_order_id: order.client_order_id,
         symbol: order.symbol,
         side: order.side,
         quantity: order.quantity,

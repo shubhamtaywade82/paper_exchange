@@ -45,6 +45,60 @@ RSpec.describe Exchange::PaperExchange, type: :service do
     end
   end
 
+  describe '#submit_order with a crypto perpetual (no live feed of its own)' do
+    let(:crypto_attrs) do
+      {
+        account_id: account_id,
+        symbol: 'BTCUSDT',
+        side: 'buy',
+        quantity: 0.01,
+        order_kind: 'market',
+        instrument_type: Exchange::CryptoInstrumentCatalog::PERPETUAL,
+        leverage: 10,
+        margin_type: 'cross',
+        execution_price: 65_000.0
+      }
+    end
+
+    it 'fills using the agent-supplied execution_price instead of the equity stub' do
+      order = exchange.submit_order(crypto_attrs)
+      expect(order.status).to eq('filled')
+
+      trade = PaperExchange::PaperTrade.find_by(paper_order_id: order.id)
+      expect(trade.price.to_f).to be_within(1.0).of(65_000.0) # allows for the (tiny) slippage model
+    end
+
+    it 'locks leveraged initial margin, not the full notional' do
+      exchange.submit_order(crypto_attrs)
+      account = Account.find_by!(account_id: account_id)
+      position = PaperExchange::PaperPosition.find_by!(account_id: account_id, symbol: 'BTCUSDT')
+
+      expect(position.leverage).to eq(10)
+      expect(position.liquidation_price).to be < position.avg_price
+      expect(account.locked_margin.to_f).to be_within(0.5).of(65.0) # ~ (0.01 * 65000) / 10
+    end
+
+    context 'with a client_order_id' do
+      let(:idempotent_attrs) { crypto_attrs.merge(client_order_id: 'agent-uuid-1') }
+
+      it 'is idempotent: a repeated submission returns the original order without double-filling' do
+        first = exchange.submit_order(idempotent_attrs)
+
+        expect {
+          second = exchange.submit_order(idempotent_attrs)
+          expect(second.id).to eq(first.id)
+        }.not_to change(PaperExchange::PaperTrade, :count)
+      end
+
+      it 'allows a different client_order_id to submit a genuinely new order' do
+        first = exchange.submit_order(idempotent_attrs)
+        second = exchange.submit_order(idempotent_attrs.merge(client_order_id: 'agent-uuid-2'))
+
+        expect(second.id).not_to eq(first.id)
+      end
+    end
+  end
+
   describe '#cancel_order' do
     let(:order) { create(:paper_order, account_id: account_id, status: :open) }
     it 'cancels the order' do

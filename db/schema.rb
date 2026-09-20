@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -108,6 +108,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_120000) do
     t.decimal "avg_fill_price", precision: 36, scale: 18
     t.string "broker_order_id"
     t.datetime "cancelled_at"
+    t.string "client_order_id"
     t.datetime "created_at", null: false
     t.string "exchange_segment"
     t.date "expiry_date"
@@ -133,6 +134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_120000) do
     t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
+    t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
     t.index ["instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_orders_instrument"
     t.index ["status"], name: "index_paper_exchange_orders_on_status"
     t.index ["symbol"], name: "index_paper_exchange_orders_on_symbol"

@@ -120,19 +120,33 @@ bin/rails server
 | `DHAN_CLIENT_ID` | DhanHQ client ID (required for data APIs) |
 | `DHAN_ACCESS_TOKEN` | DhanHQ access token |
 
-### Running the crypto futures pipeline
+### Crypto market data ownership
 
-```bash
-# Maintains the live Binance USD-M mark price hot state (Redis-backed) and
-# triggers in-memory liquidation checks — run this alongside the API server
-# whenever leveraged futures positions are open.
-bin/market_data_daemon
-# or subscribe to specific symbols only:
-bin/market_data_daemon BTCUSDT ETHUSDT
+This broker does **not** open its own connection to Binance (or any exchange)
+for live prices. All market data ownership lives in the trading agent that
+drives it — the agent already needs the live feed for its own strategy, and
+keeping it out of the broker means the broker stays a simple, deterministic,
+restart-safe request/response server with no WebSocket reconnection logic to
+babysit.
 
-# Perpetual futures funding settles automatically every 8h (00:00/08:00/16:00
-# UTC) via Solid Queue's recurring jobs — see config/recurring.yml.
-```
+The agent feeds the broker two things:
+
+1. **`execution_price`** on `POST /api/orders` — pins the exact reference
+   price a specific order fills near (a small deterministic slippage model
+   still applies on top, same as every other order type). Required in
+   practice for crypto symbols, since the broker has no other price source
+   for them.
+2. **`POST /api/mark_prices`** — a periodic bulk push of `{symbol: price}`
+   for every open position's symbol. This is what drives
+   `Risk::LiquidationEngine` — a leveraged position's liquidation price is
+   only checked when a price for its symbol arrives here, so push at least
+   as often as you need liquidation to react (every few seconds for
+   anything highly leveraged).
+
+Perpetual futures funding is likewise agent-driven: call
+`POST /api/funding_events` when your feed reports a funding settlement, and
+the broker posts the funding fee against every open leveraged position on
+that symbol (see `FundingJob`).
 
 ---
 
@@ -146,7 +160,7 @@ GET    /api/orders/:id
 DELETE /api/orders/:id
 ```
 
-Create order payload:
+Create order payload (Indian F&O):
 ```json
 {
   "account_id": "ACC-001",
@@ -159,6 +173,24 @@ Create order payload:
   "strike_price": 26000,
   "expiry_date": "2024-06-27",
   "exchange_segment": "NSE_FNO"
+}
+```
+
+Create order payload (crypto perpetual futures — `client_order_id` and
+`execution_price` are how the agent drives idempotency and pricing; see
+"Crypto market data ownership" above):
+```json
+{
+  "account_id": "ACC-001",
+  "symbol": "BTCUSDT",
+  "side": "buy",
+  "quantity": 0.01,
+  "order_type": "market",
+  "instrument_type": "CRYPTO_PERPETUAL",
+  "leverage": 10,
+  "margin_type": "cross",
+  "execution_price": 65123.45,
+  "client_order_id": "agent-uuid-123"
 }
 ```
 
@@ -181,6 +213,22 @@ GET /api/performance
 ### Risk Events
 ```
 GET /api/risk_events
+```
+
+### Mark Prices (crypto)
+```
+POST /api/mark_prices
+```
+```json
+{ "prices": { "BTCUSDT": "65123.45", "ETHUSDT": "3200.10" } }
+```
+
+### Funding Events (crypto)
+```
+POST /api/funding_events
+```
+```json
+{ "symbol": "BTCUSDT", "funding_rate": "0.0001", "mark_price": "65123.45" }
 ```
 
 ---
@@ -233,8 +281,9 @@ bundle exec rspec
 | Margin wallet (available/locked balance, atomic lock/unlock) | Done |
 | Leverage, margin type, liquidation price on positions | Done |
 | Liquidation engine (in-memory checks, async force-close) | Done |
-| Perpetual funding settlement (every 8h via Solid Queue) | Done |
-| Market feed consumer (`bin/market_data_daemon`, mark price hot state) | Done |
+| Perpetual funding settlement (agent-pushed via `POST /api/funding_events`) | Done |
+| Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
+| Order idempotency (`client_order_id`) | Done |
 | Ledger reconciliation on boot | Done |
 | REST API | Done |
 | Backtesting runner | Next |
