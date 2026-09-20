@@ -31,6 +31,8 @@ RSpec.configure do |config|
   config.filter_rails_from_backtrace!
   config.filter_gems_from_backtrace('dhanhq', 'coindcx-client')
 
+  config.include ActiveJob::TestHelper, type: :job
+
   # Shoulda Matchers config
   Shoulda::Matchers.configure do |shoulda_config|
     shoulda_config.integrate do |with|

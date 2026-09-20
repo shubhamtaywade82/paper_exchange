@@ -116,8 +116,23 @@ bin/rails server
 | `PAPER_EXCHANGE_MAX_DRAWDOWN` | Max portfolio drawdown before rejection (default `0.20`) |
 | `PAPER_EXCHANGE_MAX_POSITIONS` | Max open positions per account (default `10`) |
 | `PAPER_EXCHANGE_MAX_POSITION_VALUE` | Max position value before margin rejection (default `500000`) |
+| `PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE` | Maintenance margin rate used to derive liquidation prices for leveraged futures positions (default `0.004`) |
 | `DHAN_CLIENT_ID` | DhanHQ client ID (required for data APIs) |
 | `DHAN_ACCESS_TOKEN` | DhanHQ access token |
+
+### Running the crypto futures pipeline
+
+```bash
+# Maintains the live Binance USD-M mark price hot state (Redis-backed) and
+# triggers in-memory liquidation checks — run this alongside the API server
+# whenever leveraged futures positions are open.
+bin/market_data_daemon
+# or subscribe to specific symbols only:
+bin/market_data_daemon BTCUSDT ETHUSDT
+
+# Perpetual futures funding settles automatically every 8h (00:00/08:00/16:00
+# UTC) via Solid Queue's recurring jobs — see config/recurring.yml.
+```
 
 ---
 
@@ -214,10 +229,16 @@ bundle exec rspec
 | Binance USD-M catalog | Integrated via public API |
 | CoinDCX futures catalog | Integrated via coindcx-client gem |
 | Risk & brokerage engine | Done |
+| Crypto futures precision (decimal quantities/prices) | Done |
+| Margin wallet (available/locked balance, atomic lock/unlock) | Done |
+| Leverage, margin type, liquidation price on positions | Done |
+| Liquidation engine (in-memory checks, async force-close) | Done |
+| Perpetual funding settlement (every 8h via Solid Queue) | Done |
+| Market feed consumer (`bin/market_data_daemon`, mark price hot state) | Done |
+| Ledger reconciliation on boot | Done |
 | REST API | Done |
 | Backtesting runner | Next |
 | Live broker adapters | Next |
-| Market feed consumer | Next |
 
 ---
 

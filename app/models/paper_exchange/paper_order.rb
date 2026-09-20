@@ -23,7 +23,7 @@ module PaperExchange
     validates :order_kind, presence: true
     validates :quantity,
       presence: true,
-      numericality: { only_integer: true, greater_than: 0 }
+      numericality: { greater_than: 0 }
     validates :price,
       numericality: { greater_than: 0 },
       allow_nil: true,
@@ -33,10 +33,12 @@ module PaperExchange
       allow_nil: true,
       if: -> { stop_loss? }
     validates :filled_quantity,
-      numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+      numericality: { greater_than_or_equal_to: 0 }
+    validates :leverage, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
+    validates :margin_type, inclusion: { in: %w[cross isolated] }
     validates :instrument_type,
       presence: true,
-      inclusion: { in: proc { Exchange::DhanInstrumentCatalog::INSTRUMENT_TYPES } }
+      inclusion: { in: proc { Exchange::DhanInstrumentCatalog::INSTRUMENT_TYPES + Exchange::CryptoInstrumentCatalog::INSTRUMENT_TYPES } }
     validate :enforce_derivative_only_for_indices
 
     def enforce_derivative_only_for_indices
@@ -54,6 +56,19 @@ module PaperExchange
 
     def remaining_quantity
       quantity - (filled_quantity || 0)
+    end
+
+    # Notional value at a given reference price (defaults to the order's own
+    # limit/trigger price where set — callers filling at market must pass the
+    # fill price explicitly since `price` is nil for market orders).
+    def notional(reference_price)
+      reference_price.to_f * quantity.to_f
+    end
+
+    # Initial margin required to open this order's full quantity at the given
+    # reference price under the order's own leverage.
+    def required_margin(reference_price)
+      notional(reference_price) / leverage.to_f
     end
 
     def cancel!

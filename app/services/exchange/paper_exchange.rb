@@ -38,9 +38,20 @@ module Exchange
       order.save!
       order.open!
 
+      reference_price = (order.price || attrs[:ltp]).to_f
+      required_margin = order.required_margin(reference_price)
+      Ledger::MarginLedger.lock_margin!(
+        account_id: account_id,
+        amount: required_margin,
+        reference_id: order.id.to_s,
+        payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_lock" }
+      )
+      order.update_column(:locked_margin, required_margin)
+
       result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
       _passed, rejected = result
       if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+        release_order_margin!(order)
         order.rejected!("Risk check failed: #{Array(rejected).join(", ")}")
         raise "Risk check failed: #{Array(rejected).join(", ")}"
       end
@@ -51,8 +62,21 @@ module Exchange
 
         if fill_qty && fill_qty.positive?
           fill_qty, fill_price, trade = @fill_engine.fill(order, market_snapshot: @order_book.snapshot(order.symbol), instrument_type: order.instrument_type, quantity: fill_qty)
-          PositionManager.apply!(account_id: account_id, symbol: order.symbol, side: order.side, quantity: order.side == "buy" ? fill_qty : -fill_qty, avg_price: fill_price) if trade
-          Ledger::Ledger.record_trade(account_id: account_id, trade: trade) if trade
+          if trade
+            position = PositionManager.apply!(
+              account_id: account_id,
+              symbol: order.symbol,
+              side: order.side,
+              quantity: order.side == "buy" ? fill_qty : -fill_qty,
+              avg_price: fill_price,
+              leverage: order.leverage,
+              margin_type: order.margin_type,
+              instrument_type: order.instrument_type
+            )
+            release_order_margin!(order)
+            MarginEngine.sync_position!(position, account_id: account_id)
+            Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
+          end
           @settlement.settle(order, fill_qty: fill_qty, fill_price: fill_price)
           order.filled!
         end
@@ -81,11 +105,13 @@ module Exchange
 
     def cancel_order(order_id)
       order = ::PaperExchange::PaperOrder.find(order_id)
+      release_order_margin!(order)
       order.cancel!
     end
 
     def expire_order(order_id)
       order = ::PaperExchange::PaperOrder.find(order_id)
+      release_order_margin!(order)
       order.expired!
     end
 
@@ -104,6 +130,25 @@ module Exchange
 
     def order_book(symbol)
       @order_book.snapshot(symbol)
+    end
+
+    private
+
+    # Releases whatever margin is still held against this order back to the
+    # account's available balance. Called once the order's own lock has
+    # either been superseded by a position-level lock (fill — see
+    # MarginEngine.sync_position!) or is no longer needed (reject, cancel,
+    # expiry).
+    def release_order_margin!(order)
+      return if order.locked_margin.to_f.zero?
+
+      Ledger::MarginLedger.unlock_margin!(
+        account_id: order.account_id,
+        amount: order.locked_margin,
+        reference_id: order.id.to_s,
+        payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_release" }
+      )
+      order.update_column(:locked_margin, 0)
     end
   end
 end

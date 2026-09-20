@@ -1,32 +1,5 @@
 module Ledger
   class Ledger
-    def self.record_order_placed(account_id:, order:, fill_qty:, fill_price:)
-      entry = LedgerEntry.create!(
-        account_id: account_id,
-        event_type: "ORDER_PLACED",
-        payload: {
-          order_id: order.id,
-          symbol: order.symbol,
-          side: order.side,
-          quantity: fill_qty,
-          price: fill_price
-        },
-        debit: order.side == "buy" ? fill_price * fill_qty : 0,
-        credit: order.side == "sell" ? fill_price * fill_qty : 0,
-        reference_id: order.id.to_s,
-        occurred_at: Time.current
-      )
-      account = Account.find_by!(account_id: account_id)
-      account.update!(
-        unrealized_pnl: compute_unrealized_pnl(account_id),
-        realized_pnl: compute_realized_pnl(account_id),
-        current_equity: account.balance_after
-      )
-      Projections::PositionProjection.apply_from_ledger(entry)
-      Projections::PortfolioProjection.rebuild_for_account(account_id)
-      entry
-    end
-
     def self.record_trade(account_id:, trade:)
       entry = LedgerEntry.create!(
         account_id: account_id,
@@ -46,35 +19,60 @@ module Ledger
         occurred_at: trade.traded_at
       )
 
-      account = Account.find_by!(account_id: account_id)
+      # Note: position quantity/avg_price are already updated by
+      # Exchange::PositionManager.apply! before this is called (see
+      # Exchange::PaperExchange#submit_order) — do not also apply this
+      # ledger entry via Projections::PositionProjection.apply_from_ledger,
+      # or the fill would be double-counted onto the position.
+
+      # Refresh the account's cached equity snapshot now that a real cash
+      # event has happened. This is a low-frequency event (a fill), not a
+      # price tick — it must never be driven from the market data feed (see
+      # MarketData::MarkPriceStore / bin/market_data_daemon), which only
+      # updates Redis and triggers in-memory liquidation checks.
+      refresh_cached_equity!(account_id)
+
+      entry
+    end
+
+    def self.refresh_cached_equity!(account_id)
+      account = Account.find_by(account_id: account_id)
+      return unless account
+
       unrealized = compute_unrealized_pnl(account_id)
       realized = compute_realized_pnl(account_id)
-      account.update!(
-        unrealized_pnl: unrealized,
-        realized_pnl: realized,
-        current_equity: account.margin + unrealized + realized
+      account.update_columns(
+        unrealized_pnl: unrealized.round(8),
+        realized_pnl: realized.round(8),
+        current_equity: (account.margin.to_f + unrealized + realized).round(8)
       )
-      entry
     end
 
     def self.compute_realized_pnl(account_id)
       trade_entries = LedgerEntry.where(account_id: account_id, event_type: "trade")
-      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).round(2)
+      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f.round(8)
     rescue
       0.0
     end
 
-    def self.compute_pnl(position, current_price)
-      return 0 if position.quantity.zero? || current_price.nil?
+    # `mark_price` defaults to the live price from MarketData::MarkPriceStore
+    # (falling back to the position's last-known column value, e.g. before
+    # the market data daemon has ever published a tick for the symbol) so
+    # unrealized PnL reflects the current market, not the last fill.
+    def self.compute_pnl(position, mark_price = nil)
+      mark_price ||= MarketData::MarkPriceStore.get(position.symbol) || position.current_price
+      return 0 if position.quantity.zero? || mark_price.nil?
+
       avg_price = position.avg_price
       return 0 if avg_price.nil?
+
       multiplier = position.long? ? 1 : -1
-      (current_price - avg_price) * position.quantity * multiplier
+      (mark_price.to_f - avg_price.to_f) * position.quantity.to_f * multiplier
     end
 
     def self.compute_unrealized_pnl(account_id)
       positions = ::PaperExchange::PaperPosition.where(account_id: account_id)
-      positions.sum { |p| Ledger.compute_pnl(p, p.current_price || 0) }
+      positions.sum { |p| Ledger.compute_pnl(p) }
     end
   end
 end

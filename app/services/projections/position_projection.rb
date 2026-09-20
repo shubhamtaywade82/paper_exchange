@@ -3,6 +3,7 @@ module Projections
     class << self
       def for_account(account_id)
         ::PaperExchange::PaperPosition.where(account_id: account_id).map do |pos|
+          mark_price = MarketData::MarkPriceStore.get(pos.symbol) || pos.current_price
           {
             id: pos.id,
             account_id: pos.account_id,
@@ -10,9 +11,12 @@ module Projections
             side: pos.side,
             net_quantity: pos.quantity,
             average_price: pos.avg_price,
-            current_price: pos.current_price,
-            ltp: pos.current_price,
-            unrealized_pnl: Ledger::Ledger.compute_pnl(pos, pos.current_price || 0)
+            current_price: mark_price,
+            ltp: mark_price,
+            leverage: pos.leverage,
+            margin_type: pos.margin_type,
+            liquidation_price: pos.liquidation_price,
+            unrealized_pnl: Ledger::Ledger.compute_pnl(pos, mark_price)
           }
         end
       end

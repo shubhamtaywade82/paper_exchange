@@ -8,7 +8,7 @@ module PaperExchange
     validates :side, presence: true
     validates :quantity,
       presence: true,
-      numericality: { only_integer: true, greater_than: 0 }
+      numericality: { greater_than: 0 }
     validates :price, presence: true, numericality: { greater_than: 0 }
     validates :traded_at, presence: true
   end

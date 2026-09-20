@@ -1,6 +1,6 @@
 module Exchange
   class PositionManager
-    def self.apply!(account_id:, symbol:, side:, quantity:, avg_price:)
+    def self.apply!(account_id:, symbol:, side:, quantity:, avg_price:, leverage: 1, margin_type: "cross", instrument_type: "EQUITY")
       normalized_side = normalize_side(side)
       total_qty = quantity.is_a?(Numeric) ? quantity : quantity.to_i
       existing = ::PaperExchange::PaperPosition.find_by(
@@ -13,6 +13,7 @@ module Exchange
         position = existing
         position.quantity ||= 0
         position.avg_price ||= 0.0
+        was_flat = position.quantity.to_f.zero?
         position.quantity += total_qty
         # Reset avg price when reducing/zeroing position
         if position.quantity <= 0
@@ -23,6 +24,14 @@ module Exchange
           position.avg_price = total_cost / position.quantity
         end
         position.current_price = avg_price
+        # Leverage/margin type/instrument type can only change while the
+        # position is flat — mirrors real exchanges, which require closing a
+        # position before switching its leverage.
+        if was_flat
+          position.leverage = leverage
+          position.margin_type = margin_type
+          position.instrument_type = instrument_type
+        end
         position.save!
         position
       else
@@ -38,7 +47,7 @@ module Exchange
           net = total_qty - opposite.quantity
           if net >= 0
             opposite.destroy!
-            return apply!(account_id: account_id, symbol: symbol, side: side, quantity: net, avg_price: avg_price)
+            return apply!(account_id: account_id, symbol: symbol, side: side, quantity: net, avg_price: avg_price, leverage: leverage, margin_type: margin_type, instrument_type: instrument_type)
           else
             opposite.quantity = opposite.quantity + total_qty
             opposite.save!
@@ -52,7 +61,10 @@ module Exchange
           side: normalized_side,
           quantity: [total_qty, 0].max,
           avg_price: avg_price.to_f,
-          current_price: avg_price.to_f
+          current_price: avg_price.to_f,
+          leverage: leverage,
+          margin_type: margin_type,
+          instrument_type: instrument_type
         )
         position.save!
         position

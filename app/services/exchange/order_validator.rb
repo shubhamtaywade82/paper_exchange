@@ -4,7 +4,7 @@ module Exchange
       required(:account_id).filled(:string)
       required(:symbol).filled(:string)
       required(:side).filled(:string, included_in?: %w[buy sell])
-      required(:quantity).filled(:integer, gt?: 0)
+      required(:quantity).filled(:decimal, gt?: 0)
       required(:order_kind).filled(:string, included_in?: %w[market bounded stop_loss])
       required(:instrument_type).filled(:string)
       optional(:option_type).maybe(:string, included_in?: %w[CE PE])
@@ -13,6 +13,8 @@ module Exchange
       optional(:ltp).maybe(:decimal)
       optional(:price).maybe(:decimal, gt?: 0)
       optional(:trigger_price).maybe(:decimal, gt?: 0)
+      optional(:leverage).maybe(:integer, gteq?: 1)
+      optional(:margin_type).maybe(:string, included_in?: %w[cross isolated])
       optional(:context).maybe(:hash)
     end
 

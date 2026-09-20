@@ -18,7 +18,7 @@ module Exchange
     end
 
     def snapshot(symbol)
-      @mutex.synchronize { (@books[symbol] || default_book).dup.freeze }
+      @mutex.synchronize { (@books[symbol] || default_book(symbol)).dup.freeze }
     end
 
     def best_bid(symbol)
@@ -39,8 +39,21 @@ module Exchange
 
     private
 
-    def default_book
-      { bid: 100.0, ask: 101.0, ltp: 100.5, depth: default_depth(100.0, 101.0) }
+    # No live snapshot has been applied to this in-process order book for
+    # `symbol` (e.g. a fresh Exchange::PaperExchange instance, as controllers
+    # create per-request). Falls back to the live Binance mark price from
+    # MarketData::MarkPriceStore when one exists — crypto futures symbols
+    # always have one once bin/market_data_daemon is running — and only
+    # drops to the static equity stub otherwise (unchanged behavior for
+    # symbols with no market data feed at all, e.g. in specs).
+    def default_book(symbol)
+      mark_price = MarketData::MarkPriceStore.get(symbol)
+      return { bid: 100.0, ask: 101.0, ltp: 100.5, depth: default_depth(100.0, 101.0) } unless mark_price
+
+      spread = mark_price * 0.0002
+      bid = mark_price - spread
+      ask = mark_price + spread
+      { bid: bid, ask: ask, ltp: mark_price, depth: default_depth(bid, ask) }
     end
 
     def default_depth(bid, ask)
