@@ -274,6 +274,49 @@ bin/rubocop
 bundle exec rspec
 ```
 
+### Crypto Engine Smoke Test (End-to-End Accounting Invariants)
+
+A TypeScript integration suite verifying core perpetual accounting invariants against the live containerized broker (initial margin deduction, flat 0.04% taker fees, weighted-average entry prices, partial realization, funding rate settlements, and immutable ledger cash reconciliation):
+
+```bash
+# 1. Start Docker services (PostgreSQL, Redis, and Rails 8 API)
+docker compose up -d
+
+# 2. Reset or initialize test account (test-account-1)
+docker compose exec api bin/rails runner "
+  account_id = 'test-account-1'
+  order_ids = PaperExchange::PaperOrder.where(account_id: account_id).pluck(:id)
+  FundingPayment.where(account_id: account_id).delete_all
+  PaperExchange::PaperTrade.where(paper_order_id: order_ids).delete_all
+  PaperExchange::PaperPosition.where(account_id: account_id).delete_all
+  PaperExchange::PaperOrder.where(account_id: account_id).delete_all
+  LedgerEntry.where(account_id: account_id).delete_all
+  Account.find_or_initialize_by(account_id: account_id).update!(
+    name: 'Smoke Test Account', currency: 'USD', margin: 10000.0,
+    available_balance: 10000.0, current_equity: 10000.0,
+    realized_pnl: 0.0, unrealized_pnl: 0.0, locked_margin: 0.0
+  )
+"
+
+# 3. Run smoke test
+npm run smoke-test
+# or
+npx ts-node smoke-test.ts
+```
+
+#### Invariants Verified
+
+| Step | Operation | Invariant / Formula | Expected |
+|------|-----------|---------------------|----------|
+| 1 | Initial State | `available_balance = margin`, `locked_margin = 0` | $\$10,000.00$ |
+| 2 | Seed Mark Price | Initialize mark price for `BTCUSDT` | $\$60,000.00$ |
+| 3 | Open Position | Buy 0.1 BTC @ 60k (10x). Margin: $\$600.00$, Fee (0.04%): $\$2.40$ | Avail: $\$9,397.60$, Margin: $\$600.00$ |
+| 4 | Mark Price Update | Price $\to \$61,000$. $\text{uPnL} = (61000 - 60000) \times 0.1$ | uPnL: $+\$100.00$ |
+| 5 | Add to Position | Buy 0.1 BTC @ 62k (10x). Weighted entry: $\$61,000$, Fee: $\$2.48$ | Avg: $\$61,000.00$, Avail: $\$8,775.12$ |
+| 6 | Reduce Position | Sell 0.15 BTC @ 63k. Realized: $+\$300$, Fee: $\$3.78$, Released: $\$915$ | Realized: $+\$300.00$, Avail: $\$9,986.34$ |
+| 7 | Funding Settlement | $0.01\%$ funding on $0.05 \times 63000$ notional ($\$3,150$). Fee: $\$0.315$ | Avail: $\$9,986.025$ |
+| 8 | Cash Invariant | Total Cash = `wallet.available` + `margin_used` = Initial + PnL - Fees | $\$10,291.025$ |
+
 ---
 
 ## Status
