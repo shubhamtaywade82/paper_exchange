@@ -42,7 +42,7 @@ module Projections
       def closed_trades_with_pnl(account_id)
         trades = ::PaperExchange::PaperTrade
           .joins(:paper_order)
-          .where(paper_orders: { account_id: account_id })
+          .where(paper_exchange_orders: { account_id: account_id })
           .order(:traded_at)
 
         trades.map do |trade|

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -34,12 +34,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_130000) do
     t.decimal "amount", precision: 36, scale: 18, null: false
     t.datetime "created_at", null: false
     t.decimal "funding_rate", precision: 36, scale: 18, null: false
+    t.datetime "funding_time"
     t.datetime "occurred_at", null: false
     t.bigint "paper_position_id"
     t.decimal "position_notional", precision: 36, scale: 18, null: false
     t.string "symbol", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_funding_payments_on_account_id"
+    t.index ["paper_position_id", "funding_time"], name: "index_funding_payments_dedup", unique: true, where: "(funding_time IS NOT NULL)"
     t.index ["paper_position_id"], name: "index_funding_payments_on_paper_position_id"
     t.index ["symbol", "occurred_at"], name: "index_funding_payments_on_symbol_and_occurred_at"
   end
@@ -133,8 +135,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_130000) do
     t.string "symbol", null: false
     t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
-    t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
+    t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_orders_instrument"
     t.index ["status"], name: "index_paper_exchange_orders_on_status"
     t.index ["symbol"], name: "index_paper_exchange_orders_on_symbol"
@@ -147,7 +149,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_130000) do
     t.decimal "current_price", precision: 36, scale: 18
     t.date "expiry_date"
     t.decimal "initial_margin", precision: 36, scale: 18, default: "0.0", null: false
-    t.string "instrument_type", default: "equity", null: false
+    t.string "instrument_type", default: "EQUITY", null: false
     t.integer "leverage", default: 1, null: false
     t.decimal "liquidation_price", precision: 36, scale: 18
     t.string "margin_type", default: "cross", null: false

@@ -20,5 +20,11 @@ module Exchange
     def offset_from(signal_time)
       signal_time + rand(@min_ms..@max_ms) / 1000.0
     end
+
+    def delay(ms)
+      sleep([ ms / 1000.0, 0.001 ].max)
+      yield if block_given?
+      self
+    end
   end
 end

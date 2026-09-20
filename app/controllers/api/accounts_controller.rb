@@ -33,7 +33,7 @@ module Api
         locked_margin: account.locked_margin,
         wallet: {
           available: account.available_balance,
-          locked: locked_total
+          locked: order_locked.to_f
         },
         equity: summary[:equity],
         unrealized_pnl: summary[:unrealized_pnl],

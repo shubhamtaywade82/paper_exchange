@@ -16,7 +16,8 @@ module Api
       mark_price = params[:mark_price].presence
       funding_time = params[:funding_time].presence
 
-      args = [symbol.to_s.upcase, funding_rate.to_f, mark_price&.to_f, funding_time]
+      args = [ symbol.to_s.upcase, funding_rate.to_f, mark_price&.to_f ]
+      args << funding_time if funding_time.present?
       if params[:sync].present?
         FundingJob.perform_now(*args)
       else

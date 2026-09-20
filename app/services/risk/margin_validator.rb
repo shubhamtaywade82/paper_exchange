@@ -10,6 +10,7 @@ module Risk
   # the client has been told it's accepted (depending on timing). Check #2
   # rejects before any state mutation.
   class MarginValidator
+    MARGIN_RATIOS = { "EQUITY" => 0.10, "FUTIDX" => 0.12, "OPTIDX" => 0.20, "FUTCUR" => 0.12, "OPTCUR" => 0.20 }.freeze
     MAX_POSITION_VALUE = ENV.fetch("PAPER_EXCHANGE_MAX_POSITION_VALUE", "500000").to_f
 
     def evaluate(account_id, signal)
@@ -23,7 +24,13 @@ module Risk
       notional = price * qty
       return :MARGIN_REJECTED if notional > MAX_POSITION_VALUE
 
-      required_margin = notional / leverage
+      required_margin = if instrument_type == "CRYPTO_PERPETUAL"
+        notional / leverage
+      else
+        margin_ratio = MARGIN_RATIOS[instrument_type] || 0.10
+        notional * margin_ratio
+      end
+
       account = Account.find_by(account_id: account_id)
       return :passed unless account   # no account row → fall through to MarginLedger which will raise
 

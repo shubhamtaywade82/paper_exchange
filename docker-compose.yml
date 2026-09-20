@@ -29,20 +29,22 @@ services:
       dockerfile: Dockerfile
       target: development
     ports:
-      - "${PORT:-3001}:3000"
+      - "${PORT:-3100}:3100"
     env_file:
       - .env
     environment:
       RAILS_ENV: development
       DATABASE_URL: postgres://paper_user:paper_password@db:5432/paper_exchange_development
       REDIS_URL: redis://redis:6379/0
+      PORT: 3100
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:-f92a4815d4c57c5cf769f72276fb713a}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/up || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/up || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6

@@ -27,7 +27,9 @@ module Api
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       order = exchange.submit_order(received)
       render json: order_json(order), status: :created
-    rescue ArgumentError, Exchange::OrderValidationError => e
+    rescue Exchange::OrderValidationError => e
+      render_error(:unprocessable_content, e.message)
+    rescue ArgumentError => e
       render_error(:bad_request, e.message)
     rescue Ledger::InsufficientMarginError => e
       render_error(:payment_required, e.message)

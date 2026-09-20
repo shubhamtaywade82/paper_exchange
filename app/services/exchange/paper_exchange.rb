@@ -31,14 +31,21 @@ module Exchange
     # The lock-then-unlock dance in the normal path is a no-op for closing
     # orders anyway (MarginEngine.sync_position! releases the position's own
     # initial_margin once it goes flat).
-    def submit_order(order_attrs, internal: false)
-      client_order_id = order_attrs[:client_order_id].presence
+    def submit_order(order_attrs = nil, internal: false, **extra_attrs)
+      attrs_in = if order_attrs.is_a?(Hash)
+        order_attrs.merge(extra_attrs)
+      else
+        extra_attrs
+      end
+      internal = attrs_in.delete(:internal) if attrs_in.key?(:internal)
+
+      client_order_id = attrs_in[:client_order_id].presence
       if client_order_id
         existing = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id)
         return existing if existing
       end
 
-      attrs = Exchange::OrderValidator.call(order_attrs)
+      attrs = Exchange::OrderValidator.call(attrs_in)
 
       signal = Strategy::Signal.new(
         account_id: account_id,
