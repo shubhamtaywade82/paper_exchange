@@ -307,12 +307,20 @@ docker compose exec api bin/rails runner "
   )
 "
 
-# 3. Run smoke test (inside the api container — deps already installed)
+# 3. Run broker API smoke test:
 docker compose exec api npm run smoke-test
-# or from the host (requires local node + npm):
-#   npm install && npm run smoke-test
-# or directly with tsx:
-#   npx tsx smoke-test.ts
+# or from host:
+npm run smoke-test
+
+# 4. Run headless trading lifecycle simulation smoke test:
+npm run smoke-test:simulation
+
+# 5. Interactive visual simulation dashboard:
+# Open directly in browser:
+wslview crypto-trading-lifecycle-simulation.html
+# Or serve via Python (http://localhost:8080/crypto-trading-lifecycle-simulation.html):
+python3 -m http.server 8080
+# Features an optional "🔌 Live API" toggle button (default: OFF / in-memory mock) to stream live orders to port 3100.
 ```
 
 #### Invariants Verified

@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "smoke-test": "tsx smoke-test.ts"
+    "smoke-test": "tsx smoke-test.ts",
+    "smoke-test:simulation": "tsx smoke-test-simulation.ts"
   },
   "repository": {
     "type": "git",
