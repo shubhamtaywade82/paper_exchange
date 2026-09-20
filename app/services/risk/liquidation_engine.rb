@@ -28,7 +28,11 @@ module Risk
         breached_ids = []
 
         positions.each do |(id, _symbol, side, liquidation_price)|
-          breached = side.to_i.zero? ? price <= liquidation_price.to_f : price >= liquidation_price.to_f
+          # `pluck` on an enum column returns its string label ("long"/
+          # "short"), not the underlying integer — comparing via `.to_i`
+          # here would silently treat every row as "long" (`.to_i` is 0 for
+          # both labels).
+          breached = side == "long" ? price <= liquidation_price.to_f : price >= liquidation_price.to_f
           next unless breached
 
           LiquidationJob.perform_later(id, price)
