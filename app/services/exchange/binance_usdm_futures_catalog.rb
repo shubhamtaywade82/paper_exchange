@@ -64,4 +64,6 @@ module Exchange
       end
     end
   end
+
+  BinanceUsdmFuturesCatalog = BinanceUSDMFuturesCatalog
 end
