@@ -194,6 +194,14 @@ Create order payload (crypto perpetual futures — `client_order_id` and
 }
 ```
 
+### Account
+```
+GET /api/account
+```
+Wallet split (`available_balance`/`locked_margin`) plus live equity — sync
+from this on startup and after any gap in connectivity rather than
+computing balance/margin locally.
+
 ### Positions
 ```
 GET /api/positions

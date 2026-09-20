@@ -2,6 +2,7 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do
+    get "account", to: "accounts#show"
     resources :orders, only: %i[index show create destroy]
     resources :positions, only: %i[index show]
     resources :risk_events, only: %i[index]
