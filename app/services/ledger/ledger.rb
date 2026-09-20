@@ -21,9 +21,8 @@ module Ledger
 
       # Note: position quantity/avg_price are already updated by
       # Exchange::PositionManager.apply! before this is called (see
-      # Exchange::PaperExchange#submit_order) — do not also apply this
-      # ledger entry via Projections::PositionProjection.apply_from_ledger,
-      # or the fill would be double-counted onto the position.
+      # Exchange::PaperExchange#submit_order) — this entry is the immutable
+      # record of the fill, not a second place that mutates the position.
 
       # Refresh the account's cached equity snapshot now that a real cash
       # event has happened. This is a low-frequency event (a fill), not a

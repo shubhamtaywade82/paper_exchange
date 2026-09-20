@@ -11,7 +11,9 @@ module PaperExchange
 
     validates :symbol, presence: true
     validates :side, presence: true
-    validates :quantity, numericality: true
+    # Always a non-negative magnitude — `side` alone carries direction. See
+    # Exchange::PositionManager for why this matters.
+    validates :quantity, numericality: { greater_than_or_equal_to: 0 }
     validates :avg_price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
     validates :current_price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
     validates :leverage, numericality: { only_integer: true, greater_than_or_equal_to: 1 }

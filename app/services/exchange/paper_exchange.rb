@@ -103,11 +103,14 @@ module Exchange
               account_id: account_id,
               symbol: order.symbol,
               side: order.side,
-              quantity: order.side == "buy" ? fill_qty : -fill_qty,
+              quantity: fill_qty,
               avg_price: fill_price,
               leverage: order.leverage,
               margin_type: order.margin_type,
-              instrument_type: order.instrument_type
+              instrument_type: order.instrument_type,
+              option_type: order.option_type,
+              strike_price: order.strike_price,
+              expiry_date: order.expiry_date
             )
             release_order_margin!(order)
             MarginEngine.sync_position!(position, account_id: account_id)
