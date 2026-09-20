@@ -9,9 +9,7 @@ Rails.application.routes.draw do
     get "performance", to: "performance#show"
     resources :ledger, only: %i[index]
     post "mark_prices", to: "mark_prices#create"
-    post "mark-prices", to: "mark_prices#create"
     post "funding_events", to: "funding_events#create"
-    post "funding-events", to: "funding_events#create"
   end
 
   namespace :api do

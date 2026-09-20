@@ -1,56 +1,65 @@
 # syntax = docker/dockerfile:1
 
 # ==============================================================================
-# Stage 1: Base Image (Shared between build and production)
+# Stage 1: Base — common OS packages, no Ruby env yet
 # ==============================================================================
 ARG RUBY_VERSION=3.4.2
 FROM ruby:$RUBY_VERSION-slim-bookworm AS base
 
-# Set environment variables
-ENV RAILS_ENV=production \
-    BUNDLE_DEPLOYMENT=1 \
-    BUNDLE_PATH=/usr/local/bundle \
-    BUNDLE_WITHOUT=development:test
-
-# Install essential OS packages required for PostgreSQL and Redis clients
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libpq-dev build-essential libyaml-dev pkg-config netcat-openbsd && \
+    apt-get install -y --no-install-recommends \
+      curl libpq-dev build-essential libyaml-dev pkg-config \
+      postgresql-client redis-tools nodejs npm && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Set working directory
 WORKDIR /rails
 
+ENV BUNDLE_PATH=/usr/local/bundle \
+    RAILS_ENV=development
+
 # ==============================================================================
-# Stage 2: Build Stage (Install Gems)
+# Stage 2: build — install all gems (including dev/test)
 # ==============================================================================
 FROM base AS build
 
-# Copy only Gemfile and Gemfile.lock to leverage Docker layer caching
 COPY Gemfile Gemfile.lock ./
-
-# Install gems (excluding dev/test groups)
 RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git
 
 # ==============================================================================
-# Stage 3: Production Stage (Final Image)
+# Stage 3: development — what docker compose runs locally
+# Boots a single Puma with dev-mode reloading and SSH-style code mounting.
+# ==============================================================================
+FROM build AS development
+
+# Smoke-test deps (TypeScript + axios + BigNumber) — README's smoke-test.ts
+# Needs devDependencies for ts-node/tsx, so install everything.
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+
+RUN chmod +x bin/docker-entrypoint
+
+ENTRYPOINT ["bin/docker-entrypoint"]
+CMD ["./bin/rails", "server", "-b", "0.0.0.0"]
+
+# ==============================================================================
+# Stage 4: production — minimal, no dev/test gems, no source tree beyond app
+# ponytail: real production image; secrets come from env vars, never baked in.
 # ==============================================================================
 FROM base AS production
 
-# Copy installed gems from build stage
+ENV RAILS_ENV=production \
+    BUNDLE_DEPLOYMENT=1 \
+    BUNDLE_WITHOUT=development:test
+
 COPY --from=build /usr/local/bundle /usr/local/bundle
 
-# Copy the rest of the application code
 COPY . .
 
-# Ensure the entrypoint script is executable
-RUN chmod +x bin/docker-entrypoint
+RUN chmod +x bin/docker-entrypoint && \
+    SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile || true
 
-# Expose the Puma port
-EXPOSE 3000
-
-# Use the custom entrypoint to handle DB prep and server boot
 ENTRYPOINT ["bin/docker-entrypoint"]
-
-# Start the Puma server
 CMD ["./bin/rails", "server", "-b", "0.0.0.0"]

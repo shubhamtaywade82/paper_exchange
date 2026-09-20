@@ -9,6 +9,12 @@ RSpec.describe Risk::PositionLimitValidator, type: :service do
 
   it 'passes when under limit' do
     5.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
-    expect(validator.evaluate(account_id, signal)).to eq([:passed, validator])
+    expect(validator.evaluate(account_id, signal)).to eq(:passed)
+  end
+
+  it 'rejects when at or over the limit (B1 regression guard)' do
+    stub_const('Risk::PositionLimitValidator::MAX_POSITIONS', 3)
+    3.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
+    expect(validator.evaluate(account_id, signal)).to eq(:POSITION_LIMIT_REJECTED)
   end
 end

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "smoke-test": "ts-node smoke-test.ts"
+    "smoke-test": "tsx smoke-test.ts"
   },
   "repository": {
     "type": "git",

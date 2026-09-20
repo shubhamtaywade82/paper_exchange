@@ -5,10 +5,17 @@ class Account < ApplicationRecord
   validates :name, presence: true
   validates :currency, presence: true, inclusion: { in: %w[INR USD USDT] }
   validates :margin, numericality: { greater_than_or_equal_to: 0 }
-  validates :current_equity, numericality: { greater_than_or_equal_to: 0 }
+  # current_equity = margin + realized + unrealized — a liquidated account
+  # can have negative equity if realized losses exceeded initial margin.
+  validates :current_equity, numericality: true
   validates :realized_pnl, numericality: true, allow_nil: true
   validates :unrealized_pnl, numericality: true, allow_nil: true
-  validates :available_balance, numericality: { greater_than_or_equal_to: 0 }
+  # available_balance CAN go negative on a liquidation that wipes the account
+  # beyond its locked margin — that's the correct representation of realized
+  # losses exceeding initial margin. Locked_margin, by contrast, can never
+  # be negative by construction (MarginLedger clamps unlocks to the current
+  # locked amount).
+  validates :available_balance, numericality: true
   validates :locked_margin, numericality: { greater_than_or_equal_to: 0 }
 
   # `before_validation`, not `after_initialize`: this callback derives

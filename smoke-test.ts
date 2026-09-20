@@ -6,7 +6,6 @@ BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_HALF_UP })
 
 const PORT = process.env.PORT || '3001';
 const BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}/api/v1`;
-const API_KEY = process.env.API_KEY || 'test-api-key-123';
 const ACCOUNT_ID = process.env.ACCOUNT_ID || 'test-account-1';
 const SYMBOL = 'BTCUSDT';
 const EPSILON = new BigNumber('1e-8'); // Tolerance for DB scale rounding
@@ -14,7 +13,6 @@ const EPSILON = new BigNumber('1e-8'); // Tolerance for DB scale rounding
 const http: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: {
-    'X-API-Key': API_KEY,
     'X-Account-Id': ACCOUNT_ID,
     'Content-Type': 'application/json'
   }
@@ -120,8 +118,8 @@ async function runSmokeTest() {
   // 7. FUNDING RATE EVENT
   console.log('\n--- Step 7: Funding Rate Event (0.01% @ 63k) ---');
   // Notional: 0.05 * 63000 = 3150. Funding Fee = 3150 * 0.0001 = 0.315
-  await http.post('/funding-events?sync=true', {
-    symbol: SYMBOL, funding_rate: '0.0001', funding_time: new Date().toISOString()
+  await http.post('/funding_events?sync=true', {
+    symbol: SYMBOL, funding_rate: '0.0001', mark_price: '63000.0'
   });
 
   account = (await http.get('/account')).data;

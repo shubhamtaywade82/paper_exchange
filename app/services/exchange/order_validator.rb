@@ -1,4 +1,6 @@
 module Exchange
+  class OrderValidationError < StandardError; end
+
   class OrderValidator
     Schema = Dry::Schema.Params do
       required(:account_id).filled(:string)
@@ -16,41 +18,24 @@ module Exchange
       optional(:leverage).maybe(:integer, gteq?: 1)
       optional(:margin_type).maybe(:string, included_in?: %w[cross isolated])
       optional(:client_order_id).maybe(:string)
-      # Bot-supplied reference price for this specific fill — the broker has
-      # no live market data of its own for crypto symbols (see README), so
-      # this is how the caller pins the price a market order executes near.
       optional(:execution_price).maybe(:decimal, gt?: 0)
       optional(:context).maybe(:hash)
     end
 
     def self.call(attrs)
-      # ActionController::Parameters returns string keys; Dry::Schema expects symbols
-      symbolized = attrs.is_a?(Hash) ? attrs.to_h.symbolize_keys : attrs.to_h.symbolize_keys
+      # ActionController::Parameters#to_h returns only the *permitted* keys,
+      # which drops :order_kind/:account_id the controller sets AFTER permit.
+      # Use to_unsafe_h for Parameters; fall back to to_h for plain Hashes.
+      symbolized = attrs.respond_to?(:to_unsafe_h) ? attrs.to_unsafe_h.symbolize_keys : attrs.to_h.symbolize_keys
       result = Schema.call(symbolized)
-      return [false, result.errors.to_h] unless result.errors.empty?
+      raise OrderValidationError, result.errors.to_h.inspect unless result.errors.empty?
 
-      symbol = attrs[:symbol].to_s.upcase.strip
-      if !%w[FUTIDX OPTIDX].include?(attrs[:instrument_type]) && Exchange::DhanInstrumentCatalog.index_underlying?(symbol)
-        errors = { instrument_type: "Indices must be traded via F&O derivatives only (FUTIDX/OPTIDX). Got: #{attrs[:instrument_type]}" }
-        return [false, errors]
+      symbol = symbolized[:symbol].to_s.upcase.strip
+      if !%w[FUTIDX OPTIDX].include?(symbolized[:instrument_type]) && Exchange::DhanInstrumentCatalog.index_underlying?(symbol)
+        raise OrderValidationError, "Indices must be traded via F&O derivatives only (FUTIDX/OPTIDX). Got: #{symbolized[:instrument_type]}"
       end
 
-      [true, result.to_h]
-    end
-
-    def self.margin_ok?(attrs)
-      account = Account.find_by(account_id: attrs[:account_id])
-      return true unless account
-
-      price = (attrs[:ltp] || attrs[:price] || 0).to_f
-      required = BrokerageCalculator.new.margin_required_for(
-        trade_price: price,
-        quantity: attrs[:quantity],
-        side: attrs[:side],
-        symbol: attrs[:symbol],
-        instrument_type: (attrs[:instrument_type] || "EQUITY")
-      )
-      required <= account.margin
+      result.to_h
     end
   end
 end

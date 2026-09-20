@@ -39,8 +39,9 @@ RSpec.describe Exchange::PaperExchange, type: :service do
 
     context 'with invalid order' do
       let(:invalid_attrs) { valid_attrs.merge(side: 'invalid_side') }
-      it 'raises and rejects order' do
-        expect { exchange.submit_order(invalid_attrs) }.to raise_error(RuntimeError)
+      it 'raises OrderValidationError before any order is persisted' do
+        expect { exchange.submit_order(invalid_attrs) }.to raise_error(Exchange::OrderValidationError)
+          .and not_change(PaperExchange::PaperOrder, :count)
       end
     end
   end

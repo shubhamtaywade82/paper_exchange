@@ -21,18 +21,24 @@ module Exchange
       @latency = LatencyEngine.new
       @matching = MatchingEngine.new(order_book: @order_book, slippage: @slippage, latency: @latency)
       @fill_engine = FillEngine.new(slippage: @slippage)
-      @settlement = SettlementEngine.new(account_id: account_id)
     end
 
-    def submit_order(order_attrs)
+    # `internal:` skips the margin lock and risk gate. Used by LiquidationJob
+    # to force-close a position whose liquidation price has been breached — the
+    # account is by definition underwater at that point, so a fresh margin
+    # lock would always raise InsufficientMarginError and the close order
+    # would be rejected by the very engine that triggered it (B3 deadlock).
+    # The lock-then-unlock dance in the normal path is a no-op for closing
+    # orders anyway (MarginEngine.sync_position! releases the position's own
+    # initial_margin once it goes flat).
+    def submit_order(order_attrs, internal: false)
       client_order_id = order_attrs[:client_order_id].presence
       if client_order_id
         existing = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id)
         return existing if existing
       end
 
-      valid, attrs = Exchange::OrderValidator.call(order_attrs)
-      raise "Invalid order: #{attrs.inspect}" unless valid
+      attrs = Exchange::OrderValidator.call(order_attrs)
 
       signal = Strategy::Signal.new(
         account_id: account_id,
@@ -54,46 +60,44 @@ module Exchange
       begin
         order.save!
       rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
-        # A concurrent request with the same client_order_id won — this one
-        # is the retry, not a genuinely new order. Replay its result instead
-        # of erroring or double-submitting.
         if client_order_id && (replay = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id))
           return replay
         end
         raise
       end
-      order.open!
 
-      # No live market data feed lives in this broker for crypto symbols —
-      # the bot owns the Binance connection and either pushes mark prices
-      # (POST /api/mark_prices) or pins the exact price for this specific
-      # fill via `execution_price`. Seed the in-process order book with it so
-      # matching/slippage use a real reference instead of the equity stub.
-      if attrs[:execution_price].present?
-        execution_price = attrs[:execution_price].to_f
-        @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
-        MarketData::MarkPriceStore.set(order.symbol, execution_price)
-      end
-
-      reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
-      required_margin = order.required_margin(reference_price)
-      Ledger::MarginLedger.lock_margin!(
-        account_id: account_id,
-        amount: required_margin,
-        reference_id: order.id.to_s,
-        payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_lock" }
-      )
-      order.update_column(:locked_margin, required_margin)
-
-      result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
-      _passed, rejected = result
-      if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
-        release_order_margin!(order)
-        order.rejected!("Risk check failed: #{Array(rejected).join(", ")}")
-        raise "Risk check failed: #{Array(rejected).join(", ")}"
-      end
-
+      # H1: lock_margin! + risk + fill are atomic. If anything inside raises,
+      # the whole transaction rolls back — including the margin lock — and
+      # the outer rescue persists :rejected on the order. No manual
+      # release_order_margin! needed on the rejection path: the rollback
+      # already undid it.
       ::PaperExchange::PaperOrder.transaction do
+        order.open!
+
+        if attrs[:execution_price].present?
+          execution_price = attrs[:execution_price].to_f
+          @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
+          MarketData::MarkPriceStore.set(order.symbol, execution_price)
+        end
+
+        unless internal
+          reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
+          required_margin = order.required_margin(reference_price)
+          Ledger::MarginLedger.lock_margin!(
+            account_id: account_id,
+            amount: required_margin,
+            reference_id: order.id.to_s,
+            payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_lock" }
+          )
+          order.update_column(:locked_margin, required_margin)
+
+          result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+          _passed, rejected = result
+          if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+            raise "Risk check failed: #{Array(rejected).join(", ")}"
+          end
+        end
+
         result = @matching.execute(order)
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
@@ -120,7 +124,7 @@ module Exchange
               strike_price: order.strike_price,
               expiry_date: order.expiry_date
             )
-            release_order_margin!(order)
+            release_order_margin!(order) unless internal
             MarginEngine.sync_position!(position, account_id: account_id)
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
 
@@ -145,23 +149,9 @@ module Exchange
             end
             MarketData::MarkPriceStore.set(order.symbol, fill_price)
           end
-          @settlement.settle(order, fill_qty: fill_qty, fill_price: fill_price)
           order.filled!
         end
       end
-
-      MarketData::OrderEvent.new(
-        order_id: order.id,
-        account_id: account_id,
-        symbol: order.symbol,
-        side: order.side,
-        order_type: order.order_kind,
-        quantity: order.quantity,
-        price: order.price,
-        trigger_price: order.trigger_price,
-        status: order.status,
-        timestamp: Time.current
-      )
 
       order
     rescue ArgumentError

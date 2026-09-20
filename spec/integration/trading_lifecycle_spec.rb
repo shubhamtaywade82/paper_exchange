@@ -46,7 +46,7 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
     end
 
     it 'rejects the order' do
-      expect { exchange.submit_order(attrs) }.to raise_error(RuntimeError)
+      expect { exchange.submit_order(attrs) }.to raise_error(RuntimeError, /Risk check failed/)
       order = PaperExchange::PaperOrder.last
       expect(order.status).to eq('rejected')
     end

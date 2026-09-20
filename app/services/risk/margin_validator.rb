@@ -5,7 +5,7 @@ module Risk
 
     def evaluate(account_id, signal)
       symbol = signal.to_h[:symbol]
-      qty = signal.to_h[:quantity].to_i
+      qty = signal.to_h[:quantity].to_f   # was .to_i — silently zeroed every fractional crypto order
       price = (signal.to_h[:price] || signal.to_h[:ltp]).to_f
       instrument_type = signal.to_h[:instrument_type].to_s.presence || "EQUITY"
       notional = price * qty

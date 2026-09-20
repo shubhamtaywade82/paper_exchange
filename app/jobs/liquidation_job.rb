@@ -30,7 +30,8 @@ class LiquidationJob < ApplicationJob
       ltp: mark_price,
       leverage: position.leverage,
       margin_type: position.margin_type,
-      context: { reason: "LIQUIDATION" }
+      context: { reason: "LIQUIDATION" },
+      internal: true
     )
 
     RiskEvent.create!(

@@ -92,8 +92,11 @@ git clone <repository-url>
 cd paper_exchange
 bundle install
 
-# Copy environment file
+# Copy environment file (required before docker compose)
 cp .env.example .env
+# Edit .env: regenerate RAILS_MASTER_KEY and SECRET_KEY_BASE with:
+#   openssl rand -hex 16
+#   openssl rand -hex 64
 
 # Configure database
 # Edit config/database.yml for your PostgreSQL credentials
@@ -279,8 +282,14 @@ bundle exec rspec
 A TypeScript integration suite verifying core perpetual accounting invariants against the live containerized broker (initial margin deduction, flat 0.04% taker fees, weighted-average entry prices, partial realization, funding rate settlements, and immutable ledger cash reconciliation):
 
 ```bash
-# 1. Start Docker services (PostgreSQL, Redis, and Rails 8 API)
-docker compose up -d
+# 0. One-time: copy .env.example to .env (regenerate the secrets inside it)
+cp .env.example .env
+# Edit .env and replace RAILS_MASTER_KEY + SECRET_KEY_BASE with fresh values:
+#   openssl rand -hex 16   # RAILS_MASTER_KEY
+#   openssl rand -hex 64   # SECRET_KEY_BASE
+
+# 1. Start Docker services (PostgreSQL, Redis, and the Rails dev server)
+docker compose up -d --build
 
 # 2. Reset or initialize test account (test-account-1)
 docker compose exec api bin/rails runner "
@@ -298,10 +307,12 @@ docker compose exec api bin/rails runner "
   )
 "
 
-# 3. Run smoke test
-npm run smoke-test
-# or
-npx ts-node smoke-test.ts
+# 3. Run smoke test (inside the api container — deps already installed)
+docker compose exec api npm run smoke-test
+# or from the host (requires local node + npm):
+#   npm install && npm run smoke-test
+# or directly with tsx:
+#   npx tsx smoke-test.ts
 ```
 
 #### Invariants Verified
