@@ -72,6 +72,7 @@ module Exchange
       if attrs[:execution_price].present?
         execution_price = attrs[:execution_price].to_f
         @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
+        MarketData::MarkPriceStore.set(order.symbol, execution_price)
       end
 
       reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
@@ -97,7 +98,14 @@ module Exchange
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
         if fill_qty && fill_qty.positive?
-          fill_qty, fill_price, trade = @fill_engine.fill(order, market_snapshot: @order_book.snapshot(order.symbol), instrument_type: order.instrument_type, quantity: fill_qty)
+          exact_price = (attrs[:execution_price].presence || order.price)&.to_f
+          fill_qty, fill_price, trade = @fill_engine.fill(
+            order,
+            market_snapshot: @order_book.snapshot(order.symbol),
+            instrument_type: order.instrument_type,
+            quantity: fill_qty,
+            price: exact_price
+          )
           if trade
             position = PositionManager.apply!(
               account_id: account_id,
@@ -115,6 +123,27 @@ module Exchange
             release_order_margin!(order)
             MarginEngine.sync_position!(position, account_id: account_id)
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
+
+            if order.instrument_type == "CRYPTO_PERPETUAL"
+              if trade.total_charges.to_f > 0
+                Ledger::MarginLedger.deduct_fee!(
+                  account_id: account_id,
+                  amount: trade.total_charges,
+                  reference_id: trade.id.to_s,
+                  payload: { trade_id: trade.id, symbol: order.symbol, reason: "trade_fee" }
+                )
+              end
+              if position.last_realized_pnl && !position.last_realized_pnl.zero?
+                Ledger::MarginLedger.credit_realized_pnl!(
+                  account_id: account_id,
+                  amount: position.last_realized_pnl,
+                  reference_id: trade.id.to_s,
+                  payload: { trade_id: trade.id, symbol: order.symbol, reason: "realized_pnl" }
+                )
+              end
+              Ledger::Ledger.refresh_cached_equity!(account_id)
+            end
+            MarketData::MarkPriceStore.set(order.symbol, fill_price)
           end
           @settlement.settle(order, fill_qty: fill_qty, fill_price: fill_price)
           order.filled!

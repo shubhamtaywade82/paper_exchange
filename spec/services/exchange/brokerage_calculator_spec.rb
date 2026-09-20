@@ -15,5 +15,13 @@ RSpec.describe Exchange::BrokerageCalculator, type: :service do
       eq_sell = calculator.calculate(trade_price: 100.0, quantity: 10, side: 'sell', symbol: 'RELIANCE', instrument_type: 'EQUITY')
       expect(opt_sell[:stt]).to be > eq_sell[:stt]
     end
+
+    it 'calculates 0.04% taker fee without Indian taxes for CRYPTO_PERPETUAL' do
+      charges = calculator.calculate(trade_price: 60_000.0, quantity: 0.1, side: 'buy', symbol: 'BTCUSDT', instrument_type: 'CRYPTO_PERPETUAL')
+      expect(charges[:total]).to eq(2.4)
+      expect(charges[:stt]).to eq(0.0)
+      expect(charges[:gst]).to eq(0.0)
+      expect(charges[:sebi]).to eq(0.0)
+    end
   end
 end

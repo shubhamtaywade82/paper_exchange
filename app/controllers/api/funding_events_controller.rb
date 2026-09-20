@@ -12,7 +12,11 @@ module Api
       funding_rate = params.require(:funding_rate)
       mark_price = params[:mark_price].presence
 
-      FundingJob.perform_later(symbol.to_s.upcase, funding_rate.to_f, mark_price&.to_f)
+      if params[:sync].present?
+        FundingJob.perform_now(symbol.to_s.upcase, funding_rate.to_f, mark_price&.to_f)
+      else
+        FundingJob.perform_later(symbol.to_s.upcase, funding_rate.to_f, mark_price&.to_f)
+      end
 
       render json: { accepted: true, symbol: symbol.to_s.upcase }, status: :accepted
     rescue ActionController::ParameterMissing => e

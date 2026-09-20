@@ -25,9 +25,6 @@ module PaperExchange
     # semantics respectively for both equity and futures positions — these
     # are read-only delegates so futures call sites can use the vocabulary
     # they expect without duplicating (and risking desync of) a column.
-    # Plain methods, not alias_method: ActiveRecord's attribute accessors
-    # aren't defined yet at class-body eval time, so aliasing them here
-    # raises NameError the moment this file loads.
     def entry_price
       avg_price
     end
@@ -35,6 +32,8 @@ module PaperExchange
     def mark_price
       current_price
     end
+
+    attr_accessor :last_realized_pnl
 
     def leveraged?
       leverage.to_i > 1

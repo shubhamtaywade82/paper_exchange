@@ -27,7 +27,7 @@ module Ledger
 
       def reconcile_account!(account)
         locked = derived_locked_margin(account.account_id)
-        available = account.margin.to_d - locked
+        available = derived_available_balance(account, locked)
 
         locked_drift = (account.locked_margin.to_d - locked).abs
         available_drift = (account.available_balance.to_d - available).abs
@@ -61,6 +61,13 @@ module Ledger
         locked = entries.where(event_type: "MARGIN_LOCKED").sum(:debit)
         unlocked = entries.where(event_type: "MARGIN_UNLOCKED").sum(:credit)
         locked.to_d - unlocked.to_d
+      end
+
+      def derived_available_balance(account, locked)
+        entries = LedgerEntry.where(account_id: account.account_id)
+        realized = entries.where(event_type: "REALIZED_PNL").sum(:credit).to_d - entries.where(event_type: "REALIZED_PNL").sum(:debit).to_d
+        fees = entries.where(event_type: %w[FEE FUNDING_FEE]).sum(:debit).to_d - entries.where(event_type: %w[FEE FUNDING_FEE]).sum(:credit).to_d
+        account.margin.to_d - locked + realized - fees
       end
     end
   end

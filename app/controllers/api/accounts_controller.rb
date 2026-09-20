@@ -17,6 +17,10 @@ module Api
         margin: account.margin,
         available_balance: account.available_balance,
         locked_margin: account.locked_margin,
+        wallet: {
+          available: account.available_balance,
+          locked: ::PaperExchange::PaperOrder.where(account_id: account.account_id, status: :open).sum(:locked_margin).to_f
+        },
         equity: summary[:equity],
         unrealized_pnl: summary[:unrealized_pnl],
         realized_pnl: summary[:realized_pnl],

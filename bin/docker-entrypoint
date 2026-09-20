@@ -1,8 +1,45 @@
-#!/bin/bash -e
+#!/bin/bash
+set -e
 
-# If running the rails server then create or migrate existing database
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+# Function to wait for a service to be ready
+wait_for_service() {
+  local host=$1
+  local port=$2
+  local timeout=30
+  local start_time=$(date +%s)
+
+  echo "Waiting for $host:$port to be ready..."
+  while ! nc -z "$host" "$port" >/dev/null 2>&1; do
+    current_time=$(date +%s)
+    if [ $((current_time - start_time)) -ge $timeout ]; then
+      echo "Timeout waiting for $host:$port"
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "$host:$port is ready!"
+}
+
+# If running the Rails server, prepare the database
+if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
+  # Install netcat for the wait function if not present (slim images lack it)
+  if ! command -v nc >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y netcat-openbsd >/dev/null 2>&1 || true
+  fi
+
+  # Extract host and port from DATABASE_URL (Format: postgres://user:pass@host:port/db)
+  DB_HOST=$(echo $DATABASE_URL | awk -F[@/] '{print $4}' | awk -F[:] '{print $1}')
+  DB_PORT=$(echo $DATABASE_URL | awk -F[@/] '{print $4}' | awk -F[:] '{print $2}')
+  
+  # Default to localhost/5432 if parsing fails (e.g., sqlite)
+  DB_HOST=${DB_HOST:-localhost}
+  DB_PORT=${DB_PORT:-5432}
+
+  wait_for_service "$DB_HOST" "$DB_PORT"
+
+  echo "Preparing database (running migrations)..."
   ./bin/rails db:prepare
 fi
 
-exec "${@}"
+# Execute the main container command (e.g., Puma)
+exec "$@"

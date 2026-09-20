@@ -1,6 +1,10 @@
 module Ledger
   class Ledger
     def self.record_trade(account_id:, trade:)
+      is_crypto_perp = trade.paper_order.respond_to?(:instrument_type) && trade.paper_order.instrument_type == "CRYPTO_PERPETUAL"
+      debit = is_crypto_perp ? 0 : (trade.side == "buy" ? (trade.price * trade.quantity + (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0)
+      credit = is_crypto_perp ? 0 : (trade.side == "sell" ? (trade.price * trade.quantity - (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0)
+
       entry = LedgerEntry.create!(
         account_id: account_id,
         event_type: "trade",
@@ -13,8 +17,8 @@ module Ledger
           price: trade.price,
           charges: trade.charges
         },
-        debit: trade.side == "buy" ? (trade.price * trade.quantity + (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0,
-        credit: trade.side == "sell" ? (trade.price * trade.quantity - (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0,
+        debit: debit,
+        credit: credit,
         reference_id: trade.id.to_s,
         occurred_at: trade.traded_at
       )
@@ -49,7 +53,12 @@ module Ledger
 
     def self.compute_realized_pnl(account_id)
       trade_entries = LedgerEntry.where(account_id: account_id, event_type: "trade")
-      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f.round(8)
+      equity_pnl = (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
+
+      pnl_entries = LedgerEntry.where(account_id: account_id, event_type: "REALIZED_PNL")
+      crypto_pnl = (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f
+
+      (equity_pnl + crypto_pnl).round(8)
     rescue
       0.0
     end

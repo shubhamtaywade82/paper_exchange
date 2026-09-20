@@ -40,20 +40,40 @@ class FundingJob < ApplicationJob
       occurred_at: Time.current
     )
 
-    LedgerEntry.create!(
-      account_id: position.account_id,
-      event_type: "FUNDING_FEE",
-      debit: amount.positive? ? amount : 0,
-      credit: amount.negative? ? amount.abs : 0,
-      reference_id: position.id.to_s,
-      payload: {
-        position_id: position.id,
-        symbol: position.symbol,
-        funding_rate: funding_rate,
-        notional: notional
-      },
-      occurred_at: Time.current
-    )
+    payload = {
+      position_id: position.id,
+      symbol: position.symbol,
+      funding_rate: funding_rate,
+      notional: notional
+    }
+
+    if amount.positive?
+      Ledger::MarginLedger.deduct_fee!(
+        account_id: position.account_id,
+        amount: amount,
+        event_type: "FUNDING_FEE",
+        reference_id: position.id.to_s,
+        payload: payload
+      )
+    elsif amount.negative?
+      Ledger::MarginLedger.credit_realized_pnl!(
+        account_id: position.account_id,
+        amount: amount.abs,
+        event_type: "FUNDING_FEE",
+        reference_id: position.id.to_s,
+        payload: payload
+      )
+    else
+      LedgerEntry.create!(
+        account_id: position.account_id,
+        event_type: "FUNDING_FEE",
+        debit: 0,
+        credit: 0,
+        reference_id: position.id.to_s,
+        payload: payload,
+        occurred_at: Time.current
+      )
+    end
 
     Ledger::Ledger.refresh_cached_equity!(position.account_id)
   end

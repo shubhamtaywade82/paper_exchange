@@ -14,10 +14,12 @@ module Api
     end
 
     def create
-      order_raw = params[:order]
-      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price)
+      order_raw = params[:order] || params
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price)
       received[:account_id] = @account_id
-      received[:order_kind] = received.delete(:order_type) if received.key?(:order_type)
+      received[:order_kind] = (received.delete(:order_type) || received.delete(:type) || "market").to_s.downcase
+      received[:side] = received[:side].to_s.downcase
+      received[:instrument_type] = (received[:instrument_type].presence || "CRYPTO_PERPETUAL").to_s.upcase
       valid, errors = Exchange::OrderValidator.call(received)
       raise "Invalid order: #{errors.inspect}" unless valid
 

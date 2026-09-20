@@ -38,10 +38,10 @@ module Exchange
 
       current_qty = to_decimal(position.quantity)
       was_flat = current_qty.zero?
+      realized_pnl = BigDecimal("0")
 
       if was_flat || position.side == fill_side
-        # Opening from flat, or adding to the position in the same
-        # direction: weighted-average the entry price.
+        # Opening from flat, or adding to the position in the same direction.
         position.side = fill_side if was_flat
         new_qty = current_qty + fill_qty
         position.avg_price = ((to_decimal(position.avg_price) * current_qty) + (fill_price * fill_qty)) / new_qty
@@ -51,11 +51,11 @@ module Exchange
           position.margin_type = margin_type
         end
       else
-        # Opposite direction: reduce, fully close, or flip through zero —
-        # all handled in place on the same row, so trades recorded against
-        # this position's id stay valid across its whole lifecycle (destroy
-        # + recreate would violate the FK from paper_exchange_trades the
-        # moment any trade had already been recorded against it).
+        closed_qty = [fill_qty, current_qty].min
+        old_entry_price = to_decimal(position.avg_price)
+        pnl_multiplier = position.side == "long" ? 1 : -1
+        realized_pnl = (fill_price - old_entry_price) * closed_qty * pnl_multiplier
+
         case fill_qty <=> current_qty
         when -1
           position.quantity = current_qty - fill_qty
@@ -72,6 +72,7 @@ module Exchange
       end
 
       position.current_price = fill_price
+      position.last_realized_pnl = realized_pnl
       position.save!
       position
     end

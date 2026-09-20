@@ -14,6 +14,20 @@ module Exchange
       segment_class = segment_class_for(instrument_type)
       turnover = trade_price * quantity
 
+      if instrument_type == "CRYPTO_PERPETUAL" || segment_class == "crypto_perpetual"
+        fee = (turnover * 0.0004).round(8)
+        return {
+          brokerage: fee,
+          stt: 0.0,
+          gst: 0.0,
+          sebi: 0.0,
+          stamp_duty: 0.0,
+          exchange_txn: 0.0,
+          total: fee,
+          notional: turnover.round(8)
+        }
+      end
+
       stt = if segment_class == "equity"
         side == "buy" ? turnover * @stt_delivery : turnover * @stt_intraday
       elsif side == "sell"
@@ -53,6 +67,7 @@ module Exchange
       when "EQUITY" then "equity"
       when "FUTIDX", "FUTSTK", "FUTCUR", "FUTCOM", "OPTFUT" then "future"
       when "OPTIDX", "OPTSTK", "OPTCUR" then "option"
+      when "CRYPTO_PERPETUAL" then "crypto_perpetual"
       else "other"
       end
     end

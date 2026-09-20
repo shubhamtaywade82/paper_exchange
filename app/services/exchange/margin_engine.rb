@@ -16,8 +16,9 @@ module Exchange
       flat = position.quantity.to_f.zero?
       leveraged = !flat && position.leverage.to_i > 1
 
+      notional = (position.avg_price.to_f * position.quantity.to_f).abs
       required = leveraged ? BigDecimal(
-        LiquidationCalculator.initial_margin(notional: position.notional_value, leverage: position.leverage).to_s
+        LiquidationCalculator.initial_margin(notional: notional, leverage: position.leverage).to_s
       ) : BigDecimal("0")
 
       delta = required - position.initial_margin.to_d

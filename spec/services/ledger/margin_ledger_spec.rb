@@ -73,4 +73,30 @@ RSpec.describe Ledger::MarginLedger, type: :service do
       expect(LedgerEntry.last.event_type).to eq('MARGIN_UNLOCKED')
     end
   end
+
+  describe '.deduct_fee!' do
+    it 'deducts fee from available_balance and creates a FEE ledger entry' do
+      expect {
+        described_class.deduct_fee!(account_id: account.account_id, amount: 2.4, reference_id: 'TRADE-1')
+      }.to change(LedgerEntry, :count).by(1)
+
+      account.reload
+      expect(account.available_balance).to eq(9_997.6)
+      expect(LedgerEntry.last.event_type).to eq('FEE')
+      expect(LedgerEntry.last.debit).to eq(2.4)
+    end
+  end
+
+  describe '.credit_realized_pnl!' do
+    it 'adds profit to available_balance and creates REALIZED_PNL credit entry' do
+      expect {
+        described_class.credit_realized_pnl!(account_id: account.account_id, amount: 300.0, reference_id: 'TRADE-2')
+      }.to change(LedgerEntry, :count).by(1)
+
+      account.reload
+      expect(account.available_balance).to eq(10_300.0)
+      expect(LedgerEntry.last.event_type).to eq('REALIZED_PNL')
+      expect(LedgerEntry.last.credit).to eq(300.0)
+    end
+  end
 end
