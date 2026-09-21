@@ -19,6 +19,7 @@ module Exchange
       optional(:margin_type).maybe(:string, included_in?: %w[cross isolated])
       optional(:client_order_id).maybe(:string)
       optional(:execution_price).maybe(:decimal, gt?: 0)
+      optional(:reduce_only).maybe(:bool)
       optional(:context).maybe(:hash)
     end
 

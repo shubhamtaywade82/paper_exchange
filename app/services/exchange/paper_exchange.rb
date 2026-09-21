@@ -1,5 +1,12 @@
 module Exchange
   class PaperExchange
+    # Raised when a reduce_only order finds no position on the opposite side to
+    # reduce. LiquidationJob treats it as "someone already closed this".
+    # OrderValidationError lives in order_validator.rb, so Zeitwerk can only
+    # find it once OrderValidator has been referenced.
+    OrderValidator
+    class PositionGoneError < OrderValidationError; end
+
     attr_reader :account_id
 
     # Keys accepted by OrderValidator's schema that are NOT PaperOrder
@@ -23,7 +30,8 @@ module Exchange
       @fill_engine = FillEngine.new(slippage: @slippage)
     end
 
-    # `internal:` skips the margin lock and risk gate. Used by LiquidationJob
+    # `internal:` (and `reduce_only`, which can only shrink exposure) skips the
+    # margin lock and risk gate. Used by LiquidationJob
     # to force-close a position whose liquidation price has been breached — the
     # account is by definition underwater at that point, so a fresh margin
     # lock would always raise InsufficientMarginError and the close order
@@ -46,6 +54,8 @@ module Exchange
       end
 
       attrs = Exchange::OrderValidator.call(attrs_in)
+      attrs = clamp_to_position(attrs) if attrs[:reduce_only]
+      skip_gates = internal || attrs[:reduce_only]
 
       signal = Strategy::Signal.new(
         account_id: account_id,
@@ -80,6 +90,7 @@ module Exchange
       # already undid it.
       ::PaperExchange::PaperOrder.transaction do
         order.open!
+        clamp_order_to_locked_position!(order) if attrs[:reduce_only]
 
         if attrs[:execution_price].present?
           execution_price = attrs[:execution_price].to_f
@@ -87,7 +98,7 @@ module Exchange
           MarketData::MarkPriceStore.set(order.symbol, execution_price)
         end
 
-        unless internal
+        unless skip_gates
           reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
           required_margin = order.required_margin(reference_price)
           Ledger::MarginLedger.lock_margin!(
@@ -132,7 +143,7 @@ module Exchange
               expiry_date: order.expiry_date
             )
             trade.update!(paper_position: position)
-            release_order_margin!(order) unless internal
+            release_order_margin!(order) unless skip_gates
             MarginEngine.sync_position!(position, account_id: account_id)
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
 
@@ -199,6 +210,39 @@ module Exchange
     end
 
     private
+
+    # Cheap first check, run before any order row exists so an obviously bad
+    # reduce-only order is a plain 422 that leaves nothing behind. It reads the
+    # position WITHOUT a lock, so it is advisory only: the guarantee that a
+    # reduce-only order never grows or flips a position comes from
+    # clamp_order_to_locked_position! inside the fill transaction.
+    def clamp_to_position(attrs)
+      position = reducible_position(attrs)
+      attrs.merge(quantity: [attrs[:quantity], position.quantity].min)
+    end
+
+    # Authoritative check: re-reads the position under a row lock right before
+    # the fill. Anything that closed or shrank it since clamp_to_position ran
+    # (LiquidationJob, another reduce-only order) is seen here, and PositionManager
+    # only runs after this lock is taken, so nothing can slip in before the fill.
+    def clamp_order_to_locked_position!(order)
+      position = reducible_position(order.slice(:symbol, :side, :instrument_type, :option_type, :strike_price, :expiry_date).symbolize_keys, lock: true)
+      live_quantity = [order.quantity, position.quantity].min
+      order.update_column(:quantity, live_quantity) if live_quantity != order.quantity
+    end
+
+    def reducible_position(attrs, lock: false)
+      contract = attrs.slice(:symbol, :instrument_type, :option_type, :strike_price, :expiry_date)
+      scope = ::PaperExchange::PaperPosition.where(account_id: account_id).where.not(quantity: 0)
+      scope = scope.lock if lock
+      position = scope.find_by(contract)
+      closing_side = position&.long? ? "sell" : "buy"
+      unless position && attrs[:side] == closing_side
+        raise PositionGoneError, "reduce_only #{attrs[:side]} #{attrs[:symbol]} rejected: no open position on the opposite side to reduce (position gone)"
+      end
+
+      position
+    end
 
     # Releases whatever margin is still held against this order back to the
     # account's available balance. Called once the order's own lock has

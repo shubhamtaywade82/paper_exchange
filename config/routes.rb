@@ -3,6 +3,7 @@ Rails.application.routes.draw do
 
   concern :api_endpoints do
     get "account", to: "accounts#show"
+    post "account/reset", to: "accounts#reset"
     resources :orders, only: %i[index show create destroy]
     resources :positions, only: %i[index show]
     resources :risk_events, only: %i[index]

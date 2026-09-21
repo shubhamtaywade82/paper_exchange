@@ -89,7 +89,7 @@ header {
 .balance-pill .amt { color: var(--text); }
 .balance-pill .lbl { color: var(--text-faint); font-size: 9px; text-transform: uppercase; }
 
-/* CHART */
+/* CHART & TERMINAL HUD */
 .chart-section {
   background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 12px 20px;
 }
@@ -103,6 +103,34 @@ header {
 .legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); }
 .legend-swatch { width: 14px; height: 2px; border-radius: 1px; }
 .legend-swatch.dashed { border-top: 2px dashed currentColor; height: 0; }
+.chart-hud {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 10px; font-family: 'JetBrains Mono', monospace;
+}
+.hud-item { display: flex; flex-direction: column; gap: 2px; }
+.hud-label { font-size: 9px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+.hud-val { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-val.up { color: var(--green); }
+.hud-val.dn { color: var(--red); }
+.hud-val.warn { color: var(--yellow); }
+.chart-text-terminal {
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto;
+}
+.market-matrix-tbl {
+  width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-align: left;
+}
+.market-matrix-tbl th {
+  background: var(--bg-4); color: var(--text-faint); padding: 8px 12px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); font-weight: 600;
+}
+.market-matrix-tbl td {
+  padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim);
+}
+.market-matrix-tbl tr:last-child td { border-bottom: none; }
+.market-matrix-tbl tr:hover { background: rgba(255, 255, 255, 0.03); cursor: pointer; }
+.market-matrix-tbl tr.active-row { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--blue); }
+.market-matrix-tbl .sym-cell { font-weight: 700; color: var(--text); }
+.market-matrix-tbl .sym-cell .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-right: 6px; }
 .chart-canvas-wrap { position: relative; background: var(--bg-3); border-radius: 8px; border: 1px solid var(--border); padding: 8px; }
 #priceChart { display: block; width: 100%; height: 280px; }
 .chart-overlay { position: absolute; top: 12px; left: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); pointer-events: none; }
@@ -349,7 +377,12 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
 
 <div class="controls-panel">
   <div class="cp-group">
-    <span class="cp-label">Market regime</span>
+    <span class="cp-label">Mode</span>
+    <button class="cp-btn active live" id="modeLiveBtn" title="Real Binance WebSocket trades + real Rails API on port 3100">🟢 LIVE STREAM</button>
+    <button class="cp-btn" id="modeSimBtn" title="Offline stress testing with synthetic regimes">🧪 Stress Test</button>
+  </div>
+  <div class="cp-group" id="regimeGroup" style="display:none;">
+    <span class="cp-label">Stress regime</span>
     <button class="cp-btn trend active" data-regime="trend">📈 Trending</button>
     <button class="cp-btn range" data-regime="range">↔ Ranging</button>
     <button class="cp-btn vol" data-regime="volatile">⚡ Volatile</button>
@@ -359,6 +392,8 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
     <span class="cp-label">Symbol</span>
     <button class="cp-btn active" data-symbol="BTCUSDT">BTCUSDT</button>
     <button class="cp-btn" data-symbol="ETHUSDT">ETHUSDT</button>
+    <button class="cp-btn" data-symbol="SOLUSDT">SOLUSDT</button>
+    <button class="cp-btn" data-symbol="XRPUSDT">XRPUSDT</button>
   </div>
   <div class="cp-group">
     <span class="cp-label">Agents</span>
@@ -366,14 +401,10 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
     <button class="cp-btn active" id="executorToggle">EXECUTOR-ε</button>
   </div>
   <div class="cp-group">
-    <span class="cp-label">Force action</span>
+    <span class="cp-label">Live Action</span>
     <button class="btn warn" id="forceLong" style="font-size:10px;padding:3px 8px;">Force LONG</button>
     <button class="btn warn" id="forceShort" style="font-size:10px;padding:3px 8px;">Force SHORT</button>
     <button class="btn warn" id="forceClose" style="font-size:10px;padding:3px 8px;">Close All</button>
-  </div>
-  <div class="cp-group">
-    <span class="cp-label">Backend</span>
-    <button class="cp-btn" id="liveApiToggle" title="Toggle optional Live Rails API integration on port 3100">🔌 Live API: OFF</button>
   </div>
 </div>
 
@@ -382,6 +413,8 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
   <div class="meta-group"><span class="meta-label">Regime</span><span class="meta-value" id="regimeName">trend</span></div>
   <div class="price-tick" id="priceBtc"><span class="sym">BTC</span><span class="px">$67,000.00</span><span class="chg up">+0.00%</span></div>
   <div class="price-tick" id="priceEth"><span class="sym">ETH</span><span class="px">$3,500.00</span><span class="chg up">+0.00%</span></div>
+  <div class="price-tick" id="priceSol"><span class="sym">SOL</span><span class="px">$130.00</span><span class="chg up">+0.00%</span></div>
+  <div class="price-tick" id="priceXrp"><span class="sym">XRP</span><span class="px">$1.5000</span><span class="chg up">+0.00%</span></div>
   <div style="flex:1"></div>
   <div class="balance-pill"><span class="lbl">X-Account</span><span class="amt">test-account-1</span></div>
   <div class="balance-pill"><span class="lbl">Equity</span><span class="amt" id="balEquity">$100,000.00</span></div>
@@ -393,9 +426,13 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
   <div class="chart-header">
     <div class="chart-title-block">
       <span class="sym" id="chartSymbol">BTCUSDT</span>
-      <span class="tf">tick</span>
+      <span class="tf" id="chartModeTag">text terminal</span>
+      <div class="cp-group" style="margin-left:12px;display:inline-flex;">
+        <button class="cp-btn active" id="viewModeTextBtn">🔢 Text & Numbers</button>
+        <button class="cp-btn" id="viewModeChartBtn">📊 Visual Chart</button>
+      </div>
     </div>
-    <div class="chart-legend">
+    <div class="chart-legend" id="chartLegend" style="display:none;">
       <span class="legend-item"><span class="legend-swatch" style="background:var(--text);"></span>Price</span>
       <span class="legend-item" style="color:var(--yellow);"><span class="legend-swatch dashed" style="border-color:var(--yellow);"></span>EMA50</span>
       <span class="legend-item" style="color:var(--cyan);"><span class="legend-swatch dashed" style="border-color:var(--cyan);"></span>SL</span>
@@ -404,10 +441,66 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
       <span class="legend-item"><span class="legend-swatch" style="background:var(--yellow);"></span>Signal</span>
       <span class="legend-item"><span class="legend-swatch" style="background:var(--cyan);"></span>Order</span>
       <span class="legend-item"><span class="legend-swatch" style="background:var(--green);"></span>Fill</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--purple);"></span>Liq</span>
     </div>
   </div>
-  <div class="chart-canvas-wrap">
+
+  <!-- Key Metrics Strip (Real-time Text + Numbers for Active Symbol) -->
+  <div class="chart-hud" id="chartHud">
+    <div class="hud-item">
+      <span class="hud-label">Last Price</span>
+      <span class="hud-val" id="hudLastPrice">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Tick Change</span>
+      <span class="hud-val" id="hudChg">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">EMA50</span>
+      <span class="hud-val" id="hudEma">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">RSI(14)</span>
+      <span class="hud-val" id="hudRsi">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">ATR(14)</span>
+      <span class="hud-val" id="hudAtr">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Bollinger (20, 2)</span>
+      <span class="hud-val" id="hudBb">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Position / Risk</span>
+      <span class="hud-val" id="hudPos">—</span>
+    </div>
+  </div>
+
+  <!-- VIEW 1: Text + Numbers Multi-Asset Matrix -->
+  <div id="chartTextWrap" class="chart-text-terminal">
+    <table class="market-matrix-tbl">
+      <thead>
+        <tr>
+          <th>Asset</th>
+          <th>Live Price</th>
+          <th>24h Chg</th>
+          <th>Ticks</th>
+          <th>EMA50</th>
+          <th>RSI (14)</th>
+          <th>ATR (14)</th>
+          <th>Regime / Trend</th>
+          <th>Position</th>
+          <th>Unrealized PnL</th>
+        </tr>
+      </thead>
+      <tbody id="marketMatrixBody">
+        <!-- Dynamically rendered for BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- VIEW 2: Fixed Visual Canvas Chart -->
+  <div id="chartCanvasWrap" class="chart-canvas-wrap" style="display:none;">
     <canvas id="priceChart"></canvas>
     <div class="chart-overlay">
       <div class="row"><span class="k">EMA50</span> <span class="v" id="emaVal">—</span></div>
@@ -594,7 +687,7 @@ footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
 // ============================================================
 const CFG = {
   initialEquity: 100000,
-  initialPrices: { BTCUSDT: 67000, ETHUSDT: 3500 },
+  initialPrices: { BTCUSDT: 67000, ETHUSDT: 3500, SOLUSDT: 130, XRPUSDT: 1.50 },
   tickIntervalMs: 700,         // base tick cadence
   maxExposurePct: 80,           // % equity
   riskPerTradePct: 1,           // % equity per trade
@@ -621,22 +714,26 @@ const CFG = {
   trailActivatePct: 0.3,        // trailing activates after 30% gain toward TP
   apiBaseUrl: 'http://127.0.0.1:3100/api/v1',
   liveAccountId: 'test-account-1',
+  wsUrl: 'wss://fstream.binance.com/ws/btcusdt@trade/ethusdt@trade/solusdt@trade/xrpusdt@trade',
 };
 
 // ============================================================
 // STATE
 // ============================================================
 const S = {
-  running: false,
-  liveApi: false,
+  mode: 'live',
+  chartViewMode: 'text',
+  running: true,
+  liveApi: true,
+  binanceConnected: false,
   speed: 1,
   tickCount: 0,
   regime: 'trend',
   activeSymbol: 'BTCUSDT',
   prices: { ...CFG.initialPrices },
   prevPrices: { ...CFG.initialPrices },
-  ticks: { BTCUSDT: [], ETHUSDT: [] },   // arrays of {t, price, ts}
-  indicators: { BTCUSDT: {}, ETHUSDT: {} },
+  ticks: { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] },   // arrays of {t, price, ts}
+  indicators: { BTCUSDT: {}, ETHUSDT: {}, SOLUSDT: {}, XRPUSDT: {} },
   account: {
     margin: CFG.initialEquity,
     available_balance: CFG.initialEquity,
@@ -659,7 +756,7 @@ const S = {
   logEntries: [],
   logFilter: 'all',
   // chart markers per symbol
-  markers: { BTCUSDT: [], ETHUSDT: [] },
+  markers: { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] },
 };
 
 // ============================================================
@@ -766,7 +863,7 @@ function nextPrice(symbol) {
   switch (regime) {
     case 'trend':
       vol = 0.0015;
-      drift = symbol === 'BTCUSDT' ? 0.0008 : 0.0006;  // gentle uptrend
+      drift = symbol === 'BTCUSDT' ? 0.0008 : symbol === 'ETHUSDT' ? 0.0006 : 0.0007;  // gentle uptrend
       break;
     case 'range':
       vol = 0.001;
@@ -1044,32 +1141,172 @@ const Agents = {
   }
 };
 
-function dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrderId) {
+async function syncWithBroker() {
   if (!S.liveApi) return;
-  fetch(`${CFG.apiBaseUrl}/orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
-    body: JSON.stringify({
-      symbol,
-      side: side.toUpperCase(),
-      type: 'MARKET',
-      instrument_type: 'CRYPTO_PERPETUAL',
-      quantity: qty.toFixed(4),
-      leverage,
-      client_order_id: clientOrderId,
-      execution_price: price.toFixed(2)
-    })
-  }).then(async res => {
+  try {
+    const [accRes, posRes, ledRes] = await Promise.all([
+      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
+      fetch(`${CFG.apiBaseUrl}/positions`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
+      fetch(`${CFG.apiBaseUrl}/ledger`, { headers: { 'X-Account-Id': CFG.liveAccountId } })
+    ]);
+
+    if (accRes.ok) {
+      const acc = await accRes.json();
+      S.account.available_balance = parseFloat(acc.wallet?.available ?? acc.available_balance);
+      S.account.locked_margin = parseFloat(acc.wallet?.locked ?? acc.locked_margin ?? 0);
+      S.account.current_equity = parseFloat(acc.equity ?? acc.available_balance);
+      S.account.realized_pnl = parseFloat(acc.realized_pnl ?? 0);
+      S.account.unrealized_pnl = parseFloat(acc.unrealized_pnl ?? 0);
+      S.account.max_equity = parseFloat(acc.max_equity ?? acc.equity ?? acc.available_balance);
+      setComponentState('margin-ledger', 'connected', 'live');
+      setComponentDetail('margin-ledger', `available <span class="v">$${fmt(S.account.available_balance, 2)}</span> · locked <span class="v">$${fmt(S.account.locked_margin, 2)}</span>`);
+    }
+
+    if (posRes.ok) {
+      const posData = await posRes.json();
+      const list = Array.isArray(posData) ? posData : (posData.positions || []);
+      S.positions = {};
+      list.forEach(p => {
+        const qty = parseFloat(p.quantity || p.net_quantity || 0);
+        if (qty > 0) {
+          S.positions[p.symbol] = {
+            id: `pos_${p.id}`,
+            symbol: p.symbol,
+            side: p.side.toLowerCase(),
+            qty,
+            avgPrice: parseFloat(p.average_price || p.entry_price),
+            currentPrice: parseFloat(p.current_price || p.ltp || p.average_price),
+            leverage: p.leverage || 10,
+            marginType: p.margin_type || 'cross',
+            initialMargin: parseFloat(p.initial_margin || p.margin_used || 0),
+            lockedMargin: parseFloat(p.initial_margin || p.margin_used || 0),
+            liquidationPrice: p.liquidation_price ? parseFloat(p.liquidation_price) : null,
+            stopLoss: null,
+            takeProfit: null,
+            strategy: 'crypto-trading-agent',
+            realizedPnl: 0,
+            lifecycleState: 'open',
+            openedAt: now(),
+            tp1Hit: false,
+            history: [{ action: 'sync', qty, price: parseFloat(p.average_price || p.entry_price) }]
+          };
+        }
+      });
+      setComponentState('position-manager', `${Object.keys(S.positions).length} open`, 'live');
+      setComponentState('liquidation-engine', `${Object.values(S.positions).filter(p=>p.qty>0&&p.leverage>1).length} monitored`, 'live');
+    }
+
+    if (ledRes.ok) {
+      const entries = await ledRes.json();
+      if (Array.isArray(entries)) {
+        S.ledgerEntries = entries.slice(0, 50);
+      }
+    }
+
+    renderAccount();
+    renderTotals();
+    renderPositions();
+  } catch (err) {
+    setComponentState('margin-ledger', 'offline', 'err');
+  }
+}
+
+let binanceWs = null;
+let lastMarkPushTime = 0;
+
+function connectBinanceWs() {
+  if (binanceWs) {
+    try { binanceWs.close(); } catch (_) {}
+  }
+  try {
+    binanceWs = new WebSocket(CFG.wsUrl);
+    binanceWs.onopen = () => {
+      S.binanceConnected = true;
+      setComponentState('binance-ws', 'connected', 'live');
+      setComponentDetail('binance-ws', '🟢 Binance Futures WS live · stream connected');
+      log('agent', 'tick', 'Binance Futures WS connected · live BTC, ETH, SOL & XRP stream active');
+    };
+    binanceWs.onmessage = (event) => {
+      if (S.mode !== 'live' || !S.running) return;
+      try {
+        const trade = JSON.parse(event.data);
+        if (!trade || !trade.s || !trade.p) return;
+        const price = parseFloat(trade.p);
+        if (isNaN(price) || price <= 0) return;
+        const sym = trade.s.toUpperCase();
+        handleIncomingTrade(sym, price);
+      } catch (e) {}
+    };
+    binanceWs.onerror = () => {
+      S.binanceConnected = false;
+      setComponentState('binance-ws', 'error', 'err');
+    };
+    binanceWs.onclose = () => {
+      S.binanceConnected = false;
+      setComponentState('binance-ws', 'reconnecting', 'warn');
+      if (S.mode === 'live') setTimeout(connectBinanceWs, 3000);
+    };
+  } catch (err) {
+    console.error('Binance WS error:', err);
+  }
+}
+
+function handleIncomingTrade(sym, price) {
+  S.tickCount++;
+  S.prevPrices[sym] = S.prices[sym];
+  S.prices[sym] = price;
+  if (!S.ticks[sym]) S.ticks[sym] = [];
+  S.ticks[sym].push({ t: S.tickCount, price, ts: now() });
+  if (S.ticks[sym].length > CFG.chartMaxTicks + 20) {
+    S.ticks[sym] = S.ticks[sym].slice(-CFG.chartMaxTicks);
+  }
+
+  computeIndicators(sym);
+  renderMeta();
+  renderChartHud();
+  renderMarketMatrix();
+  renderAgentComponents();
+  if (sym === S.activeSymbol && S.chartViewMode === 'chart') {
+    requestChartRender();
+  }
+
+  const currentTime = now();
+  if (currentTime - lastMarkPushTime >= 1500) {
+    lastMarkPushTime = currentTime;
+    pushMarkPrices();
+  }
+}
+
+async function dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrderId) {
+  if (!S.liveApi) return;
+  try {
+    const res = await fetch(`${CFG.apiBaseUrl}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
+      body: JSON.stringify({
+        symbol,
+        side: side.toUpperCase(),
+        type: 'MARKET',
+        order_type: 'market',
+        instrument_type: 'CRYPTO_PERPETUAL',
+        quantity: qty.toFixed(4),
+        leverage,
+        client_order_id: clientOrderId,
+        execution_price: price.toFixed(symbol === 'XRPUSDT' ? 4 : 2)
+      })
+    });
     if (res.ok) {
       const data = await res.json();
-      log('exchange', 'order', `Live API fill · id=<span class="v">${data.id}</span> · status=<span class="ok">${data.status}</span>`);
+      log('exchange', 'order', `Live API fill · id=<span class="v">${data.id}</span> · status=<span class="ok">${data.status}</span> · fill @ <span class="num">$${fmt(price, symbol === 'XRPUSDT' ? 4 : 2)}</span>`);
+      spawnFlow('to-agent', '201 Created', 'response');
+      await syncWithBroker();
     } else {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       log('exchange', 'order', `Live API reject · <span class="err">${err.error || res.statusText}</span>`);
     }
-  }).catch(err => {
+  } catch (err) {
     log('exchange', 'order', `Live API network error · <span class="err">${err.message}</span>`);
-  });
+  }
 }
 
 // ============================================================
@@ -1324,9 +1561,10 @@ function brokerLiquidationCheck(symbol) {
 // ============================================================
 function pushMarkPrices() {
   const symbol = S.activeSymbol;
-  spawnFlow('to-exchange', `POST /mark_prices ${symbol}=$${fmt(S.prices[symbol],0)}`, 'mark');
+  const dp = symbol === 'XRPUSDT' ? 4 : 2;
+  spawnFlow('to-exchange', `POST /mark_prices ${symbol}=$${fmt(S.prices[symbol], dp)}`, 'mark');
   setComponentState('mark-pusher', 'pushing', 'live');
-  setComponentDetail('mark-pusher', `<span class="k">POST</span> /api/mark_prices · idempotent · <span class="sym">${symbol}</span>=<span class="num">$${fmt(S.prices[symbol],2)}</span>`);
+  setComponentDetail('mark-pusher', `<span class="k">POST</span> /api/mark_prices · idempotent · <span class="sym">${symbol}</span>=<span class="num">$${fmt(S.prices[symbol], dp)}</span>`);
   setComponentState('liquidation-engine', `${Object.values(S.positions).filter(p=>p.qty>0&&p.leverage>1).length} monitored`, 'live');
   // broker checks liquidation
   brokerLiquidationCheck(symbol);
@@ -1335,7 +1573,7 @@ function pushMarkPrices() {
     fetch(`${CFG.apiBaseUrl}/mark-prices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
-      body: JSON.stringify({ prices: { [symbol]: S.prices[symbol].toFixed(2) } })
+      body: JSON.stringify({ prices: { [symbol]: S.prices[symbol].toFixed(dp) } })
     }).catch(err => console.warn('Live mark price push error:', err));
   }
 }
@@ -1348,8 +1586,8 @@ let lastTickAt = 0;
 function tick() {
   S.tickCount++;
 
-  // Update both symbols' prices
-  for (const sym of ['BTCUSDT', 'ETHUSDT']) {
+  // Update all symbols' prices
+  for (const sym of ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']) {
     const newPrice = nextPrice(sym);
     pushTick(sym, newPrice);
   }
@@ -1360,7 +1598,8 @@ function tick() {
 
   // log tick occasionally (every 5 ticks)
   if (S.tickCount % 5 === 0) {
-    setComponentDetail('binance-ws', `tick <span class="sym">${sym}</span> @ <span class="num">$${fmt(price,2)}</span> · tick #${S.tickCount}`);
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    setComponentDetail('binance-ws', `tick <span class="sym">${sym}</span> @ <span class="num">$${fmt(price, dp)}</span> · tick #${S.tickCount}`);
   }
 
   // Push mark prices every tick (drives broker liquidation)
@@ -1459,7 +1698,11 @@ function tick() {
 
   // Render
   renderMeta();
-  renderChart();
+  renderChartHud();
+  renderMarketMatrix();
+  if (S.chartViewMode === 'chart') {
+    requestChartRender();
+  }
   renderPositions();
   renderAccount();
   renderTotals();
@@ -1497,12 +1740,20 @@ function submitOrderWithQty(signal, risk, qty) {
 function renderMeta() {
   document.getElementById('tickCount').textContent = S.tickCount;
   document.getElementById('regimeName').textContent = S.regime;
-  for (const sym of ['BTCUSDT', 'ETHUSDT']) {
-    const el = document.getElementById(sym === 'BTCUSDT' ? 'priceBtc' : 'priceEth');
+  const symMap = {
+    BTCUSDT: 'priceBtc',
+    ETHUSDT: 'priceEth',
+    SOLUSDT: 'priceSol',
+    XRPUSDT: 'priceXrp',
+  };
+  for (const [sym, elId] of Object.entries(symMap)) {
+    const el = document.getElementById(elId);
+    if (!el) continue;
     const px = S.prices[sym];
     const prev = S.prevPrices[sym];
-    const chg = ((px - prev) / prev) * 100;
-    el.querySelector('.px').textContent = '$' + fmt(px, 2);
+    const chg = prev ? ((px - prev) / prev) * 100 : 0;
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    el.querySelector('.px').textContent = '$' + fmt(px, dp);
     const chgEl = el.querySelector('.chg');
     chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
     chgEl.className = 'chg ' + (chg >= 0 ? 'up' : 'dn');
@@ -1652,178 +1903,206 @@ function renderExchangeComponents() {
 }
 
 // ============================================================
-// CHART (canvas)
+// CHART HUD, TEXT MATRIX & CANVAS
 // ============================================================
+function renderChartHud() {
+  const sym = S.activeSymbol, px = S.prices[sym], prev = S.prevPrices[sym];
+  const chg = prev ? ((px - prev) / prev) * 100 : 0, dp = sym === 'XRPUSDT' ? 4 : 2;
+  const ind = S.indicators[sym] || {}, pos = S.positions[sym];
+
+  const lastEl = document.getElementById('hudLastPrice');
+  lastEl.textContent = `$${fmt(px, dp)}`;
+  lastEl.className = `hud-val ${chg >= 0 ? 'up' : 'dn'}`;
+
+  const chgEl = document.getElementById('hudChg');
+  chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+  chgEl.className = `hud-val ${chg >= 0 ? 'up' : 'dn'}`;
+
+  const emaEl = document.getElementById('hudEma');
+  emaEl.textContent = ind.ema ? `$${fmt(ind.ema, dp)} (${ind.above ? 'ABOVE' : 'BELOW'})` : '—';
+  emaEl.className = `hud-val ${ind.above ? 'up' : 'dn'}`;
+
+  const rsiEl = document.getElementById('hudRsi');
+  const rTag = ind.rsi ? (ind.rsi > 70 ? ' [OB]' : ind.rsi < 30 ? ' [OS]' : ' [NEU]') : '';
+  rsiEl.textContent = ind.rsi ? `${ind.rsi.toFixed(1)}${rTag}` : '—';
+  rsiEl.className = `hud-val ${ind.rsi > 70 ? 'dn' : ind.rsi < 30 ? 'up' : ''}`;
+
+  document.getElementById('hudAtr').textContent = ind.atr ? `$${fmt(ind.atr, dp)}` : '—';
+  document.getElementById('hudBb').textContent = ind.bbLower ? `$${fmt(ind.bbLower, 0)} – $${fmt(ind.bbUpper, 0)}` : '—';
+
+  const posEl = document.getElementById('hudPos');
+  if (pos && pos.qty > 0) {
+    const uPnl = pos.side === 'long' ? (px - pos.avgPrice) * pos.qty : (pos.avgPrice - px) * pos.qty;
+    posEl.textContent = `${pos.side.toUpperCase()} ${fmtAsset(pos.qty, 4)} @ $${fmt(pos.avgPrice, dp)} (${uPnl >= 0 ? '+' : ''}$${fmt(uPnl, 2)})`;
+    posEl.className = `hud-val ${uPnl >= 0 ? 'up' : 'dn'}`;
+  } else {
+    posEl.textContent = 'FLAT (0 pos)';
+    posEl.className = 'hud-val';
+  }
+}
+
+function renderMarketMatrix() {
+  const tbody = document.getElementById('marketMatrixBody');
+  if (!tbody) return;
+  const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
+  tbody.innerHTML = symbols.map(sym => {
+    const px = S.prices[sym], prev = S.prevPrices[sym];
+    const chg = prev ? ((px - prev) / prev) * 100 : 0;
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    const ind = S.indicators[sym] || {};
+    const pos = S.positions[sym];
+    const uPnl = pos && pos.qty > 0 ? (pos.side === 'long' ? (px - pos.avgPrice) * pos.qty : (pos.avgPrice - px) * pos.qty) : 0;
+    const isAct = sym === S.activeSymbol;
+    const posStr = pos && pos.qty > 0 ? `${pos.side.toUpperCase()} ${fmtAsset(pos.qty, 4)} @ $${fmt(pos.avgPrice, dp)}` : 'FLAT';
+    const pnlStr = pos && pos.qty > 0 ? `${uPnl >= 0 ? '+' : ''}$${fmt(uPnl, 2)}` : '—';
+    const regime = ind.above !== undefined ? (ind.above ? '🟢 BULLISH' : '🔴 BEARISH') : 'SCANNING';
+    return `
+      <tr class="${isAct ? 'active-row' : ''}" onclick="selectSymbol('${sym}')">
+        <td class="sym-cell">${isAct ? '<span class="dot"></span>' : ''}${sym}</td>
+        <td class="px-cell">$${fmt(px, dp)}</td>
+        <td class="${chg >= 0 ? 'up' : 'dn'}" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</td>
+        <td>${(S.ticks[sym] || []).length}</td>
+        <td>${ind.ema ? '$' + fmt(ind.ema, dp) : '—'}</td>
+        <td style="color:${ind.rsi > 70 ? 'var(--red)' : ind.rsi < 30 ? 'var(--green)' : 'inherit'}">${ind.rsi ? ind.rsi.toFixed(1) : '—'}</td>
+        <td>${ind.atr ? '$' + fmt(ind.atr, dp) : '—'}</td>
+        <td>${regime}</td>
+        <td style="color:${pos && pos.qty > 0 ? (pos.side === 'long' ? 'var(--green)' : 'var(--red)') : 'inherit'}">${posStr}</td>
+        <td style="color:${uPnl > 0 ? 'var(--green)' : uPnl < 0 ? 'var(--red)' : 'inherit'}">${pnlStr}</td>
+      </tr>`;
+  }).join('');
+}
+
+function selectSymbol(sym) {
+  S.activeSymbol = sym;
+  document.getElementById('chartSymbol').textContent = sym;
+  document.querySelectorAll('.cp-btn[data-symbol]').forEach(b => {
+    b.classList.toggle('active', b.dataset.symbol === sym);
+  });
+  log('system', 'state', `Active symbol → <span class="sym">${sym}</span>`);
+  renderChartHud();
+  renderMarketMatrix();
+  if (S.chartViewMode === 'chart') requestChartRender();
+}
+window.selectSymbol = selectSymbol;
+
 const canvas = document.getElementById('priceChart');
 const ctx = canvas.getContext('2d');
-let chartDpr = 1;
+let chartDpr = 1, chartRenderScheduled = false;
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   chartDpr = dpr;
   const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  if (!rect.width || !rect.height) return;
+  canvas.width = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resizeCanvas);
 
-function renderChart() {
-  const sym = S.activeSymbol;
-  const ticks = S.ticks[sym];
-  if (!ticks || ticks.length < 2) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    return;
+function requestChartRender() {
+  if (chartRenderScheduled || S.chartViewMode !== 'chart') return;
+  chartRenderScheduled = true;
+  requestAnimationFrame(() => {
+    chartRenderScheduled = false;
+    renderChart();
+  });
+}
+
+function drawChartEmpty(context, sym, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : 2;
+  context.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i = 0; i <= 5; i++) {
+    const y = (i / 5) * dims.H;
+    context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W, y); context.stroke();
   }
+  context.fillStyle = 'rgba(148,163,184,0.6)';
+  context.font = '11px JetBrains Mono';
+  context.textAlign = 'center';
+  context.fillText(`🟢 Live Binance Feed · Waiting for trade stream on ${sym}...`, dims.W / 2, dims.H / 2 - 8);
+  context.fillStyle = '#94a3b8';
+  context.fillText(`Initial Price: $${fmt(S.prices[sym], dp)}`, dims.W / 2, dims.H / 2 + 12);
+}
+
+function drawChartGridAndLines(context, sym, bounds, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : (bounds.range < 10 ? 2 : 0);
+  const xFor = (i) => (i / (dims.ticks.length - 1)) * (dims.W - 65);
+  const yFor = (p) => dims.H - ((p - bounds.min) / bounds.range) * dims.H;
+  context.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i = 0; i <= 5; i++) {
+    const y = (i / 5) * dims.H;
+    context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W - 65, y); context.stroke();
+    context.fillStyle = 'rgba(148,163,184,0.4)'; context.font = '9px JetBrains Mono'; context.textAlign = 'right';
+    context.fillText('$' + fmt(bounds.min + (1 - i / 5) * bounds.range, dp), dims.W - 4, y - 2);
+  }
+  const ind = S.indicators[sym];
+  if (ind && ind.bbUpper && ind.bbLower) {
+    context.fillStyle = 'rgba(59,130,246,0.05)';
+    context.fillRect(0, yFor(ind.bbUpper), dims.W - 65, yFor(ind.bbLower) - yFor(ind.bbUpper));
+  }
+  if (ind && ind.ema) {
+    context.strokeStyle = 'rgba(234,179,8,0.5)'; context.setLineDash([4, 4]); context.lineWidth = 1.2;
+    context.beginPath(); context.moveTo(0, yFor(ind.ema)); context.lineTo(dims.W - 65, yFor(ind.ema)); context.stroke(); context.setLineDash([]);
+  }
+  const grad = context.createLinearGradient(0, 0, 0, dims.H);
+  grad.addColorStop(0, 'rgba(59, 130, 246, 0.2)'); grad.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+  context.fillStyle = grad; context.beginPath(); context.moveTo(xFor(0), dims.H);
+  dims.ticks.forEach((t, i) => context.lineTo(xFor(i), yFor(t.price)));
+  context.lineTo(xFor(dims.ticks.length - 1), dims.H); context.closePath(); context.fill();
+  context.strokeStyle = '#e2e8f0'; context.lineWidth = 1.5; context.beginPath();
+  dims.ticks.forEach((t, i) => i === 0 ? context.moveTo(xFor(i), yFor(t.price)) : context.lineTo(xFor(i), yFor(t.price)));
+  context.stroke();
+}
+
+function drawChartOverlays(context, sym, bounds, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : 2;
+  const yFor = (p) => dims.H - ((p - bounds.min) / bounds.range) * dims.H;
+  const last = dims.ticks[dims.ticks.length - 1], prev = dims.ticks[dims.ticks.length - 2] || last;
+  context.fillStyle = last.price >= prev.price ? '#22c55e' : '#ef4444';
+  context.fillRect(dims.W - 63, Math.max(2, Math.min(dims.H - 18, yFor(last.price) - 8)), 61, 16);
+  context.fillStyle = '#ffffff'; context.font = 'bold 9px JetBrains Mono'; context.textAlign = 'right';
+  context.fillText('$' + fmt(last.price, dp), dims.W - 5, Math.max(14, Math.min(dims.H - 6, yFor(last.price) + 3)));
+  const pos = S.positions[sym];
+  if (pos && pos.qty > 0) {
+    const drawLine = (price, color, label) => {
+      if (!price) return;
+      const y = yFor(price); if (y < 0 || y > dims.H) return;
+      context.strokeStyle = color; context.setLineDash([5, 4]); context.lineWidth = 1;
+      context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W - 65, y); context.stroke(); context.setLineDash([]);
+      context.fillStyle = color; context.font = '9px JetBrains Mono'; context.textAlign = 'left';
+      context.fillText(`${label} $${fmt(price, dp)}`, 6, y - 3);
+    };
+    drawLine(pos.avgPrice, 'rgba(59,130,246,0.8)', 'ENTRY');
+    drawLine(pos.stopLoss, 'rgba(6,182,212,0.8)', 'SL');
+    drawLine(pos.takeProfit, 'rgba(34,197,94,0.8)', 'TP');
+    if (pos.leverage > 1 && pos.liquidationPrice) drawLine(pos.liquidationPrice, 'rgba(239,68,68,0.8)', 'LIQ');
+  }
+}
+
+function renderChart() {
+  if (S.chartViewMode !== 'chart') return;
+  const sym = S.activeSymbol, ticks = S.ticks[sym];
   const rect = canvas.getBoundingClientRect();
   const W = rect.width, H = rect.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+  if (!ticks || ticks.length < 2) {
+    drawChartEmpty(ctx, sym, { W, H });
+    return;
+  }
   const prices = ticks.map(t => t.price);
-  const minP = Math.min(...prices);
-  const maxP = Math.max(...prices);
-  const range = Math.max(maxP - minP, 0.0001);
-  const pad = range * 0.1;
-  const yMin = minP - pad;
-  const yMax = maxP + pad;
-
-  // Include position SL/TP/entry/liq in range
+  const minP = Math.min(...prices), maxP = Math.max(...prices);
+  const minSpread = (minP || 1) * 0.003;
+  const range = Math.max(maxP - minP, minSpread), pad = range * 0.12;
   const pos = S.positions[sym];
-  let extraMin = yMin, extraMax = yMax;
+  let extraMin = minP - pad, extraMax = maxP + pad;
   if (pos && pos.qty > 0) {
     if (pos.stopLoss) extraMin = Math.min(extraMin, pos.stopLoss);
     if (pos.takeProfit) extraMax = Math.max(extraMax, pos.takeProfit);
     if (pos.liquidationPrice) extraMin = Math.min(extraMin, pos.liquidationPrice);
-    if (pos.avgPrice) { extraMin = Math.min(extraMin, pos.avgPrice); extraMax = Math.max(extraMax, pos.avgPrice); }
   }
-  const finalMin = extraMin, finalMax = extraMax;
-  const finalRange = finalMax - finalMin;
-
-  const xFor = (i) => (i / (ticks.length - 1)) * W;
-  const yFor = (p) => H - ((p - finalMin) / finalRange) * H;
-
-  // grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    const y = (i / 5) * H;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    // price label
-    ctx.fillStyle = 'rgba(148,163,184,0.4)';
-    ctx.font = '9px JetBrains Mono';
-    ctx.textAlign = 'right';
-    const priceAtY = finalMax - (i / 5) * finalRange;
-    ctx.fillText('$' + fmt(priceAtY, 0), W - 4, y - 2);
-  }
-
-  // EMA50 line
-  const ind = S.indicators[sym];
-  if (ind && ind.ema) {
-    // approximate EMA history by recomputing (skip — just draw current as horizontal line)
-    ctx.strokeStyle = 'rgba(234,179,8,0.5)';
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(0, yFor(ind.ema));
-    ctx.lineTo(W, yFor(ind.ema));
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  // Bollinger bands (if available)
-  if (ind && ind.bbUpper && ind.bbLower) {
-    ctx.fillStyle = 'rgba(59,130,246,0.05)';
-    ctx.fillRect(0, yFor(ind.bbUpper), W, yFor(ind.bbLower) - yFor(ind.bbUpper));
-    ctx.strokeStyle = 'rgba(59,130,246,0.2)';
-    ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.moveTo(0, yFor(ind.bbUpper)); ctx.lineTo(W, yFor(ind.bbUpper)); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, yFor(ind.bbLower)); ctx.lineTo(W, yFor(ind.bbLower)); ctx.stroke();
-  }
-
-  // price line
-  ctx.strokeStyle = 'rgba(226,232,240,0.95)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ticks.forEach((t, i) => {
-    const x = xFor(i);
-    const y = yFor(t.price);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  // last price dot
-  const last = ticks[ticks.length - 1];
-  const prev = ticks[ticks.length - 2] || last;
-  ctx.fillStyle = last.price >= prev.price ? 'var(--green)' : 'var(--red)';
-  ctx.fillStyle = last.price >= prev.price ? '#22c55e' : '#ef4444';
-  ctx.beginPath();
-  ctx.arc(W - 2, yFor(last.price), 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // position lines (entry, SL, TP, liq)
-  if (pos && pos.qty > 0) {
-    const drawLine = (price, color, label) => {
-      if (!price) return;
-      const y = yFor(price);
-      if (y < 0 || y > H) return;
-      ctx.strokeStyle = color;
-      ctx.setLineDash([6, 4]);
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = color;
-      ctx.font = '9px JetBrains Mono';
-      ctx.textAlign = 'left';
-      ctx.fillText(label + ' $' + fmt(price, 0), 6, y - 3);
-    };
-    drawLine(pos.avgPrice, 'rgba(59,130,246,0.7)', 'ENTRY');
-    drawLine(pos.stopLoss, 'rgba(6,182,212,0.8)', 'SL');
-    drawLine(pos.takeProfit, 'rgba(34,197,94,0.8)', 'TP');
-    if (pos.leverage > 1 && pos.liquidationPrice) drawLine(pos.liquidationPrice, 'rgba(239,68,68,0.7)', 'LIQ');
-  }
-
-  // markers
-  const markers = S.markers[sym] || [];
-  const tickStart = ticks[0].t;
-  const tickEnd = ticks[ticks.length - 1].t;
-  markers.forEach(m => {
-    if (m.tick < tickStart || m.tick > tickEnd) return;
-    // find price index closest to m.tick
-    const idx = ticks.findIndex(t => t.t === m.tick);
-    if (idx < 0) return;
-    const x = xFor(idx);
-    const y = yFor(m.price);
-    let color, shape;
-    switch (m.type) {
-      case 'signal': color = '#eab308'; shape = 'triangle'; break;
-      case 'order': color = '#06b6d4'; shape = 'square'; break;
-      case 'fill': color = '#22c55e'; shape = 'circle'; break;
-      case 'liq': color = '#a855f7'; shape = 'x'; break;
-      default: color = '#94a3b8'; shape = 'circle';
-    }
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    if (shape === 'triangle') {
-      ctx.beginPath();
-      ctx.moveTo(x, y - 5);
-      ctx.lineTo(x - 4, y + 3);
-      ctx.lineTo(x + 4, y + 3);
-      ctx.closePath();
-      ctx.fill();
-    } else if (shape === 'square') {
-      ctx.fillRect(x - 3, y - 3, 6, 6);
-    } else if (shape === 'x') {
-      ctx.beginPath();
-      ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4);
-      ctx.moveTo(x + 4, y - 4); ctx.lineTo(x - 4, y + 4);
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  });
+  const bounds = { min: extraMin, range: extraMax - extraMin };
+  drawChartGridAndLines(ctx, sym, bounds, { W, H, ticks });
+  drawChartOverlays(ctx, sym, bounds, { W, H, ticks });
 }
 
 // ============================================================
@@ -1840,13 +2119,28 @@ document.getElementById('stepBtn').addEventListener('click', () => {
   tick();
 });
 
-document.getElementById('resetBtn').addEventListener('click', () => {
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  if (S.liveApi) {
+    try {
+      const res = await fetch(`${CFG.apiBaseUrl}/account/reset`, {
+        method: 'POST',
+        headers: { 'X-Account-Id': CFG.liveAccountId }
+      });
+      if (res.ok) {
+        log('system', 'state', `Account reset to pristine $10,000 on Rails paper_exchange (port 3100)`);
+        await syncWithBroker();
+        return;
+      }
+    } catch (err) {
+      console.warn('Reset error:', err);
+    }
+  }
   S.running = false;
   S.tickCount = 0;
   S.prices = { ...CFG.initialPrices };
   S.prevPrices = { ...CFG.initialPrices };
-  S.ticks = { BTCUSDT: [], ETHUSDT: [] };
-  S.indicators = { BTCUSDT: {}, ETHUSDT: {} };
+  S.ticks = { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] };
+  S.indicators = { BTCUSDT: {}, ETHUSDT: {}, SOLUSDT: {}, XRPUSDT: {} };
   S.account = {
     margin: CFG.initialEquity, available_balance: CFG.initialEquity, locked_margin: 0,
     realized_pnl: 0, unrealized_pnl: 0, current_equity: CFG.initialEquity, max_equity: CFG.initialEquity,
@@ -1858,7 +2152,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   S.cooldowns = {};
   S.lastPollTick = 0;
   S.logEntries = [];
-  S.markers = { BTCUSDT: [], ETHUSDT: [] };
+  S.markers = { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] };
   document.getElementById('logEntries').innerHTML = `
     <div class="log-entry" style="color:var(--text-faint);">
       <span class="log-time">${timeStr()}</span>
@@ -1871,7 +2165,32 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   setStatus('agent', 'idle');
   setStatus('exchange', 'idle');
   highlightComponents([]);
-  renderMeta(); renderPositions(); renderAccount(); renderTotals(); renderAgentComponents(); renderExchangeComponents(); renderChart();
+  renderMeta(); renderChartHud(); renderMarketMatrix(); renderPositions(); renderAccount(); renderTotals(); renderAgentComponents(); renderExchangeComponents();
+  if (S.chartViewMode === 'chart') renderChart();
+});
+
+document.getElementById('viewModeTextBtn').addEventListener('click', () => {
+  S.chartViewMode = 'text';
+  document.getElementById('viewModeTextBtn').classList.add('active');
+  document.getElementById('viewModeChartBtn').classList.remove('active');
+  document.getElementById('chartTextWrap').style.display = 'block';
+  document.getElementById('chartCanvasWrap').style.display = 'none';
+  document.getElementById('chartLegend').style.display = 'none';
+  document.getElementById('chartModeTag').textContent = 'text terminal';
+  renderChartHud();
+  renderMarketMatrix();
+});
+
+document.getElementById('viewModeChartBtn').addEventListener('click', () => {
+  S.chartViewMode = 'chart';
+  document.getElementById('viewModeChartBtn').classList.add('active');
+  document.getElementById('viewModeTextBtn').classList.remove('active');
+  document.getElementById('chartTextWrap').style.display = 'none';
+  document.getElementById('chartCanvasWrap').style.display = 'block';
+  document.getElementById('chartLegend').style.display = 'flex';
+  document.getElementById('chartModeTag').textContent = 'tick chart';
+  resizeCanvas();
+  renderChart();
 });
 
 document.getElementById('speedSelect').addEventListener('change', (e) => {
@@ -1890,12 +2209,7 @@ document.querySelectorAll('.cp-btn[data-regime]').forEach(btn => {
 
 document.querySelectorAll('.cp-btn[data-symbol]').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.cp-btn[data-symbol]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    S.activeSymbol = btn.dataset.symbol;
-    document.getElementById('chartSymbol').textContent = S.activeSymbol;
-    log('system', 'state', `Active symbol → <span class="sym">${S.activeSymbol}</span>`);
-    renderChart();
+    selectSymbol(btn.dataset.symbol);
   });
 });
 
@@ -1953,35 +2267,23 @@ document.getElementById('forceClose').addEventListener('click', () => {
   }
 });
 
-document.getElementById('liveApiToggle').addEventListener('click', async function() {
-  if (!S.liveApi) {
-    try {
-      const res = await fetch(`${CFG.apiBaseUrl}/account`, {
-        headers: { 'X-Account-Id': CFG.liveAccountId }
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const acc = await res.json();
-      S.liveApi = true;
-      this.textContent = '🔌 Live API: ON (3100)';
-      this.classList.add('live-active');
-      log('system', 'state', `Live API connected to <span class="ok">${CFG.apiBaseUrl}</span> · account=<span class="v">${CFG.liveAccountId}</span> · available=$${fmt(acc.wallet?.available || acc.available_balance, 2)}`);
-      S.account.available_balance = parseFloat(acc.wallet?.available || acc.available_balance);
-      S.account.locked_margin = parseFloat(acc.wallet?.locked || acc.locked_margin || 0);
-      S.account.current_equity = parseFloat(acc.equity || acc.available_balance);
-      S.account.realized_pnl = parseFloat(acc.realized_pnl || 0);
-      S.account.unrealized_pnl = parseFloat(acc.unrealized_pnl || 0);
-      renderAccount();
-      renderTotals();
-    } catch (err) {
-      log('system', 'state', `<span class="err">Cannot connect to Live API at ${CFG.apiBaseUrl}</span> · ensure Docker is running on port 3100`);
-      alert(`Could not connect to Live Rails API at ${CFG.apiBaseUrl}.\nEnsure Docker is running on port 3100.\nDetails: ${err.message}`);
-    }
-  } else {
-    S.liveApi = false;
-    this.textContent = '🔌 Live API: OFF';
-    this.classList.remove('live-active');
-    log('system', 'state', 'Live API disconnected · running in local mock simulation');
-  }
+document.getElementById('modeLiveBtn').addEventListener('click', () => {
+  S.mode = 'live';
+  S.liveApi = true;
+  document.getElementById('modeLiveBtn').classList.add('active');
+  document.getElementById('modeSimBtn').classList.remove('active');
+  document.getElementById('regimeGroup').style.display = 'none';
+  connectBinanceWs();
+  syncWithBroker();
+  log('system', 'state', 'Switched to 🟢 LIVE STREAM: Real Binance WS + Rails 3100');
+});
+
+document.getElementById('modeSimBtn').addEventListener('click', () => {
+  S.mode = 'sim';
+  document.getElementById('modeSimBtn').classList.add('active');
+  document.getElementById('modeLiveBtn').classList.remove('active');
+  document.getElementById('regimeGroup').style.display = '';
+  log('system', 'state', 'Switched to 🧪 Stress Test mode (synthetic market regimes)');
 });
 
 document.querySelectorAll('.log-filter').forEach(btn => {
@@ -2014,7 +2316,7 @@ let lastTickWallClock = 0;
 function loop(timestamp) {
   if (!lastTickWallClock) lastTickWallClock = timestamp;
   const interval = CFG.tickIntervalMs / S.speed;
-  if (S.running && (timestamp - lastTickWallClock) >= interval) {
+  if (S.running && S.mode === 'sim' && (timestamp - lastTickWallClock) >= interval) {
     lastTickWallClock = timestamp;
     tick();
   }
@@ -2024,13 +2326,22 @@ function loop(timestamp) {
 // INIT
 resizeCanvas();
 renderMeta();
+renderChartHud();
+renderMarketMatrix();
 renderPositions();
 renderAccount();
 renderTotals();
 renderAgentComponents();
 renderExchangeComponents();
-renderChart();
+if (S.chartViewMode === 'chart') renderChart();
+
+// Connect live services
+connectBinanceWs();
+syncWithBroker();
+setInterval(syncWithBroker, 2500);
+
 requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+

@@ -15,7 +15,7 @@ module Api
 
     def create
       order_raw = params[:order] || params
-      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price, context: {})
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price, :reduce_only, context: {})
       received[:account_id] = @account_id
       received[:order_kind] = (received.delete(:order_type) || received.delete(:type) || "market").to_s.downcase
       received[:side] = received[:side].to_s.downcase

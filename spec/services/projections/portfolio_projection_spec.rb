@@ -24,4 +24,27 @@ RSpec.describe Projections::PortfolioProjection, type: :service do
     expect(summary[:unrealized_pnl]).to eq(50.0)
     expect(summary[:equity]).to eq(100_050.0)
   end
+
+  it 'counts trade fees: equity is available + locked + unrealized, not margin + gross pnl' do
+    account = Account.find_by!(account_id: account_id)
+    account.update!(available_balance: 98_697.4, locked_margin: 1_300.0)
+    create(:paper_position, account_id: account_id, symbol: 'BTCUSDT', side: :long, quantity: 0.1, avg_price: 65_000.0, current_price: 65_000.0, leverage: 5)
+    allow(MarketData::MarkPriceStore).to receive(:get).with('BTCUSDT').and_return(66_000.0)
+
+    summary = described_class.summary(account_id)
+
+    expect(summary[:equity]).to eq(100_097.4)
+    expect(summary[:max_equity]).to eq(100_097.4)
+    expect(summary[:drawdown]).to eq(0.0)
+  end
+
+  it 'derives drawdown from the fee-inclusive equity' do
+    Account.find_by!(account_id: account_id).update!(available_balance: 90_000.0)
+
+    summary = described_class.summary(account_id)
+
+    expect(summary[:equity]).to eq(90_000.0)
+    expect(summary[:max_equity]).to eq(100_000.0)
+    expect(summary[:drawdown]).to eq(10.0)
+  end
 end

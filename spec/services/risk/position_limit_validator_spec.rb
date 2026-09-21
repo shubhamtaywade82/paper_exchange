@@ -17,4 +17,20 @@ RSpec.describe Risk::PositionLimitValidator, type: :service do
     3.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
     expect(validator.evaluate(account_id, signal)).to eq(:POSITION_LIMIT_REJECTED)
   end
+
+  it 'does not count closed (zero-quantity) position rows against the limit' do
+    stub_const('Risk::PositionLimitValidator::MAX_POSITIONS', 3)
+    # PositionManager keeps a quantity 0 row after a position is closed; only open positions are exposure.
+    3.times { |i| create(:paper_position, account_id: account_id, symbol: "CLOSED#{i}", quantity: 0) }
+    expect(validator.evaluate(account_id, signal)).to eq(:passed)
+  end
+
+  it 'counts only open rows when closed rows are mixed in' do
+    stub_const('Risk::PositionLimitValidator::MAX_POSITIONS', 3)
+    2.times { |i| create(:paper_position, account_id: account_id, symbol: "OPEN#{i}", quantity: 1) }
+    3.times { |i| create(:paper_position, account_id: account_id, symbol: "CLOSED#{i}", quantity: 0) }
+    expect(validator.evaluate(account_id, signal)).to eq(:passed)
+    create(:paper_position, account_id: account_id, symbol: 'OPEN2', quantity: 1)
+    expect(validator.evaluate(account_id, signal)).to eq(:POSITION_LIMIT_REJECTED)
+  end
 end

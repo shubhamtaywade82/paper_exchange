@@ -37,6 +37,9 @@ function assertEqual(actual: string | number, expected: string | number, message
 async function runSmokeTest() {
   console.log('🚀 Starting Paper-Exchange Smoke Test...\n');
 
+  // Auto-reset test account to baseline
+  await http.post('/account/reset');
+
   // 1. INITIAL STATE
   console.log('--- Step 1: Initial State ---');
   let account = (await http.get('/account')).data;

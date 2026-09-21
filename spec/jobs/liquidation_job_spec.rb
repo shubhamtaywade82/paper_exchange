@@ -52,6 +52,26 @@ RSpec.describe LiquidationJob, type: :job do
     expect { described_class.perform_now(position.id, 53_500.0) }.not_to raise_error
   end
 
+  it 'submits the close as reduce_only so it can never flip the position' do
+    expect_any_instance_of(Exchange::PaperExchange).to receive(:submit_order)
+      .with(hash_including(reduce_only: true, internal: true)).and_call_original
+
+    described_class.perform_now(position.id, 53_500.0)
+  end
+
+  it 'returns quietly when a second run passes the re-check with a stale position' do
+    described_class.perform_now(position.id, 53_500.0)
+    # `position` still holds quantity 1 in memory, like a job that read the row before the first close committed.
+    allow(::PaperExchange::PaperPosition).to receive(:find).with(position.id).and_return(position)
+
+    expect { described_class.perform_now(position.id, 53_500.0) }.not_to raise_error
+
+    expect(::PaperExchange::PaperPosition.find_by!(account_id: account.account_id, symbol: 'BTCUSDT').quantity.to_f).to eq(0.0)
+    events = RiskEvent.where(account_id: account.account_id)
+    expect(events.where(event_type: 'POSITION_LIQUIDATED').count).to eq(1)
+    expect(events.where(event_type: 'LIQUIDATION_FAILED').count).to eq(0)
+  end
+
   it 'records a LIQUIDATION_FAILED risk event and re-raises on failure' do
     allow(Exchange::PaperExchange).to receive(:new).and_raise(StandardError, 'boom')
 

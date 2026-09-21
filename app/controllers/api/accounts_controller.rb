@@ -44,7 +44,41 @@ module Api
       }
     end
 
+    def reset
+      return render_error(:forbidden, "Reset only available in development") unless Rails.env.development? || Rails.env.test?
+
+      reset_margin = requested_margin
+      return render_error(:unprocessable_content, "margin must be a finite number greater than 0") unless reset_margin
+
+      order_ids = ::PaperExchange::PaperOrder.where(account_id: @account_id).pluck(:id)
+      FundingPayment.where(account_id: @account_id).delete_all
+      ::PaperExchange::PaperTrade.where(paper_order_id: order_ids).delete_all
+      ::PaperExchange::PaperPosition.where(account_id: @account_id).delete_all
+      ::PaperExchange::PaperOrder.where(account_id: @account_id).delete_all
+      LedgerEntry.where(account_id: @account_id).delete_all
+
+      account = Account.find_or_initialize_by(account_id: @account_id)
+      account.update!(
+        name: "Smoke Test Account", currency: "USD", margin: reset_margin,
+        available_balance: reset_margin, current_equity: reset_margin,
+        realized_pnl: 0.0, unrealized_pnl: 0.0, locked_margin: 0.0
+      )
+
+      render json: { status: "reset_complete", account_id: @account_id, balance: reset_margin }
+    end
+
     private
+
+    # nil means the caller sent an unusable margin; an absent margin falls back to the env default.
+    def requested_margin
+      raw = params[:margin].presence || (request.raw_post.presence && (JSON.parse(request.raw_post)["margin"] rescue nil))
+      return (ENV["PAPER_EXCHANGE_MARGIN"].presence || 10_000.0).to_f if raw.blank?
+
+      margin = Float(raw.to_s)
+      margin if margin.finite? && margin.positive? && margin < 1e12
+    rescue ArgumentError, TypeError
+      nil
+    end
 
     def set_account
       @account_id = (request.headers["X-Account-Id"].presence ||

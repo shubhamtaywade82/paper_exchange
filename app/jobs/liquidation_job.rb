@@ -31,7 +31,10 @@ class LiquidationJob < ApplicationJob
       leverage: position.leverage,
       margin_type: position.margin_type,
       context: { reason: "LIQUIDATION" },
-      internal: true
+      internal: true,
+      # reduce_only makes the close fill under a position row lock and clamp to
+      # the live size, so a concurrent job or manual close can't flip the position.
+      reduce_only: true
     )
 
     RiskEvent.create!(
@@ -47,6 +50,9 @@ class LiquidationJob < ApplicationJob
         close_order_id: order&.id
       }
     )
+  rescue Exchange::PaperExchange::PositionGoneError
+    # Another close won the race; nothing left to liquidate, so it is not a failure.
+    nil
   rescue => e
     RiskEvent.create!(
       account_id: position&.account_id || "UNKNOWN",

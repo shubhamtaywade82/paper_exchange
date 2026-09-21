@@ -43,17 +43,30 @@ module Ledger
       return unless account
 
       unrealized = compute_unrealized_pnl(account_id)
-      realized = compute_realized_pnl(account_id)
       account.update_columns(
         unrealized_pnl: unrealized.round(8),
-        realized_pnl: realized.round(8),
-        current_equity: (account.margin.to_f + unrealized + realized).round(8)
+        realized_pnl: compute_realized_pnl(account_id).round(8),
+        current_equity: compute_equity(account, unrealized).round(8)
       )
     end
 
-    def self.compute_realized_pnl(account_id)
+    # Wallet-based so trade fees (deducted from available_balance) and
+    # funding are included; margin + gross PnL overstated equity by the fees.
+    # Non-crypto trades never move the wallet (their cash flow is only the
+    # trade ledger entry), so that PnL is added on top; it is 0 for crypto
+    # perps, whose trade entries carry no debit/credit.
+    def self.compute_equity(account, unrealized)
+      account.available_balance.to_f + account.locked_margin.to_f + unrealized.to_f +
+        compute_trade_cash_pnl(account.account_id)
+    end
+
+    def self.compute_trade_cash_pnl(account_id)
       trade_entries = LedgerEntry.where(account_id: account_id, event_type: "trade")
-      equity_pnl = (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
+      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
+    end
+
+    def self.compute_realized_pnl(account_id)
+      equity_pnl = compute_trade_cash_pnl(account_id)
 
       pnl_entries = LedgerEntry.where(account_id: account_id, event_type: "REALIZED_PNL")
       crypto_pnl = (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f

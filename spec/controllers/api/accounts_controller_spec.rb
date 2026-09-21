@@ -25,6 +25,22 @@ RSpec.describe Api::AccountsController, type: :controller do
         expect(json['equity'].to_f).to eq(100_000.0)
       end
 
+      it 'reports fee-inclusive equity for an open leveraged position' do
+        account = Account.find_by!(account_id: account_id)
+        account.update!(margin: 10_000.0, available_balance: 10_000.0, current_equity: 10_000.0)
+        Exchange::PaperExchange.new(account_id: account_id).submit_order(
+          account_id: account_id, symbol: 'BTCUSDT', side: 'buy', quantity: 0.1, order_kind: 'market', instrument_type: 'CRYPTO_PERPETUAL',
+          leverage: 5, margin_type: 'isolated', execution_price: 65_000.0
+        )
+        MarketData::MarkPriceStore.set('BTCUSDT', 66_000.0)
+
+        get :show
+
+        json = JSON.parse(response.body)
+        expect(json['equity'].to_f).to eq(10_097.4)
+        expect(json['drawdown'].to_f).to eq(0.0)
+      end
+
       it 'reflects margin locked against an open leveraged position' do
         position = create(:paper_position,
           account_id: account_id,
@@ -40,6 +56,55 @@ RSpec.describe Api::AccountsController, type: :controller do
         json = JSON.parse(response.body)
         expect(json['locked_margin'].to_f).to eq(6_000.0)
         expect(json['available_balance'].to_f).to eq(94_000.0)
+      end
+    end
+  end
+
+  describe 'POST #reset' do
+    let(:reset_account) { Account.find_by!(account_id: account_id) }
+
+    it 'seeds the account with the requested margin from the query string' do
+      post :reset, params: { margin: 100_000 }
+
+      expect(response).to have_http_status(:ok)
+      expect(reset_account.available_balance.to_f).to eq(100_000.0)
+      expect(reset_account.margin.to_f).to eq(100_000.0)
+      expect(JSON.parse(response.body)['balance'].to_f).to eq(100_000.0)
+    end
+
+    it 'accepts the margin in a JSON body' do
+      post :reset, params: { margin: 25_000.5 }, as: :json
+
+      expect(reset_account.available_balance.to_f).to eq(25_000.5)
+    end
+
+    it 'wipes positions and orders when re-seeding' do
+      create(:account, account_id: account_id)
+      create(:paper_position, account_id: account_id)
+
+      post :reset, params: { margin: 100_000 }
+
+      expect(::PaperExchange::PaperPosition.where(account_id: account_id)).to be_empty
+    end
+
+    it 'keeps the env default margin when no margin is given' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('PAPER_EXCHANGE_MARGIN').and_return('10000.0')
+
+      post :reset
+
+      expect(reset_account.available_balance.to_f).to eq(10_000.0)
+    end
+
+    ['0', '-5', 'abc', '1e999'].each do |bad_margin|
+      it "rejects margin=#{bad_margin} with 422 and leaves the account untouched" do
+        create(:account, account_id: account_id, margin: 500_000.0)
+
+        post :reset, params: { margin: bad_margin }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['error']).to match(/margin/)
+        expect(reset_account.margin.to_f).to eq(500_000.0)
       end
     end
   end

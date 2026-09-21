@@ -5,7 +5,8 @@ module Risk
     def evaluate(account_id, signal)
       return :passed if MAX_POSITIONS <= 0
 
-      count = PaperExchange::PaperPosition.where(account_id: account_id).count
+      # A closed position stays as a quantity 0 row, so only non-zero rows are real exposure.
+      count = PaperExchange::PaperPosition.where(account_id: account_id).where.not(quantity: 0).count
       count >= MAX_POSITIONS ? :POSITION_LIMIT_REJECTED : :passed
     end
   end
