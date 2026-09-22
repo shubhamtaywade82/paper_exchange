@@ -1,17 +1,40 @@
 module Risk
+  # Margin gate. Two checks:
+  #   1. Notional must not exceed MAX_POSITION_VALUE (single-order cap, all
+  #      instrument types).
+  #   2. Required margin (notional / leverage for crypto perps, full notional
+  #      for unleveraged) must not exceed the account's available_balance.
+  #
+  # Without check #2, an over-leveraged order would sail through here, then
+  # fail at MarginLedger.lock_margin! AFTER the order is already saved and
+  # the client has been told it's accepted (depending on timing). Check #2
+  # rejects before any state mutation.
   class MarginValidator
     MARGIN_RATIOS = { "EQUITY" => 0.10, "FUTIDX" => 0.12, "OPTIDX" => 0.20, "FUTCUR" => 0.12, "OPTCUR" => 0.20 }.freeze
-    MAX_POSITION_VALUE = (ENV.fetch("PAPER_EXCHANGE_MAX_POSITION_VALUE", "500000").to_f)
+    MAX_POSITION_VALUE = ENV.fetch("PAPER_EXCHANGE_MAX_POSITION_VALUE", "500000").to_f
 
     def evaluate(account_id, signal)
-      symbol = signal.to_h[:symbol]
-      qty = signal.to_h[:quantity].to_i
-      price = (signal.to_h[:price] || signal.to_h[:ltp]).to_f
-      instrument_type = signal.to_h[:instrument_type].to_s.presence || "EQUITY"
-      notional = price * qty
-      return :passed if notional <= MAX_POSITION_VALUE
+      h = signal.to_h
+      qty = h[:quantity].to_f   # was .to_i — silently zeroed every fractional crypto order
+      price = (h[:price] || h[:ltp]).to_f
+      instrument_type = h[:instrument_type].to_s.presence || "EQUITY"
+      leverage = h[:leverage].to_i
+      leverage = 1 if leverage < 1
 
-      :MARGIN_REJECTED
+      notional = price * qty
+      return :MARGIN_REJECTED if notional > MAX_POSITION_VALUE
+
+      required_margin = if instrument_type == "CRYPTO_PERPETUAL"
+        notional / leverage
+      else
+        margin_ratio = MARGIN_RATIOS[instrument_type] || 0.10
+        notional * margin_ratio
+      end
+
+      account = Account.find_by(account_id: account_id)
+      return :passed unless account   # no account row → fall through to MarginLedger which will raise
+
+      account.available_balance.to_f >= required_margin ? :passed : :MARGIN_REJECTED
     end
   end
 end

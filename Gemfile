@@ -7,9 +7,6 @@ gem "pg", "~> 1.1"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", "~> 6.4"
 
-# Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
-# gem "bcrypt", "~> 3.1.7"
-
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 
@@ -27,17 +24,10 @@ gem "kamal", require: false
 gem "thruster", require: false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Authentication
-# ─────────────────────────────────────────────────────────────────────────────
-gem "devise"
-gem "devise-jwt"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # API
 # ─────────────────────────────────────────────────────────────────────────────
 gem "rack-cors"
 gem "oj"
-gem "blueprinter"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Validation
@@ -48,12 +38,6 @@ gem "dry-validation"
 # Background Jobs
 # ─────────────────────────────────────────────────────────────────────────────
 gem "sidekiq"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# WebSockets / Market Feed
-# ─────────────────────────────────────────────────────────────────────────────
-gem "async-websocket"
-gem "websocket-client-simple"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Trading
@@ -69,15 +53,12 @@ gem "dotenv-rails"
 # ─────────────────────────────────────────────────────────────────────────────
 # Exchange Clients
 # ─────────────────────────────────────────────────────────────────────────────
-gem "DhanHQ", path: "/home/nemesis/project/trading-workspace/sdk/dhanhq-client", require: "dhan_hq"
-gem "coindcx-client", path: "/home/nemesis/project/trading-workspace/sdk/coindcx-client", require: "coindcx"
+gem "DhanHQ", "~> 3.4", require: "dhan_hq"
+gem "coindcx-client", "~> 0.1.0", require: "coindcx"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Search
-# ─────────────────────────────────────────────────────────────────────────────
-gem "ransack"
-
 # Backtest / real-time ingest
+# ─────────────────────────────────────────────────────────────────────────────
 gem "redis"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,3 +94,4 @@ group :development, :test do
   gem "shoulda-matchers"
   gem "simplecov", require: false
 end
+

@@ -39,4 +39,8 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Keep job specs deterministic — without this, perform_later would enqueue
+  # onto the (threaded, async) production adapter during the test run.
+  config.active_job.queue_adapter = :test
 end

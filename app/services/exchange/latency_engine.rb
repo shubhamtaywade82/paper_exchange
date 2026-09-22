@@ -5,18 +5,24 @@ module Exchange
       @max_ms = max_ms
     end
 
+    # Off in test (slows the suite ~10x) and off in production unless
+    # PAPER_EXCHANGE_SIMULATE_LATENCY=true is set explicitly. A paper broker
+    # that artificially sleeps 100-500ms on every matching call caps Puma
+    # throughput at ~2-10 orders/sec/worker — fine for the realism use case
+    # it was added for, not fine to leave on by default.
     def simulate
-      delay = rand(@min_ms..@max_ms) / 1000.0
-      sleep(delay)
+      return if Rails.env.test?
+      return unless ENV["PAPER_EXCHANGE_SIMULATE_LATENCY"] == "true"
+
+      sleep(rand(@min_ms..@max_ms) / 1000.0)
     end
 
     def offset_from(signal_time)
       signal_time + rand(@min_ms..@max_ms) / 1000.0
     end
 
-    # Public: sleep for approximately ms milliseconds and yield block.
     def delay(ms)
-      sleep([ms / 1000.0, 0.001].max)
+      sleep([ ms / 1000.0, 0.001 ].max)
       yield if block_given?
       self
     end

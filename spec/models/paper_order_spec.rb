@@ -8,7 +8,12 @@ RSpec.describe PaperExchange::PaperOrder, type: :model do
   it { is_expected.to validate_presence_of(:side) }
   it { is_expected.to validate_presence_of(:order_kind) }
   it { is_expected.to validate_presence_of(:quantity) }
-  it { is_expected.to validate_numericality_of(:quantity).only_integer.is_greater_than(0) }
+  it { is_expected.to validate_numericality_of(:quantity).is_greater_than(0) }
+
+  context 'with a fractional (crypto) quantity' do
+    let(:attrs) { { order_kind: :market, instrument_type: Exchange::CryptoInstrumentCatalog::PERPETUAL, symbol: 'BTCUSDT', quantity: 0.005 } }
+    it { is_expected.to be_valid }
+  end
 
   context 'when instrument_type is missing' do
     let(:attrs) { { order_kind: :market, instrument_type: nil } }

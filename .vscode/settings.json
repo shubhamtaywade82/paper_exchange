@@ -1,0 +1,35 @@
+{
+  "files.watcherExclude": {
+    ".git/objects/**": true,
+    ".git/subtree-cache/**": true,
+    ".hg/store/**": true,
+    "*/.git/objects/**": true,
+    "*/.git/subtree-cache/**": true,
+    "*/.hg/store/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/tmp/**": true,
+    "**/log/**": true,
+    "**/storage/**": true,
+    "**/coverage/**": true,
+    "**/public/assets/**": true,
+    "**/public/packs/**": true,
+    "**/vendor/bundle/**": true,
+    "**/.bundle/**": true,
+    "**/.ruby-lsp/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/.ruby-lsp": true,
+    "**/tmp": true,
+    "**/log": true,
+    "**/storage": true,
+    "**/coverage": true,
+    "**/public/assets": true,
+    "**/public/packs": true,
+    "**/vendor/bundle": true
+  }
+}

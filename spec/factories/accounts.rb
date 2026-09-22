@@ -4,6 +4,8 @@ FactoryBot.define do
     name { "Test Account" }
     currency { "INR" }
     margin { 500_000.0 }
-    current_equity { 500_000.0 }
+    current_equity { margin }
+    available_balance { margin }
+    locked_margin { 0.0 }
   end
 end

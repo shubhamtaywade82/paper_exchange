@@ -56,4 +56,6 @@ module Exchange
       value.split(".").last.length
     end
   end
+
+  CoindcxFuturesCatalog = CoinDCXFuturesCatalog
 end

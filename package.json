@@ -1,0 +1,37 @@
+{
+  "name": "paper_exchange",
+  "version": "1.0.0",
+  "description": "**Production-grade exchange simulator and paper trading engine for AlgoScalperAPI.** Supports Indian equity, F&O (via DhanHQ), and crypto futures (Binance USD-M, CoinDCX) through a unified REST API and deterministic strategy layer.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "smoke-test": "tsx smoke-test.ts",
+    "smoke-test:simulation": "tsx smoke-test-simulation.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shubhamtaywade82/paper_exchange.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/shubhamtaywade82/paper_exchange/issues"
+  },
+  "homepage": "https://github.com/shubhamtaywade82/paper_exchange#readme",
+  "dependencies": {
+    "axios": "^1.20.0",
+    "bignumber.js": "^11.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.8.2"
+  }
+}

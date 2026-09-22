@@ -1,29 +1,18 @@
-PATH
-  remote: /home/nemesis/project/trading-workspace/sdk/coindcx-client
+GEM
+  remote: https://rubygems.org/
   specs:
-    coindcx-client (0.1.0)
-      faraday (~> 2.14)
-      socket.io-client-simple (~> 1.2)
-
-PATH
-  remote: /home/nemesis/project/trading-workspace/sdk/dhanhq-client
-  specs:
-    DhanHQ (3.1.0)
+    DhanHQ (3.4.0)
       activesupport
       base64
       bindata
       concurrent-ruby
       csv
-      dry-validation
+      dry-validation (~> 1.11)
       eventmachine
       faraday (~> 2.14)
       faye-websocket
       rotp
       zeitwerk
-
-GEM
-  remote: https://rubygems.org/
-  specs:
     action_text-trix (2.1.19)
       railties
     actioncable (8.1.3)
@@ -144,6 +133,9 @@ GEM
     bundler-audit (0.9.3)
       bundler (>= 1.2.0)
       thor (~> 1.0)
+    coindcx-client (0.1.0)
+      faraday (~> 2.14)
+      socket.io-client-simple (~> 1.2)
     concurrent-ruby (1.3.7)
     connection_pool (3.0.2)
     console (1.36.0)
@@ -577,14 +569,14 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  DhanHQ!
+  DhanHQ (~> 3.4)
   async-websocket
   blueprinter
   bootsnap
   brakeman
   bullet
   bundler-audit
-  coindcx-client!
+  coindcx-client (~> 0.1.0)
   debug
   devise
   devise-jwt
@@ -617,7 +609,7 @@ DEPENDENCIES
   websocket-client-simple
 
 CHECKSUMS
-  DhanHQ (3.1.0)
+  DhanHQ (3.4.0) sha256=94191705d31e75443bb36726c4919cd9fa3afebbd4dfd2aa00021e1d569ec06e
   action_text-trix (2.1.19) sha256=7012f59421009cf284aa651294896414d653a61a2417c9b8714c8476d2f74009
   actioncable (8.1.3) sha256=e5bc7f75e44e6a22de29c4f43176927c3a9ce4824464b74ed18d8226e75a80f0
   actionmailbox (8.1.3) sha256=df7da474eaa0e70df4ed5a6fef66eb3b3b0f2dbf7f14518deee8d77f1b4aae59
@@ -649,7 +641,7 @@ CHECKSUMS
   builder (3.3.0) sha256=497918d2f9dca528fdca4b88d84e4ef4387256d984b8154e9d5d3fe5a9c8835f
   bullet (8.1.3) sha256=c8163c527324fe1180775be48719875726891622f0a73784658b2992acf3c7cb
   bundler-audit (0.9.3) sha256=81c8766c71e47d0d28a0f98c7eed028539f21a6ea3cd8f685eb6f42333c9b4e9
-  coindcx-client (0.1.0)
+  coindcx-client (0.1.0) sha256=2dee6fee9437c40ac6116709dc969cf18ac736cd055291841e4978045338b5fa
   concurrent-ruby (1.3.7) sha256=4412caec3a5ea2e5fdc52076724c071a81f2c0593d83b2ac8cbb8ca63b3151b0
   connection_pool (3.0.2) sha256=33fff5ba71a12d2aa26cb72b1db8bba2a1a01823559fb01d29eb74c286e62e0a
   console (1.36.0) sha256=45599ea906cf80a73d8941f03abf873fe66a6a954e0bac5bc1c01e2cdc406f07

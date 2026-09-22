@@ -92,8 +92,11 @@ git clone <repository-url>
 cd paper_exchange
 bundle install
 
-# Copy environment file
+# Copy environment file (required before docker compose)
 cp .env.example .env
+# Edit .env: regenerate RAILS_MASTER_KEY and SECRET_KEY_BASE with:
+#   openssl rand -hex 16
+#   openssl rand -hex 64
 
 # Configure database
 # Edit config/database.yml for your PostgreSQL credentials
@@ -116,8 +119,37 @@ bin/rails server
 | `PAPER_EXCHANGE_MAX_DRAWDOWN` | Max portfolio drawdown before rejection (default `0.20`) |
 | `PAPER_EXCHANGE_MAX_POSITIONS` | Max open positions per account (default `10`) |
 | `PAPER_EXCHANGE_MAX_POSITION_VALUE` | Max position value before margin rejection (default `500000`) |
+| `PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE` | Maintenance margin rate used to derive liquidation prices for leveraged futures positions (default `0.004`) |
 | `DHAN_CLIENT_ID` | DhanHQ client ID (required for data APIs) |
 | `DHAN_ACCESS_TOKEN` | DhanHQ access token |
+
+### Crypto market data ownership
+
+This broker does **not** open its own connection to Binance (or any exchange)
+for live prices. All market data ownership lives in the trading agent that
+drives it — the agent already needs the live feed for its own strategy, and
+keeping it out of the broker means the broker stays a simple, deterministic,
+restart-safe request/response server with no WebSocket reconnection logic to
+babysit.
+
+The agent feeds the broker two things:
+
+1. **`execution_price`** on `POST /api/orders` — pins the exact reference
+   price a specific order fills near (a small deterministic slippage model
+   still applies on top, same as every other order type). Required in
+   practice for crypto symbols, since the broker has no other price source
+   for them.
+2. **`POST /api/mark_prices`** — a periodic bulk push of `{symbol: price}`
+   for every open position's symbol. This is what drives
+   `Risk::LiquidationEngine` — a leveraged position's liquidation price is
+   only checked when a price for its symbol arrives here, so push at least
+   as often as you need liquidation to react (every few seconds for
+   anything highly leveraged).
+
+Perpetual futures funding is likewise agent-driven: call
+`POST /api/funding_events` when your feed reports a funding settlement, and
+the broker posts the funding fee against every open leveraged position on
+that symbol (see `FundingJob`).
 
 ---
 
@@ -131,7 +163,7 @@ GET    /api/orders/:id
 DELETE /api/orders/:id
 ```
 
-Create order payload:
+Create order payload (Indian F&O):
 ```json
 {
   "account_id": "ACC-001",
@@ -146,6 +178,32 @@ Create order payload:
   "exchange_segment": "NSE_FNO"
 }
 ```
+
+Create order payload (crypto perpetual futures — `client_order_id` and
+`execution_price` are how the agent drives idempotency and pricing; see
+"Crypto market data ownership" above):
+```json
+{
+  "account_id": "ACC-001",
+  "symbol": "BTCUSDT",
+  "side": "buy",
+  "quantity": 0.01,
+  "order_type": "market",
+  "instrument_type": "CRYPTO_PERPETUAL",
+  "leverage": 10,
+  "margin_type": "cross",
+  "execution_price": 65123.45,
+  "client_order_id": "agent-uuid-123"
+}
+```
+
+### Account
+```
+GET /api/account
+```
+Wallet split (`available_balance`/`locked_margin`) plus live equity — sync
+from this on startup and after any gap in connectivity rather than
+computing balance/margin locally.
 
 ### Positions
 ```
@@ -166,6 +224,22 @@ GET /api/performance
 ### Risk Events
 ```
 GET /api/risk_events
+```
+
+### Mark Prices (crypto)
+```
+POST /api/mark_prices
+```
+```json
+{ "prices": { "BTCUSDT": "65123.45", "ETHUSDT": "3200.10" } }
+```
+
+### Funding Events (crypto)
+```
+POST /api/funding_events
+```
+```json
+{ "symbol": "BTCUSDT", "funding_rate": "0.0001", "mark_price": "65123.45" }
 ```
 
 ---
@@ -203,6 +277,65 @@ bin/rubocop
 bundle exec rspec
 ```
 
+### Crypto Engine Smoke Test (End-to-End Accounting Invariants)
+
+A TypeScript integration suite verifying core perpetual accounting invariants against the live containerized broker (initial margin deduction, flat 0.04% taker fees, weighted-average entry prices, partial realization, funding rate settlements, and immutable ledger cash reconciliation):
+
+```bash
+# 0. One-time: copy .env.example to .env (regenerate the secrets inside it)
+cp .env.example .env
+# Edit .env and replace RAILS_MASTER_KEY + SECRET_KEY_BASE with fresh values:
+#   openssl rand -hex 16   # RAILS_MASTER_KEY
+#   openssl rand -hex 64   # SECRET_KEY_BASE
+
+# 1. Start Docker services (PostgreSQL, Redis, and the Rails dev server)
+docker compose up -d --build
+
+# 2. Reset or initialize test account (test-account-1)
+docker compose exec api bin/rails runner "
+  account_id = 'test-account-1'
+  order_ids = PaperExchange::PaperOrder.where(account_id: account_id).pluck(:id)
+  FundingPayment.where(account_id: account_id).delete_all
+  PaperExchange::PaperTrade.where(paper_order_id: order_ids).delete_all
+  PaperExchange::PaperPosition.where(account_id: account_id).delete_all
+  PaperExchange::PaperOrder.where(account_id: account_id).delete_all
+  LedgerEntry.where(account_id: account_id).delete_all
+  Account.find_or_initialize_by(account_id: account_id).update!(
+    name: 'Smoke Test Account', currency: 'USD', margin: 10000.0,
+    available_balance: 10000.0, current_equity: 10000.0,
+    realized_pnl: 0.0, unrealized_pnl: 0.0, locked_margin: 0.0
+  )
+"
+
+# 3. Run broker API smoke test:
+docker compose exec api npm run smoke-test
+# or from host:
+npm run smoke-test
+
+# 4. Run headless trading lifecycle simulation smoke test:
+npm run smoke-test:simulation
+
+# 5. Interactive visual simulation dashboard:
+# Open directly in browser:
+wslview crypto-trading-lifecycle-simulation.html
+# Or serve via Python (http://localhost:8080/crypto-trading-lifecycle-simulation.html):
+python3 -m http.server 8080
+# Features an optional "🔌 Live API" toggle button (default: OFF / in-memory mock) to stream live orders to port 3100.
+```
+
+#### Invariants Verified
+
+| Step | Operation | Invariant / Formula | Expected |
+|------|-----------|---------------------|----------|
+| 1 | Initial State | `available_balance = margin`, `locked_margin = 0` | $\$10,000.00$ |
+| 2 | Seed Mark Price | Initialize mark price for `BTCUSDT` | $\$60,000.00$ |
+| 3 | Open Position | Buy 0.1 BTC @ 60k (10x). Margin: $\$600.00$, Fee (0.04%): $\$2.40$ | Avail: $\$9,397.60$, Margin: $\$600.00$ |
+| 4 | Mark Price Update | Price $\to \$61,000$. $\text{uPnL} = (61000 - 60000) \times 0.1$ | uPnL: $+\$100.00$ |
+| 5 | Add to Position | Buy 0.1 BTC @ 62k (10x). Weighted entry: $\$61,000$, Fee: $\$2.48$ | Avg: $\$61,000.00$, Avail: $\$8,775.12$ |
+| 6 | Reduce Position | Sell 0.15 BTC @ 63k. Realized: $+\$300$, Fee: $\$3.78$, Released: $\$915$ | Realized: $+\$300.00$, Avail: $\$9,986.34$ |
+| 7 | Funding Settlement | $0.01\%$ funding on $0.05 \times 63000$ notional ($\$3,150$). Fee: $\$0.315$ | Avail: $\$9,986.025$ |
+| 8 | Cash Invariant | Total Cash = `wallet.available` + `margin_used` = Initial + PnL - Fees | $\$10,291.025$ |
+
 ---
 
 ## Status
@@ -214,10 +347,17 @@ bundle exec rspec
 | Binance USD-M catalog | Integrated via public API |
 | CoinDCX futures catalog | Integrated via coindcx-client gem |
 | Risk & brokerage engine | Done |
+| Crypto futures precision (decimal quantities/prices) | Done |
+| Margin wallet (available/locked balance, atomic lock/unlock) | Done |
+| Leverage, margin type, liquidation price on positions | Done |
+| Liquidation engine (in-memory checks, async force-close) | Done |
+| Perpetual funding settlement (agent-pushed via `POST /api/funding_events`) | Done |
+| Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
+| Order idempotency (`client_order_id`) | Done |
+| Ledger reconciliation on boot | Done |
 | REST API | Done |
 | Backtesting runner | Next |
 | Live broker adapters | Next |
-| Market feed consumer | Next |
 
 ---
 

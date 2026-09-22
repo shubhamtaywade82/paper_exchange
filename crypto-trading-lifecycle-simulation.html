@@ -1,0 +1,2347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Trading Agent ↔ Paper Exchange | Tick-by-Tick Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070b14; --bg-2: #0f1521; --bg-3: #18202e; --bg-4: #1f2937;
+  --border: #1f2738; --border-light: #2a3548;
+  --text: #e2e8f0; --text-dim: #94a3b8; --text-faint: #64748b;
+  --green: #22c55e; --green-bg: rgba(34,197,94,0.12); --green-dim: #166534;
+  --red: #ef4444; --red-bg: rgba(239,68,68,0.12); --red-dim: #991b1b;
+  --blue: #3b82f6; --blue-bg: rgba(59,130,246,0.12); --blue-dim: #1e40af;
+  --purple: #a855f7; --purple-bg: rgba(168,85,247,0.12); --purple-dim: #6b21a8;
+  --yellow: #eab308; --yellow-bg: rgba(234,179,8,0.12); --yellow-dim: #854d0e;
+  --cyan: #06b6d4; --cyan-bg: rgba(6,182,212,0.12);
+  --orange: #f97316; --orange-bg: rgba(249,115,22,0.12);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg); color: var(--text);
+  font-size: 13px; line-height: 1.5; overflow-x: hidden;
+}
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+header {
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  position: sticky; top: 0; z-index: 100;
+}
+.header-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+.title-block h1 {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 10px;
+}
+.title-block h1 .arrow { color: var(--text-faint); }
+.title-block h1 .agent-tag { color: var(--blue); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.title-block h1 .exch-tag { color: var(--purple); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.title-block .subtitle { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+
+.controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.btn {
+  background: var(--bg-3); border: 1px solid var(--border-light); color: var(--text);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  font-size: 11.5px; font-family: inherit; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s;
+}
+.btn:hover { border-color: var(--blue); background: var(--bg-4); }
+.btn.primary { background: var(--blue-dim); border-color: var(--blue); color: #fff; }
+.btn.primary:hover { background: var(--blue); }
+.btn.ghost { background: transparent; }
+.btn.warn { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
+.btn.warn:hover { background: rgba(249,115,22,0.2); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.divider { width: 1px; height: 22px; background: var(--border-light); margin: 0 2px; }
+.select, .speed-select {
+  background: var(--bg-3); border: 1px solid var(--border-light); color: var(--text);
+  padding: 5px 9px; border-radius: 6px; font-size: 11.5px; font-family: inherit; cursor: pointer;
+}
+
+/* META BAR */
+.meta-bar {
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  padding: 7px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 11px;
+}
+.meta-group { display: flex; gap: 5px; align-items: center; }
+.meta-label { color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9.5px; }
+.meta-value { font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 500; }
+.meta-value.profit { color: var(--green); }
+.meta-value.loss { color: var(--red); }
+.price-tick { display: flex; align-items: center; gap: 5px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+.price-tick .sym { color: var(--text-faint); }
+.price-tick .px { color: var(--text); font-weight: 600; }
+.price-tick .chg.up { color: var(--green); }
+.price-tick .chg.dn { color: var(--red); }
+.balance-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 9px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.balance-pill .asset { color: var(--yellow); font-weight: 600; }
+.balance-pill .amt { color: var(--text); }
+.balance-pill .lbl { color: var(--text-faint); font-size: 9px; text-transform: uppercase; }
+
+/* CHART & TERMINAL HUD */
+.chart-section {
+  background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 12px 20px;
+}
+.chart-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+}
+.chart-title-block { display: flex; align-items: center; gap: 10px; }
+.chart-title-block .sym { font-size: 14px; font-weight: 700; }
+.chart-title-block .tf { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-faint); padding: 2px 6px; background: var(--bg-3); border-radius: 4px; border: 1px solid var(--border); }
+.chart-legend { display: flex; gap: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; flex-wrap: wrap; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); }
+.legend-swatch { width: 14px; height: 2px; border-radius: 1px; }
+.legend-swatch.dashed { border-top: 2px dashed currentColor; height: 0; }
+.chart-hud {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 10px; font-family: 'JetBrains Mono', monospace;
+}
+.hud-item { display: flex; flex-direction: column; gap: 2px; }
+.hud-label { font-size: 9px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+.hud-val { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-val.up { color: var(--green); }
+.hud-val.dn { color: var(--red); }
+.hud-val.warn { color: var(--yellow); }
+.chart-text-terminal {
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto;
+}
+.market-matrix-tbl {
+  width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-align: left;
+}
+.market-matrix-tbl th {
+  background: var(--bg-4); color: var(--text-faint); padding: 8px 12px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); font-weight: 600;
+}
+.market-matrix-tbl td {
+  padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim);
+}
+.market-matrix-tbl tr:last-child td { border-bottom: none; }
+.market-matrix-tbl tr:hover { background: rgba(255, 255, 255, 0.03); cursor: pointer; }
+.market-matrix-tbl tr.active-row { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--blue); }
+.market-matrix-tbl .sym-cell { font-weight: 700; color: var(--text); }
+.market-matrix-tbl .sym-cell .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-right: 6px; }
+.chart-canvas-wrap { position: relative; background: var(--bg-3); border-radius: 8px; border: 1px solid var(--border); padding: 8px; }
+#priceChart { display: block; width: 100%; height: 280px; }
+.chart-overlay { position: absolute; top: 12px; left: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); pointer-events: none; }
+.chart-overlay .row { margin-bottom: 2px; }
+.chart-overlay .k { color: var(--text-faint); }
+.chart-overlay .v { color: var(--text); }
+
+/* ARCHITECTURE */
+.architecture {
+  display: grid; grid-template-columns: 1fr 220px 1fr; gap: 0; padding: 16px 20px; background: var(--bg);
+}
+.service {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; position: relative; min-height: 360px;
+}
+.service.agent { border-color: rgba(59,130,246,0.4); }
+.service.exchange { border-color: rgba(168,85,247,0.4); }
+.service-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.service-icon {
+  width: 32px; height: 32px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 11px; font-family: 'JetBrains Mono', monospace;
+}
+.service.agent .service-icon { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-dim); }
+.service.exchange .service-icon { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-dim); }
+.service-title-block .title { font-size: 13px; font-weight: 600; }
+.service-title-block .stack { font-size: 10px; color: var(--text-faint); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
+.service-status { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; font-family: 'JetBrains Mono', monospace; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+.status-dot.idle { background: var(--text-faint); box-shadow: none; animation: none; }
+.status-dot.busy { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.components { display: grid; gap: 6px; }
+.component {
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; font-size: 11.5px; transition: all 0.15s;
+}
+.component.active { border-color: var(--yellow); background: var(--yellow-bg); box-shadow: 0 0 0 1px var(--yellow) inset, 0 0 10px rgba(234,179,8,0.18); }
+.component-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.component-name { font-weight: 500; color: var(--text); font-size: 11.5px; }
+.component-name .ep { color: var(--text-faint); font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 400; }
+.component-state {
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--text-dim);
+  background: var(--bg-4); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--border);
+}
+.component-state.live { color: var(--green); border-color: var(--green-dim); }
+.component-state.warn { color: var(--yellow); border-color: var(--yellow); }
+.component-state.err { color: var(--red); border-color: var(--red); }
+.component-detail {
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--text-dim);
+  margin-top: 4px; line-height: 1.4; word-break: break-all;
+}
+.component-detail .k { color: var(--cyan); }
+.component-detail .v { color: var(--text); }
+.component-detail .ok { color: var(--green); }
+.component-detail .err { color: var(--red); }
+.component-detail .warn { color: var(--yellow); }
+.component-detail .num { color: var(--yellow); }
+.component-detail .sym { color: var(--blue); }
+.component-detail .purple { color: var(--purple); }
+
+/* LANE */
+.lane { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 6px; min-height: 360px; }
+.lane-track {
+  position: absolute; top: 50%; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, rgba(59,130,246,0.4) 0%, rgba(168,85,247,0.4) 100%);
+  transform: translateY(-50%);
+}
+.lane-track::before, .lane-track::after { content: ''; position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%; transform: translateY(-50%); }
+.lane-track::before { left: 0; background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+.lane-track::after { right: 0; background: var(--purple); box-shadow: 0 0 8px var(--purple); }
+.lane-label { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); background: var(--bg); padding: 0 6px; white-space: nowrap; text-align: center; }
+.lane-label .sub { display: block; color: var(--text-faint); opacity: 0.7; font-size: 8px; margin-top: 1px; }
+.lane-protocols { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: var(--text-faint); background: var(--bg); padding: 0 6px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+.lane-protocols span { background: var(--bg-3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; }
+
+.message {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: var(--bg-4); border: 1px solid var(--border-light); padding: 4px 8px; border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; white-space: nowrap; z-index: 10;
+  display: flex; align-items: center; gap: 5px; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+.message .dot { width: 5px; height: 5px; border-radius: 50%; }
+.message.to-exchange { border-color: var(--blue); color: var(--blue); background: rgba(59,130,246,0.1); }
+.message.to-exchange .dot { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
+.message.to-agent { border-color: var(--purple); color: var(--purple); background: rgba(168,85,247,0.1); }
+.message.to-agent .dot { background: var(--purple); box-shadow: 0 0 5px var(--purple); }
+.message.to-exchange-mark { border-color: var(--cyan); color: var(--cyan); background: rgba(6,182,212,0.1); }
+.message.to-exchange-mark .dot { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+.message.flow-right { animation: flowRight 1.3s ease-in-out forwards; }
+.message.flow-left { animation: flowLeft 1.3s ease-in-out forwards; }
+@keyframes flowRight { 0% { left: 0%; opacity: 0; transform: translate(-50%,-50%) scale(0.7); } 15% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 85% { opacity: 1; } 100% { left: 100%; opacity: 0; transform: translate(-50%,-50%) scale(0.7); } }
+@keyframes flowLeft { 0% { left: 100%; opacity: 0; transform: translate(-50%,-50%) scale(0.7); } 15% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 85% { opacity: 1; } 100% { left: 0%; opacity: 0; transform: translate(-50%,-50%) scale(0.7); } }
+
+/* POSITIONS */
+.positions-section { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--bg-2); }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+.section-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); display: flex; align-items: center; gap: 7px; }
+.section-title .count { background: var(--bg-3); color: var(--text-dim); padding: 1px 6px; border-radius: 10px; font-size: 10px; border: 1px solid var(--border); }
+.section-actions { display: flex; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; flex-wrap: wrap; }
+.totals-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; }
+.totals-pill .lbl { color: var(--text-faint); font-size: 9.5px; text-transform: uppercase; }
+.totals-pill .val { color: var(--text); font-weight: 600; }
+.totals-pill .val.profit { color: var(--green); }
+.totals-pill .val.loss { color: var(--red); }
+.positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 9px; }
+.empty-state { grid-column: 1 / -1; text-align: center; padding: 28px; color: var(--text-faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 8px; }
+.position-card { background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; position: relative; transition: all 0.2s; overflow: hidden; }
+.position-card.long { border-left: 3px solid var(--green); }
+.position-card.short { border-left: 3px solid var(--red); }
+.position-card.flat { border-left: 3px solid var(--text-faint); opacity: 0.65; }
+.position-card.flash { animation: cardFlash 0.5s ease-out; }
+@keyframes cardFlash { 0% { background: var(--bg-4); transform: scale(1.005); } 100% { background: var(--bg-3); transform: scale(1); } }
+.position-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.position-id-block { display: flex; align-items: center; gap: 7px; }
+.position-symbol { font-size: 13px; font-weight: 700; }
+.position-id { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-faint); }
+.position-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.tag-side { font-size: 8.5px; font-weight: 700; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tag-side.long { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-dim); }
+.tag-side.short { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-dim); }
+.tag-state { font-size: 8.5px; font-family: 'JetBrains Mono', monospace; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; }
+.tag-state.open { color: var(--green); background: var(--green-bg); }
+.tag-state.flat { color: var(--text-faint); background: var(--bg-4); }
+.tag-state.liquidated { color: var(--red); background: var(--red-bg); }
+.tag-leverage { font-size: 8.5px; font-family: 'JetBrains Mono', monospace; padding: 1px 5px; border-radius: 3px; background: var(--cyan-bg); color: var(--cyan); border: 1px solid var(--cyan); }
+.position-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; }
+.stat-row { display: flex; justify-content: space-between; }
+.stat-label { color: var(--text-faint); font-size: 9.5px; }
+.stat-value { color: var(--text); }
+.stat-value.profit { color: var(--green); }
+.stat-value.loss { color: var(--red); }
+.position-history { margin-top: 8px; padding-top: 7px; border-top: 1px dashed var(--border); display: flex; gap: 3px; flex-wrap: wrap; }
+.history-chip { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; padding: 1px 4px; border-radius: 3px; background: var(--bg-4); border: 1px solid var(--border); color: var(--text-dim); }
+.history-chip.open { color: var(--green); border-color: var(--green-dim); }
+.history-chip.add { color: var(--blue); border-color: var(--blue-dim); }
+.history-chip.reduce { color: var(--orange); border-color: rgba(249,115,22,0.4); }
+.history-chip.flip { color: var(--orange); border-color: var(--orange); background: var(--orange-bg); }
+.history-chip.close { color: var(--text-faint); }
+.history-chip.liquidate { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+.history-chip.stop { color: var(--red); border-color: var(--red-dim); }
+.history-chip.tp { color: var(--green); border-color: var(--green-dim); }
+
+/* LOG */
+.log-section { padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-2); max-height: 280px; overflow: hidden; display: flex; flex-direction: column; }
+.log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+.log-controls { display: flex; gap: 5px; flex-wrap: wrap; }
+.log-filter { background: var(--bg-3); border: 1px solid var(--border); color: var(--text-dim); padding: 2px 7px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.log-filter.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+.log-filter:hover { color: var(--text); }
+.log-entries { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; overflow-y: auto; flex: 1; padding-right: 4px; }
+.log-entries::-webkit-scrollbar { width: 6px; }
+.log-entries::-webkit-scrollbar-track { background: var(--bg); }
+.log-entries::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+.log-entry { display: grid; grid-template-columns: 65px 80px 90px 1fr; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); align-items: center; animation: logFadeIn 0.2s ease; }
+@keyframes logFadeIn { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: translateX(0); } }
+.log-time { color: var(--text-faint); font-size: 9.5px; }
+.log-source { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.log-source.agent { color: var(--blue); }
+.log-source.exchange { color: var(--purple); }
+.log-source.system { color: var(--text-faint); }
+.log-source.flow { color: var(--cyan); }
+.log-source.binance { color: var(--yellow); }
+.log-type { font-size: 8.5px; padding: 1px 6px; border-radius: 3px; background: var(--bg-3); color: var(--text-dim); text-align: center; border: 1px solid var(--border); font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+.log-type.signal { color: var(--yellow); border-color: var(--yellow); background: var(--yellow-bg); }
+.log-type.order { color: var(--cyan); border-color: var(--cyan); background: var(--cyan-bg); }
+.log-type.fill { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+.log-type.position { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
+.log-type.ledger { color: var(--purple); border-color: var(--purple); background: var(--purple-bg); }
+.log-type.risk { color: var(--orange); border-color: var(--orange); background: var(--orange-bg); }
+.log-type.mark { color: var(--cyan); border-color: var(--cyan); background: var(--cyan-bg); }
+.log-type.tick { color: var(--text-faint); border-color: var(--border); }
+.log-type.liq { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+.log-type.state { color: var(--text-dim); }
+.log-msg { color: var(--text-dim); font-size: 10px; line-height: 1.4; }
+.log-msg .k { color: var(--cyan); }
+.log-msg .v { color: var(--text); }
+.log-msg .ok { color: var(--green); }
+.log-msg .err { color: var(--red); }
+.log-msg .warn { color: var(--yellow); }
+.log-msg .num { color: var(--yellow); }
+.log-msg .sym { color: var(--blue); }
+.log-msg .purple { color: var(--purple); }
+
+/* CONTROLS PANEL */
+.controls-panel {
+  background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 10px 20px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.cp-group { display: flex; align-items: center; gap: 6px; }
+.cp-label { font-size: 9.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+.cp-btn {
+  background: var(--bg-3); border: 1px solid var(--border-light); color: var(--text-dim);
+  padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 10.5px; font-family: inherit; font-weight: 500;
+  transition: all 0.15s;
+}
+.cp-btn:hover { color: var(--text); border-color: var(--blue); }
+.cp-btn.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+.cp-btn.active.trend { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.cp-btn.active.range { background: var(--yellow-bg); border-color: var(--yellow); color: var(--yellow); }
+.cp-btn.active.vol { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
+.cp-btn.active.crash { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+.cp-btn.live-active { background: var(--green-bg); border-color: var(--green); color: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.3); }
+
+footer { padding: 10px 20px; border-top: 1px solid var(--border); background: var(--bg); font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--text-faint); display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+footer .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+@media (max-width: 1100px) {
+  .architecture { grid-template-columns: 1fr; }
+  .lane { min-height: 50px; padding: 10px; }
+  .lane-track { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div class="title-block">
+      <h1>
+        <span class="agent-tag">crypto-trading-agent</span>
+        <span class="arrow">↔</span>
+        <span class="exch-tag">paper_exchange</span>
+        <span style="font-weight:400;color:var(--text-faint);font-size:12px;">· Tick-by-Tick Simulation</span>
+      </h1>
+      <div class="subtitle">Market-driven · indicators computed live · agents react to ticks · SL/TP/liquidations trigger on price</div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="playBtn">▶ Play</button>
+      <button class="btn" id="stepBtn">⏭ Step</button>
+      <button class="btn ghost" id="resetBtn">↺ Reset</button>
+      <div class="divider"></div>
+      <label class="cp-label">Speed</label>
+      <select class="speed-select" id="speedSelect">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<div class="controls-panel">
+  <div class="cp-group">
+    <span class="cp-label">Mode</span>
+    <button class="cp-btn active live" id="modeLiveBtn" title="Real Binance WebSocket trades + real Rails API on port 3100">🟢 LIVE STREAM</button>
+    <button class="cp-btn" id="modeSimBtn" title="Offline stress testing with synthetic regimes">🧪 Stress Test</button>
+  </div>
+  <div class="cp-group" id="regimeGroup" style="display:none;">
+    <span class="cp-label">Stress regime</span>
+    <button class="cp-btn trend active" data-regime="trend">📈 Trending</button>
+    <button class="cp-btn range" data-regime="range">↔ Ranging</button>
+    <button class="cp-btn vol" data-regime="volatile">⚡ Volatile</button>
+    <button class="cp-btn crash" data-regime="crash">📉 Crash</button>
+  </div>
+  <div class="cp-group">
+    <span class="cp-label">Symbol</span>
+    <button class="cp-btn active" data-symbol="BTCUSDT">BTCUSDT</button>
+    <button class="cp-btn" data-symbol="ETHUSDT">ETHUSDT</button>
+    <button class="cp-btn" data-symbol="SOLUSDT">SOLUSDT</button>
+    <button class="cp-btn" data-symbol="XRPUSDT">XRPUSDT</button>
+  </div>
+  <div class="cp-group">
+    <span class="cp-label">Agents</span>
+    <button class="cp-btn active" id="momToggle">MOMENTUM-γ</button>
+    <button class="cp-btn active" id="executorToggle">EXECUTOR-ε</button>
+  </div>
+  <div class="cp-group">
+    <span class="cp-label">Live Action</span>
+    <button class="btn warn" id="forceLong" style="font-size:10px;padding:3px 8px;">Force LONG</button>
+    <button class="btn warn" id="forceShort" style="font-size:10px;padding:3px 8px;">Force SHORT</button>
+    <button class="btn warn" id="forceClose" style="font-size:10px;padding:3px 8px;">Close All</button>
+  </div>
+</div>
+
+<div class="meta-bar">
+  <div class="meta-group"><span class="meta-label">Tick</span><span class="meta-value" id="tickCount">0</span></div>
+  <div class="meta-group"><span class="meta-label">Regime</span><span class="meta-value" id="regimeName">trend</span></div>
+  <div class="price-tick" id="priceBtc"><span class="sym">BTC</span><span class="px">$67,000.00</span><span class="chg up">+0.00%</span></div>
+  <div class="price-tick" id="priceEth"><span class="sym">ETH</span><span class="px">$3,500.00</span><span class="chg up">+0.00%</span></div>
+  <div class="price-tick" id="priceSol"><span class="sym">SOL</span><span class="px">$130.00</span><span class="chg up">+0.00%</span></div>
+  <div class="price-tick" id="priceXrp"><span class="sym">XRP</span><span class="px">$1.5000</span><span class="chg up">+0.00%</span></div>
+  <div style="flex:1"></div>
+  <div class="balance-pill"><span class="lbl">X-Account</span><span class="amt">test-account-1</span></div>
+  <div class="balance-pill"><span class="lbl">Equity</span><span class="amt" id="balEquity">$100,000.00</span></div>
+  <div class="balance-pill"><span class="lbl">Avail</span><span class="amt" id="balAvail">$100,000.00</span></div>
+  <div class="balance-pill"><span class="lbl">Locked</span><span class="amt" id="balLocked">$0.00</span></div>
+</div>
+
+<div class="chart-section">
+  <div class="chart-header">
+    <div class="chart-title-block">
+      <span class="sym" id="chartSymbol">BTCUSDT</span>
+      <span class="tf" id="chartModeTag">text terminal</span>
+      <div class="cp-group" style="margin-left:12px;display:inline-flex;">
+        <button class="cp-btn active" id="viewModeTextBtn">🔢 Text & Numbers</button>
+        <button class="cp-btn" id="viewModeChartBtn">📊 Visual Chart</button>
+      </div>
+    </div>
+    <div class="chart-legend" id="chartLegend" style="display:none;">
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--text);"></span>Price</span>
+      <span class="legend-item" style="color:var(--yellow);"><span class="legend-swatch dashed" style="border-color:var(--yellow);"></span>EMA50</span>
+      <span class="legend-item" style="color:var(--cyan);"><span class="legend-swatch dashed" style="border-color:var(--cyan);"></span>SL</span>
+      <span class="legend-item" style="color:var(--green);"><span class="legend-swatch dashed" style="border-color:var(--green);"></span>TP</span>
+      <span class="legend-item" style="color:var(--red);"><span class="legend-swatch dashed" style="border-color:var(--red);"></span>Liq</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--yellow);"></span>Signal</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--cyan);"></span>Order</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--green);"></span>Fill</span>
+    </div>
+  </div>
+
+  <!-- Key Metrics Strip (Real-time Text + Numbers for Active Symbol) -->
+  <div class="chart-hud" id="chartHud">
+    <div class="hud-item">
+      <span class="hud-label">Last Price</span>
+      <span class="hud-val" id="hudLastPrice">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Tick Change</span>
+      <span class="hud-val" id="hudChg">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">EMA50</span>
+      <span class="hud-val" id="hudEma">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">RSI(14)</span>
+      <span class="hud-val" id="hudRsi">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">ATR(14)</span>
+      <span class="hud-val" id="hudAtr">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Bollinger (20, 2)</span>
+      <span class="hud-val" id="hudBb">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Position / Risk</span>
+      <span class="hud-val" id="hudPos">—</span>
+    </div>
+  </div>
+
+  <!-- VIEW 1: Text + Numbers Multi-Asset Matrix -->
+  <div id="chartTextWrap" class="chart-text-terminal">
+    <table class="market-matrix-tbl">
+      <thead>
+        <tr>
+          <th>Asset</th>
+          <th>Live Price</th>
+          <th>24h Chg</th>
+          <th>Ticks</th>
+          <th>EMA50</th>
+          <th>RSI (14)</th>
+          <th>ATR (14)</th>
+          <th>Regime / Trend</th>
+          <th>Position</th>
+          <th>Unrealized PnL</th>
+        </tr>
+      </thead>
+      <tbody id="marketMatrixBody">
+        <!-- Dynamically rendered for BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- VIEW 2: Fixed Visual Canvas Chart -->
+  <div id="chartCanvasWrap" class="chart-canvas-wrap" style="display:none;">
+    <canvas id="priceChart"></canvas>
+    <div class="chart-overlay">
+      <div class="row"><span class="k">EMA50</span> <span class="v" id="emaVal">—</span></div>
+      <div class="row"><span class="k">RSI14</span> <span class="v" id="rsiVal">—</span></div>
+      <div class="row"><span class="k">ATR14</span> <span class="v" id="atrVal">—</span></div>
+      <div class="row"><span class="k">Trend</span> <span class="v" id="trendVal">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="architecture">
+  <div class="service agent">
+    <div class="service-header">
+      <div class="service-icon">TS</div>
+      <div class="service-title-block">
+        <div class="title">crypto-trading-agent</div>
+        <div class="stack">Node 22 · TS 5.6 · Ink TUI · tick-driven loop</div>
+      </div>
+      <div class="service-status"><span class="status-dot idle" id="agentDot"></span><span id="agentStatus">idle</span></div>
+    </div>
+    <div class="components" id="agentComponents">
+      <div class="component" data-cmp="binance-ws">
+        <div class="component-row">
+          <span class="component-name">Binance WS Feed <span class="ep">usdm trades</span></span>
+          <span class="component-state" id="cmp-binance-ws">connected</span>
+        </div>
+        <div class="component-detail" id="detail-binance-ws">listening · last tick —</div>
+      </div>
+      <div class="component" data-cmp="signal-engine">
+        <div class="component-row">
+          <span class="component-name">MOMENTUM-γ <span class="ep">EMA50 × RSI14 × ATR14</span></span>
+          <span class="component-state" id="cmp-signal-engine">scanning</span>
+        </div>
+        <div class="component-detail" id="detail-signal-engine">EMA50 — · prev — · RSI — · ATR — · cooldown 0s</div>
+      </div>
+      <div class="component" data-cmp="risk-manager">
+        <div class="component-row">
+          <span class="component-name">RISK-MGR-δ <span class="ep">gate</span></span>
+          <span class="component-state" id="cmp-risk-manager">watching</span>
+        </div>
+        <div class="component-detail" id="detail-risk-manager">maxExposure 80% · riskPerTrade 1% · lev 5-10× · liqBuffer ≥ 2.0 ATR</div>
+      </div>
+      <div class="component" data-cmp="order-router">
+        <div class="component-row">
+          <span class="component-name">EXECUTOR-ε <span class="ep">order router + trailing</span></span>
+          <span class="component-state" id="cmp-order-router">idle</span>
+        </div>
+        <div class="component-detail" id="detail-order-router">— no outbound order</div>
+      </div>
+      <div class="component" data-cmp="mark-pusher">
+        <div class="component-row">
+          <span class="component-name">Mark Pusher <span class="ep">POST /api/mark_prices</span></span>
+          <span class="component-state" id="cmp-mark-pusher">idle</span>
+        </div>
+        <div class="component-detail" id="detail-mark-pusher">pushes mark prices every tick · drives broker liquidation checks</div>
+      </div>
+      <div class="component" data-cmp="position-tracker">
+        <div class="component-row">
+          <span class="component-name">Position Tracker <span class="ep">GET /api/positions · 8s poll</span></span>
+          <span class="component-state" id="cmp-position-tracker">0 active</span>
+        </div>
+        <div class="component-detail" id="detail-position-tracker">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane" id="lane">
+    <div class="lane-label">DATA FLOW<span class="sub">REST only · JSON</span></div>
+    <div class="lane-track"></div>
+    <div class="lane-protocols"><span>REST</span><span>JSON</span><span>X-Account-Id</span></div>
+  </div>
+
+  <div class="service exchange">
+    <div class="service-header">
+      <div class="service-icon">RB</div>
+      <div class="service-title-block">
+        <div class="title">paper_exchange</div>
+        <div class="stack">Rails 8.1.3 · Ruby 3.4.2 · Postgres · Redis</div>
+      </div>
+      <div class="service-status"><span class="status-dot idle" id="exchDot"></span><span id="exchStatus">idle</span></div>
+    </div>
+    <div class="components" id="exchComponents">
+      <div class="component" data-cmp="orders-api">
+        <div class="component-row">
+          <span class="component-name">Orders API <span class="ep">POST /api/orders</span></span>
+          <span class="component-state" id="cmp-orders-api">idle</span>
+        </div>
+        <div class="component-detail" id="detail-orders-api">— awaiting order request</div>
+      </div>
+      <div class="component" data-cmp="risk-validator">
+        <div class="component-row">
+          <span class="component-name">RiskManager <span class="ep">VixGate · Margin · MaxDD · PosLimit</span></span>
+          <span class="component-state" id="cmp-risk-validator">idle</span>
+        </div>
+        <div class="component-detail" id="detail-risk-validator">VIX ≤ 20 · notional ≤ $500k · DD ≤ 10%</div>
+      </div>
+      <div class="component" data-cmp="matching-engine">
+        <div class="component-row">
+          <span class="component-name">MatchingEngine <span class="ep">+ Latency + Slippage</span></span>
+          <span class="component-state" id="cmp-matching-engine">idle</span>
+        </div>
+        <div class="component-detail" id="detail-matching-engine">— execution_price pins fill (slippage bypassed)</div>
+      </div>
+      <div class="component" data-cmp="margin-ledger">
+        <div class="component-row">
+          <span class="component-name">MarginLedger <span class="ep">SELECT FOR UPDATE</span></span>
+          <span class="component-state" id="cmp-margin-ledger">balanced</span>
+        </div>
+        <div class="component-detail" id="detail-margin-ledger">available <span class="v">$100,000.00</span> · locked <span class="v">$0.00</span></div>
+      </div>
+      <div class="component" data-cmp="position-manager">
+        <div class="component-row">
+          <span class="component-name">PositionManager <span class="ep">open/add/reduce/flip/close</span></span>
+          <span class="component-state" id="cmp-position-manager">0 open</span>
+        </div>
+        <div class="component-detail" id="detail-position-manager">— keyed by full contract spec · side mutable</div>
+      </div>
+      <div class="component" data-cmp="liquidation-engine">
+        <div class="component-row">
+          <span class="component-name">LiquidationEngine <span class="ep">async LiquidationJob</span></span>
+          <span class="component-state" id="cmp-liquidation-engine">0 monitored</span>
+        </div>
+        <div class="component-detail" id="detail-liquidation-engine">— cache: leveraged positions · checks on mark push</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="positions-section">
+  <div class="section-header">
+    <div class="section-title">Positions <span class="count" id="posCount">0</span></div>
+    <div class="section-actions">
+      <span class="totals-pill"><span class="lbl">Realized</span><span class="val" id="totalRealized">$0.00</span></span>
+      <span class="totals-pill"><span class="lbl">Unrealized</span><span class="val" id="totalUnrealized">$0.00</span></span>
+      <span class="totals-pill"><span class="lbl">Equity</span><span class="val" id="totalEquity">$100,000.00</span></span>
+      <span class="totals-pill"><span class="lbl">Cash Inv.</span><span class="val" id="totalCashInvariant">$100,000.00</span></span>
+    </div>
+  </div>
+  <div class="positions-grid" id="positionsGrid">
+    <div class="empty-state">No positions yet. Press Play and watch the agent react to live ticks.</div>
+  </div>
+</div>
+
+<div class="log-section">
+  <div class="log-header">
+    <div class="section-title">Event Log <span class="count" id="logCount">0</span></div>
+    <div class="log-controls">
+      <button class="log-filter active" data-filter="all">All</button>
+      <button class="log-filter" data-filter="agent">Agent</button>
+      <button class="log-filter" data-filter="exchange">Exchange</button>
+      <button class="log-filter" data-filter="flow">Flow</button>
+      <button class="log-filter" data-filter="position">Position</button>
+      <button class="log-filter" data-filter="ledger">Ledger</button>
+    </div>
+  </div>
+  <div class="log-entries" id="logEntries">
+    <div class="log-entry" style="color:var(--text-faint);">
+      <span class="log-time">--:--:--</span>
+      <span class="log-source system">system</span>
+      <span class="log-type state">ready</span>
+      <span class="log-msg">Tick engine initialized · equity $100,000 · regime=trend · awaiting play</span>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span>Agent</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--purple);"></span>Exchange</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--cyan);"></span>REST flow</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--green);"></span>Long/Buy/Profit</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--red);"></span>Short/Sell/Loss</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--yellow);"></span>Signal/Tick</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--orange);"></span>Flip/Reduce</span>
+  </div>
+  <div>crypto-trading-agent ↔ paper_exchange · tick-by-tick v3</div>
+</footer>
+
+<script>
+'use strict';
+
+// ============================================================
+// CONFIG
+// ============================================================
+const CFG = {
+  initialEquity: 100000,
+  initialPrices: { BTCUSDT: 67000, ETHUSDT: 3500, SOLUSDT: 130, XRPUSDT: 1.50 },
+  tickIntervalMs: 700,         // base tick cadence
+  maxExposurePct: 80,           // % equity
+  riskPerTradePct: 1,           // % equity per trade
+  minLeverage: 5,
+  maxLeverage: 10,
+  minLiqBufferAtr: 2.0,
+  takerFeeRate: 0.0004,         // 0.04%
+  mmr: 0.004,                   // maintenance margin rate
+  maxPositions: 10,
+  maxNotional: 500000,
+  maxDrawdownPct: 10,
+  cooldownMs: 15000,             // signal cooldown per symbol+agent
+  markPushEveryTicks: 1,        // every tick
+  pollEveryTicks: 12,           // ~8s at 700ms tick
+  emaPeriod: 50,
+  rsiPeriod: 14,
+  atrPeriod: 14,
+  bbPeriod: 20,
+  bbStd: 2,
+  chartMaxTicks: 180,
+  atrSlMultiplier: 2.5,
+  atrTpMultiplier: 5,
+  trailTp1Pct: 0.5,             // reduce 50% at TP1
+  trailActivatePct: 0.3,        // trailing activates after 30% gain toward TP
+  apiBaseUrl: 'http://127.0.0.1:3100/api/v1',
+  liveAccountId: 'test-account-1',
+  wsUrl: 'wss://fstream.binance.com/ws/btcusdt@trade/ethusdt@trade/solusdt@trade/xrpusdt@trade',
+};
+
+// ============================================================
+// STATE
+// ============================================================
+const S = {
+  mode: 'live',
+  chartViewMode: 'text',
+  running: true,
+  liveApi: true,
+  binanceConnected: false,
+  speed: 1,
+  tickCount: 0,
+  regime: 'trend',
+  activeSymbol: 'BTCUSDT',
+  prices: { ...CFG.initialPrices },
+  prevPrices: { ...CFG.initialPrices },
+  ticks: { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] },   // arrays of {t, price, ts}
+  indicators: { BTCUSDT: {}, ETHUSDT: {}, SOLUSDT: {}, XRPUSDT: {} },
+  account: {
+    margin: CFG.initialEquity,
+    available_balance: CFG.initialEquity,
+    locked_margin: 0,
+    realized_pnl: 0,
+    unrealized_pnl: 0,
+    current_equity: CFG.initialEquity,
+    max_equity: CFG.initialEquity,
+  },
+  positions: {},          // symbol -> Position
+  closedPositions: [],
+  posCounter: 0,
+  ordCounter: 0,
+  ledgerEntries: [],
+  cooldowns: {},          // `${symbol}:${agent}` -> expiry ts
+  lastPollTick: 0,
+  lastSignalTick: 0,
+  agentsEnabled: { MOMENTUM: true, EXECUTOR: true },
+  pendingOrder: null,     // {ticksLeft, order} simulated latency
+  logEntries: [],
+  logFilter: 'all',
+  // chart markers per symbol
+  markers: { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] },
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmt(n, dp = 2) {
+  if (typeof n !== 'number' || isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function fmtUsd(n) { return (n >= 0 ? '$' : '-$') + fmt(Math.abs(n), 2); }
+function fmtAsset(n, dp = 4) { return fmt(n, dp); }
+function timeStr() { return new Date().toTimeString().slice(0, 8); }
+function now() { return Date.now(); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function liqPriceLong(entry, lev) { return entry * (1 - 1/lev + CFG.mmr); }
+function liqPriceShort(entry, lev) { return entry * (1 + 1/lev - CFG.mmr); }
+function initialMargin(notional, lev) { return notional / lev; }
+
+// ============================================================
+// INDICATORS
+// ============================================================
+function computeIndicators(symbol) {
+  const ticks = S.ticks[symbol];
+  if (!ticks || ticks.length < 2) return;
+  const prices = ticks.map(t => t.price);
+  const n = prices.length;
+  const ind = S.indicators[symbol];
+
+  // EMA50
+  const k = 2 / (CFG.emaPeriod + 1);
+  if (!ind.ema && n > 0) ind.ema = prices[0];
+  for (let i = (ind.emaLastIdx || 0); i < n; i++) {
+    ind.ema = prices[i] * k + ind.ema * (1 - k);
+  }
+  ind.emaLastIdx = n;
+
+  // RSI(14) — Wilder's
+  if (n >= CFG.rsiPeriod + 1) {
+    let gains = 0, losses = 0;
+    const start = Math.max(1, n - CFG.rsiPeriod - 1);
+    if (!ind.avgGain || !ind.avgLoss) {
+      // initial seed
+      for (let i = 1; i <= CFG.rsiPeriod; i++) {
+        const ch = prices[i] - prices[i-1];
+        if (ch >= 0) gains += ch; else losses += -ch;
+      }
+      ind.avgGain = gains / CFG.rsiPeriod;
+      ind.avgLoss = losses / CFG.rsiPeriod;
+    } else {
+      // Wilder smoothing from last computed
+      const ch = prices[n-1] - prices[n-2];
+      const g = ch > 0 ? ch : 0;
+      const l = ch < 0 ? -ch : 0;
+      ind.avgGain = (ind.avgGain * (CFG.rsiPeriod - 1) + g) / CFG.rsiPeriod;
+      ind.avgLoss = (ind.avgLoss * (CFG.rsiPeriod - 1) + l) / CFG.rsiPeriod;
+    }
+    ind.rsi = ind.avgLoss === 0 ? 100 : 100 - 100 / (1 + ind.avgGain / ind.avgLoss);
+  }
+
+  // ATR(14) — Wilder's
+  if (n >= CFG.atrPeriod + 1) {
+    if (!ind.atr) {
+      let trSum = 0;
+      for (let i = 1; i <= CFG.atrPeriod; i++) {
+        const h = prices[i], l = prices[i], pc = prices[i-1];
+        trSum += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+      }
+      ind.atr = trSum / CFG.atrPeriod;
+    } else {
+      const h = prices[n-1], l = prices[n-1], pc = prices[n-2];
+      const tr = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+      ind.atr = (ind.atr * (CFG.atrPeriod - 1) + tr) / CFG.atrPeriod;
+    }
+  }
+
+  // Bollinger Bands
+  if (n >= CFG.bbPeriod) {
+    const slice = prices.slice(-CFG.bbPeriod);
+    const mean = slice.reduce((a,b) => a+b, 0) / CFG.bbPeriod;
+    const variance = slice.reduce((a,b) => a + (b-mean)**2, 0) / CFG.bbPeriod;
+    const sd = Math.sqrt(variance);
+    ind.bbMid = mean;
+    ind.bbUpper = mean + CFG.bbStd * sd;
+    ind.bbLower = mean - CFG.bbStd * sd;
+  }
+
+  // EMA trend direction (for signal context)
+  if (n >= 2) {
+    ind.prevAbove = ind.above;
+    ind.above = prices[n-1] > ind.ema;
+    ind.trend = ind.above ? 'up' : 'down';
+    ind.crossover = ind.prevAbove !== undefined && ind.prevAbove !== ind.above;
+  }
+}
+
+// ============================================================
+// MARKET SIMULATOR
+// ============================================================
+function nextPrice(symbol) {
+  const cur = S.prices[symbol];
+  const regime = S.regime;
+  let vol, drift;
+  switch (regime) {
+    case 'trend':
+      vol = 0.0015;
+      drift = symbol === 'BTCUSDT' ? 0.0008 : symbol === 'ETHUSDT' ? 0.0006 : 0.0007;  // gentle uptrend
+      break;
+    case 'range':
+      vol = 0.001;
+      drift = 0;
+      break;
+    case 'volatile':
+      vol = 0.004;
+      drift = 0;
+      break;
+    case 'crash':
+      vol = 0.003;
+      drift = -0.0025;  // strong downtrend
+      break;
+    default:
+      vol = 0.0015; drift = 0;
+  }
+  // gaussian-ish via sum of uniforms
+  const shock = ((Math.random() + Math.random() + Math.random() + Math.random()) / 4 - 0.5) * 2;
+  const newPrice = cur * (1 + drift + vol * shock);
+  return Math.max(newPrice, cur * 0.5);  // floor at -50% to avoid negatives
+}
+
+function pushTick(symbol, price) {
+  S.prevPrices[symbol] = S.prices[symbol];
+  S.prices[symbol] = price;
+  S.ticks[symbol].push({ t: S.tickCount, price, ts: now() });
+  if (S.ticks[symbol].length > CFG.chartMaxTicks + 30) {
+    S.ticks[symbol] = S.ticks[symbol].slice(-CFG.chartMaxTicks - 10);
+  }
+  computeIndicators(symbol);
+}
+
+// ============================================================
+// LEDGER
+// ============================================================
+function postLedger(eventType, debit, credit, referenceId, payload) {
+  const entry = {
+    event_type: eventType,
+    debit: debit || 0, credit: credit || 0,
+    reference_id: referenceId,
+    payload: payload || {},
+    occurred_at: new Date().toISOString(),
+  };
+  S.ledgerEntries.push(entry);
+  if (eventType === 'MARGIN_LOCKED') {
+    S.account.available_balance -= debit;
+    S.account.locked_margin += debit;
+  } else if (eventType === 'MARGIN_UNLOCKED') {
+    const released = Math.min(credit, S.account.locked_margin);
+    S.account.available_balance += released;
+    S.account.locked_margin -= released;
+  } else if (eventType === 'FEE') {
+    S.account.available_balance -= debit;
+  } else if (eventType === 'REALIZED_PNL') {
+    S.account.available_balance += credit;
+    S.account.realized_pnl += credit;
+  } else if (eventType === 'FUNDING_FEE') {
+    if (debit > 0) S.account.available_balance -= debit;
+    else if (credit > 0) { S.account.available_balance += credit; S.account.realized_pnl += credit; }
+  }
+  refreshEquity();
+}
+
+function refreshEquity() {
+  let u = 0;
+  Object.values(S.positions).forEach(p => {
+    if (p.qty > 0) {
+      const px = S.prices[p.symbol];
+      u += p.side === 'long' ? (px - p.avgPrice) * p.qty : (p.avgPrice - px) * p.qty;
+    }
+  });
+  S.account.unrealized_pnl = u;
+  S.account.current_equity = S.account.margin + S.account.realized_pnl + u;
+  S.account.max_equity = Math.max(S.account.max_equity, S.account.current_equity);
+}
+
+// ============================================================
+// LOGGING
+// ============================================================
+function log(source, type, msg) {
+  const entry = { time: timeStr(), source, type, msg };
+  S.logEntries.push(entry);
+  const container = document.getElementById('logEntries');
+  const placeholder = container.querySelector('.log-entry[style*="text-faint"]');
+  if (placeholder) placeholder.remove();
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.dataset.source = source.toLowerCase();
+  div.dataset.type = type.toLowerCase();
+  div.innerHTML = `
+    <span class="log-time">${entry.time}</span>
+    <span class="log-source ${source.toLowerCase()}">${source}</span>
+    <span class="log-type ${type.toLowerCase()}">${type}</span>
+    <span class="log-msg">${msg}</span>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  while (container.children.length > 150) container.removeChild(container.firstChild);
+  document.getElementById('logCount').textContent = S.logEntries.length;
+}
+
+function highlightComponents(compIds) {
+  document.querySelectorAll('.component').forEach(c => c.classList.remove('active'));
+  compIds.forEach(id => {
+    const el = document.querySelector(`.component[data-cmp="${id}"]`);
+    if (el) el.classList.add('active');
+  });
+}
+
+function setStatus(side, status) {
+  const dot = document.getElementById(side === 'agent' ? 'agentDot' : 'exchDot');
+  const txt = document.getElementById(side === 'agent' ? 'agentStatus' : 'exchStatus');
+  dot.className = 'status-dot ' + (status === 'idle' ? 'idle' : status === 'busy' ? 'busy' : '');
+  txt.textContent = status;
+}
+
+function setComponentState(id, text, kind) {
+  const el = document.getElementById('cmp-' + id);
+  if (el) { el.textContent = text; el.className = 'component-state' + (kind ? ' ' + kind : ''); }
+}
+function setComponentDetail(id, html) {
+  const el = document.getElementById('detail-' + id);
+  if (el) el.innerHTML = html;
+}
+
+function spawnFlow(direction, label, variant) {
+  const lane = document.getElementById('lane');
+  const msg = document.createElement('div');
+  let cls = 'message ';
+  if (variant === 'mark') cls += 'to-exchange-mark flow-right';
+  else if (direction === 'to-exchange') cls += 'to-exchange flow-right';
+  else cls += 'to-agent flow-left';
+  msg.className = cls;
+  msg.innerHTML = `<span class="dot"></span><span>${label}</span>`;
+  lane.appendChild(msg);
+  setTimeout(() => msg.remove(), 1400);
+}
+
+function addMarker(symbol, type, price, label) {
+  S.markers[symbol].push({ tick: S.tickCount, type, price, label, ts: now() });
+  if (S.markers[symbol].length > 50) S.markers[symbol].shift();
+}
+
+// ============================================================
+// AGENTS
+// ============================================================
+const Agents = {
+  MOMENTUM: {
+    id: 'MOMENTUM-γ',
+    analyze(symbol) {
+      const ind = S.indicators[symbol];
+      if (!ind || !ind.ema || !ind.rsi || !ind.atr || ind.crossover === undefined) return null;
+      const price = S.prices[symbol];
+
+      // Cooldown check
+      const cdKey = `${symbol}:MOMENTUM`;
+      if (S.cooldowns[cdKey] && now() < S.cooldowns[cdKey]) return null;
+
+      // Existing position? skip new signal
+      if (S.positions[symbol] && S.positions[symbol].qty > 0) return null;
+
+      // EMA crossover signal
+      if (ind.crossover) {
+        if (ind.above && ind.rsi < 75) {
+          // Bullish crossover
+          const sl = price - CFG.atrSlMultiplier * ind.atr;
+          const tp = price + CFG.atrTpMultiplier * ind.atr;
+          return {
+            agent: this.id, type: 'OPEN_LONG', symbol, side: 'long',
+            entry: price, stopLoss: sl, takeProfit: tp,
+            confidence: ind.rsi > 50 ? 0.75 : 0.65,
+            reason: `EMA50 bullish crossover · RSI=${ind.rsi.toFixed(1)} · ATR=${ind.atr.toFixed(2)}`,
+          };
+        } else if (!ind.above && ind.rsi > 25) {
+          // Bearish crossover
+          const sl = price + CFG.atrSlMultiplier * ind.atr;
+          const tp = price - CFG.atrTpMultiplier * ind.atr;
+          return {
+            agent: this.id, type: 'OPEN_SHORT', symbol, side: 'short',
+            entry: price, stopLoss: sl, takeProfit: tp,
+            confidence: ind.rsi < 50 ? 0.75 : 0.65,
+            reason: `EMA50 bearish crossover · RSI=${ind.rsi.toFixed(1)} · ATR=${ind.atr.toFixed(2)}`,
+          };
+        }
+      }
+      return null;
+    }
+  },
+
+  EXECUTOR: {
+    id: 'EXECUTOR-ε',
+    // Called every tick for each open position to manage exits
+    managePosition(pos) {
+      const px = S.prices[pos.symbol];
+      const ind = S.indicators[pos.symbol];
+      if (!pos || pos.qty <= 0) return;
+
+      // Check SL hit
+      if (pos.stopLoss) {
+        const slHit = pos.side === 'long' ? px <= pos.stopLoss : px >= pos.stopLoss;
+        if (slHit) {
+          return { action: 'close', reason: 'STOP LOSS', price: pos.stopLoss };
+        }
+      }
+      // Check TP hit (TP1 = reduce, TP2 = close)
+      if (pos.takeProfit) {
+        const tpHit = pos.side === 'long' ? px >= pos.takeProfit : px <= pos.takeProfit;
+        if (tpHit && !pos.tp1Hit) {
+          // Reduce 50% at TP1
+          return { action: 'reduce', reason: 'TAKE PROFIT 1', price: pos.takeProfit, qty: pos.qty * 0.5 };
+        }
+        if (tpHit && pos.tp1Hit) {
+          // Close remaining at TP2
+          return { action: 'close', reason: 'TAKE PROFIT 2', price: px };
+        }
+      }
+
+      // Trailing stop: if price moved favorably by 0.3*ATR distance from entry, trail SL
+      if (ind && ind.atr && pos.stopLoss) {
+        const favorableDist = pos.side === 'long'
+          ? (px - pos.avgPrice) / ind.atr
+          : (pos.avgPrice - px) / ind.atr;
+        if (favorableDist > 2.0) {
+          // trail SL by 1 ATR behind current price
+          const newSL = pos.side === 'long'
+            ? px - 1.5 * ind.atr
+            : px + 1.5 * ind.atr;
+          const improved = pos.side === 'long'
+            ? newSL > pos.stopLoss
+            : newSL < pos.stopLoss;
+          if (improved) {
+            pos.stopLoss = newSL;
+            return { action: 'trail', reason: 'TRAIL SL', newSL };
+          }
+        }
+      }
+      return null;
+    }
+  },
+
+  RISK_MGR: {
+    id: 'RISK-MGR-δ',
+    gate(signal) {
+      const equity = S.account.current_equity;
+      const maxNotional = equity * CFG.maxExposurePct / 100;
+      const riskBudget = equity * CFG.riskPerTradePct / 100;
+      const ind = S.indicators[signal.symbol];
+      if (!ind || !ind.atr) return { approved: false, reason: 'no ATR' };
+
+      const slDistance = Math.abs(signal.entry - signal.stopLoss);
+      const slDistancePct = slDistance / signal.entry;
+      const liqBufferAtr = slDistance / ind.atr;
+      if (liqBufferAtr < CFG.minLiqBufferAtr) {
+        return { approved: false, reason: `liqBuffer ${liqBufferAtr.toFixed(2)} < ${CFG.minLiqBufferAtr}` };
+      }
+      // position size
+      let sizeUsdt = riskBudget / slDistancePct;
+      if (sizeUsdt > maxNotional) sizeUsdt = maxNotional;
+      // dynamic leverage
+      const confFactor = Math.max(0, Math.min(1, (signal.confidence - 0.5) / 0.5));
+      const slFactor = Math.max(0, Math.min(1, 0.03 / Math.max(0.008, slDistancePct)));
+      const bufferFactor = Math.max(0, Math.min(1, (liqBufferAtr - 1.5) / 2));
+      const score = 0.5 * confFactor + 0.3 * slFactor + 0.2 * bufferFactor;
+      const leverage = Math.round(CFG.minLeverage + score * (CFG.maxLeverage - CFG.minLeverage));
+
+      return {
+        approved: true,
+        positionSizeUsdt: sizeUsdt,
+        leverage,
+        marginType: 'ISOLATED',
+        liqBufferAtr,
+        reason: `size $${fmt(sizeUsdt,0)} · lev ${leverage}× · liqBuffer ${liqBufferAtr.toFixed(2)} ATR`,
+      };
+    }
+  }
+};
+
+async function syncWithBroker() {
+  if (!S.liveApi) return;
+  try {
+    const [accRes, posRes, ledRes] = await Promise.all([
+      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
+      fetch(`${CFG.apiBaseUrl}/positions`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
+      fetch(`${CFG.apiBaseUrl}/ledger`, { headers: { 'X-Account-Id': CFG.liveAccountId } })
+    ]);
+
+    if (accRes.ok) {
+      const acc = await accRes.json();
+      S.account.available_balance = parseFloat(acc.wallet?.available ?? acc.available_balance);
+      S.account.locked_margin = parseFloat(acc.wallet?.locked ?? acc.locked_margin ?? 0);
+      S.account.current_equity = parseFloat(acc.equity ?? acc.available_balance);
+      S.account.realized_pnl = parseFloat(acc.realized_pnl ?? 0);
+      S.account.unrealized_pnl = parseFloat(acc.unrealized_pnl ?? 0);
+      S.account.max_equity = parseFloat(acc.max_equity ?? acc.equity ?? acc.available_balance);
+      setComponentState('margin-ledger', 'connected', 'live');
+      setComponentDetail('margin-ledger', `available <span class="v">$${fmt(S.account.available_balance, 2)}</span> · locked <span class="v">$${fmt(S.account.locked_margin, 2)}</span>`);
+    }
+
+    if (posRes.ok) {
+      const posData = await posRes.json();
+      const list = Array.isArray(posData) ? posData : (posData.positions || []);
+      S.positions = {};
+      list.forEach(p => {
+        const qty = parseFloat(p.quantity || p.net_quantity || 0);
+        if (qty > 0) {
+          S.positions[p.symbol] = {
+            id: `pos_${p.id}`,
+            symbol: p.symbol,
+            side: p.side.toLowerCase(),
+            qty,
+            avgPrice: parseFloat(p.average_price || p.entry_price),
+            currentPrice: parseFloat(p.current_price || p.ltp || p.average_price),
+            leverage: p.leverage || 10,
+            marginType: p.margin_type || 'cross',
+            initialMargin: parseFloat(p.initial_margin || p.margin_used || 0),
+            lockedMargin: parseFloat(p.initial_margin || p.margin_used || 0),
+            liquidationPrice: p.liquidation_price ? parseFloat(p.liquidation_price) : null,
+            stopLoss: null,
+            takeProfit: null,
+            strategy: 'crypto-trading-agent',
+            realizedPnl: 0,
+            lifecycleState: 'open',
+            openedAt: now(),
+            tp1Hit: false,
+            history: [{ action: 'sync', qty, price: parseFloat(p.average_price || p.entry_price) }]
+          };
+        }
+      });
+      setComponentState('position-manager', `${Object.keys(S.positions).length} open`, 'live');
+      setComponentState('liquidation-engine', `${Object.values(S.positions).filter(p=>p.qty>0&&p.leverage>1).length} monitored`, 'live');
+    }
+
+    if (ledRes.ok) {
+      const entries = await ledRes.json();
+      if (Array.isArray(entries)) {
+        S.ledgerEntries = entries.slice(0, 50);
+      }
+    }
+
+    renderAccount();
+    renderTotals();
+    renderPositions();
+  } catch (err) {
+    setComponentState('margin-ledger', 'offline', 'err');
+  }
+}
+
+let binanceWs = null;
+let lastMarkPushTime = 0;
+
+function connectBinanceWs() {
+  if (binanceWs) {
+    try { binanceWs.close(); } catch (_) {}
+  }
+  try {
+    binanceWs = new WebSocket(CFG.wsUrl);
+    binanceWs.onopen = () => {
+      S.binanceConnected = true;
+      setComponentState('binance-ws', 'connected', 'live');
+      setComponentDetail('binance-ws', '🟢 Binance Futures WS live · stream connected');
+      log('agent', 'tick', 'Binance Futures WS connected · live BTC, ETH, SOL & XRP stream active');
+    };
+    binanceWs.onmessage = (event) => {
+      if (S.mode !== 'live' || !S.running) return;
+      try {
+        const trade = JSON.parse(event.data);
+        if (!trade || !trade.s || !trade.p) return;
+        const price = parseFloat(trade.p);
+        if (isNaN(price) || price <= 0) return;
+        const sym = trade.s.toUpperCase();
+        handleIncomingTrade(sym, price);
+      } catch (e) {}
+    };
+    binanceWs.onerror = () => {
+      S.binanceConnected = false;
+      setComponentState('binance-ws', 'error', 'err');
+    };
+    binanceWs.onclose = () => {
+      S.binanceConnected = false;
+      setComponentState('binance-ws', 'reconnecting', 'warn');
+      if (S.mode === 'live') setTimeout(connectBinanceWs, 3000);
+    };
+  } catch (err) {
+    console.error('Binance WS error:', err);
+  }
+}
+
+function handleIncomingTrade(sym, price) {
+  S.tickCount++;
+  S.prevPrices[sym] = S.prices[sym];
+  S.prices[sym] = price;
+  if (!S.ticks[sym]) S.ticks[sym] = [];
+  S.ticks[sym].push({ t: S.tickCount, price, ts: now() });
+  if (S.ticks[sym].length > CFG.chartMaxTicks + 20) {
+    S.ticks[sym] = S.ticks[sym].slice(-CFG.chartMaxTicks);
+  }
+
+  computeIndicators(sym);
+  renderMeta();
+  renderChartHud();
+  renderMarketMatrix();
+  renderAgentComponents();
+  if (sym === S.activeSymbol && S.chartViewMode === 'chart') {
+    requestChartRender();
+  }
+
+  const currentTime = now();
+  if (currentTime - lastMarkPushTime >= 1500) {
+    lastMarkPushTime = currentTime;
+    pushMarkPrices();
+  }
+}
+
+async function dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrderId) {
+  if (!S.liveApi) return;
+  try {
+    const res = await fetch(`${CFG.apiBaseUrl}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
+      body: JSON.stringify({
+        symbol,
+        side: side.toUpperCase(),
+        type: 'MARKET',
+        order_type: 'market',
+        instrument_type: 'CRYPTO_PERPETUAL',
+        quantity: qty.toFixed(4),
+        leverage,
+        client_order_id: clientOrderId,
+        execution_price: price.toFixed(symbol === 'XRPUSDT' ? 4 : 2)
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      log('exchange', 'order', `Live API fill · id=<span class="v">${data.id}</span> · status=<span class="ok">${data.status}</span> · fill @ <span class="num">$${fmt(price, symbol === 'XRPUSDT' ? 4 : 2)}</span>`);
+      spawnFlow('to-agent', '201 Created', 'response');
+      await syncWithBroker();
+    } else {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      log('exchange', 'order', `Live API reject · <span class="err">${err.error || res.statusText}</span>`);
+    }
+  } catch (err) {
+    log('exchange', 'order', `Live API network error · <span class="err">${err.message}</span>`);
+  }
+}
+
+// ============================================================
+// ORDER ROUTER + BROKER PIPELINE (simulated with latency)
+// ============================================================
+function submitOrder(signal, risk) {
+  if (!risk.approved) return;
+  const symbol = signal.symbol;
+  const side = signal.side === 'long' ? 'buy' : 'sell';
+  const price = signal.entry;
+  const qty = risk.positionSizeUsdt / price;
+  const leverage = risk.leverage;
+  const clientOrderId = `${symbol}-${signal.agent}-${now()}-${Math.random().toString(36).slice(2,8)}`;
+  S.ordCounter++;
+  const orderId = `ord_${String(S.ordCounter).padStart(3,'0')}`;
+
+  log('agent', 'order', `→ <span class="k">POST</span> /api/orders · <span class="k">order.symbol</span>=<span class="sym">${symbol}</span> side=<span class="${side==='buy'?'ok':'err'}">${side}</span> qty=<span class="num">${fmtAsset(qty,4)}</span> · exec_price=<span class="num">$${fmt(price,2)}</span> · ${leverage}× ISOLATED · client_oid=<span class="v">…${clientOrderId.slice(-6)}</span>`);
+  spawnFlow('to-exchange', 'POST /orders', 'order');
+  setStatus('agent', 'sending');
+  setStatus('exchange', 'receiving');
+  highlightComponents(['order-router','orders-api']);
+  setComponentState('order-router', 'sending', 'live');
+  setComponentDetail('order-router', `<span class="k">POST</span> /api/orders · <span class="k">order</span>={ symbol:<span class="sym">${symbol}</span>, side:<span class="v">${side}</span>, qty:<span class="num">${fmtAsset(qty,4)}</span>, exec_price:<span class="num">$${fmt(price,2)}</span>, lev:<span class="num">${leverage}</span>, margin_type:<span class="v">isolated</span> }`);
+  addMarker(symbol, 'order', price, side);
+
+  dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrderId);
+
+  // Simulate latency: schedule the broker processing
+  const latencyMs = 100 + Math.random() * 300;
+  setTimeout(() => brokerPipeline(orderId, clientOrderId, signal, risk, qty, price, side, leverage), latencyMs / S.speed);
+}
+
+function brokerPipeline(orderId, clientOrderId, signal, risk, qty, price, side, leverage) {
+  const symbol = signal.symbol;
+
+  // 1. Order received
+  log('exchange', 'order', `Order received · <span class="v">${orderId}</span> · idempotency ✓ · status=<span class="warn">pending</span> → open!`);
+  setComponentState('orders-api', 'received', 'live');
+  setComponentDetail('orders-api', `<span class="k">order_id</span>=<span class="v">${orderId}</span> · <span class="k">client_oid</span>=<span class="v">${clientOrderId.slice(-12)}</span><br>idempotency checked (unique per account)`);
+
+  // 2. Validate
+  setTimeout(() => {
+    log('exchange', 'risk', `OrderValidator (dry-validation) · <span class="ok">PASS</span> · order_kind=market · instrument_type=CRYPTO_PERPETUAL`);
+    setComponentState('orders-api', 'validated', 'live');
+
+    // 3. Margin lock
+    const notional = price * qty;
+    const requiredMargin = notional / leverage;
+    postLedger('MARGIN_LOCKED', requiredMargin, 0, orderId, { reason: 'order margin' });
+    log('exchange', 'ledger', `<span class="purple">MARGIN_LOCKED</span> · notional $${fmt(notional,2)} / ${leverage}× = <span class="num">$${fmt(requiredMargin,2)}</span> · <span class="k">SELECT FOR UPDATE</span>`);
+    setComponentState('margin-ledger', 'locked', 'live');
+    setComponentDetail('margin-ledger', `<span class="purple">MARGIN_LOCKED</span> <span class="err">-$${fmt(requiredMargin,2)}</span> · available: <span class="v">${fmtUsd(S.account.available_balance)}</span> · locked: <span class="v">${fmtUsd(S.account.locked_margin)}</span>`);
+
+    // 4. Risk validators
+    setTimeout(() => {
+      const dd = ((S.account.max_equity - S.account.current_equity) / S.account.max_equity) * 100;
+      const vixOk = true; const marginOk = notional <= CFG.maxNotional;
+      const ddOk = dd <= CFG.maxDrawdownPct;
+      const posCount = Object.values(S.positions).filter(p => p.qty > 0).length;
+      const posLimitOk = posCount < CFG.maxPositions;
+      const allOk = vixOk && marginOk && ddOk && posLimitOk;
+      log('exchange', 'risk', `RiskManager · ${allOk?'<span class="ok">PASS</span>':'<span class="err">REJECT</span>'} · VIX=14.2 · notional $${fmt(notional,2)} ≤ $${fmt(CFG.maxNotional,0)} · DD=${dd.toFixed(2)}% · pos ${posCount}/${CFG.maxPositions}`);
+      setComponentState('risk-validator', allOk ? 'pass' : 'reject', allOk ? 'live' : 'err');
+      setComponentDetail('risk-validator', `VixGate ✓ · MarginValidator ${marginOk?'✓':'✗'} · MaxDrawdown ${ddOk?'✓':'✗'} · PositionLimit ${posLimitOk?'✓':'✗ (was no-op, now enforced)'}`);
+
+      if (!allOk) {
+        // release margin and reject
+        postLedger('MARGIN_UNLOCKED', 0, requiredMargin, orderId, { reason: 'rejection' });
+        log('exchange', 'order', `Order <span class="v">${orderId}</span> · status=<span class="err">rejected</span> · margin released`);
+        setComponentState('orders-api', 'rejected', 'err');
+        return;
+      }
+
+      // 5. Match
+      setTimeout(() => {
+        const matchLatency = 100 + Math.random() * 400;
+        log('exchange', 'fill', `MatchingEngine · fill @ <span class="num">$${fmt(price,2)}</span> × <span class="num">${fmtAsset(qty,4)}</span> · <span class="ok">filled</span> · slippage bypassed (execution_price) · latency ${Math.round(matchLatency)}ms`);
+        setComponentState('matching-engine', 'matched', 'live');
+        setComponentDetail('matching-engine', `<span class="k">fill_price</span>=<span class="num">$${fmt(price,2)}</span> · <span class="k">fill_qty</span>=<span class="num">${fmtAsset(qty,4)}</span> · <span class="k">status</span>=<span class="ok">filled</span><br>LatencyEngine ${Math.round(matchLatency)}ms · execution_price pins fill`);
+
+        // 6. Fee
+        const fee = price * qty * CFG.takerFeeRate;
+
+        // 7. Position manager
+        setTimeout(() => {
+          applyFillToPosition(orderId, signal, risk, qty, price, side, leverage, fee, requiredMargin);
+        }, 80 / S.speed);
+      }, 250 / S.speed);
+    }, 200 / S.speed);
+  }, 150 / S.speed);
+}
+
+function applyFillToPosition(orderId, signal, risk, qty, price, side, leverage, fee, orderMarginLocked) {
+  const symbol = signal.symbol;
+  const fillSide = side === 'buy' ? 'long' : 'short';
+  const existingPos = S.positions[symbol];
+
+  // Release order-level margin (position-level margin takes over)
+  postLedger('MARGIN_UNLOCKED', 0, orderMarginLocked, orderId, { reason: 'order margin released' });
+
+  // Position-level margin
+  const notional = price * qty;
+  const positionMargin = initialMargin(notional, leverage);
+
+  if (!existingPos || existingPos.qty === 0) {
+    // OPEN new
+    S.posCounter++;
+    const posId = `pos_${String(S.posCounter).padStart(3,'0')}`;
+    const liqPrice = leverage > 1 ? (fillSide === 'long' ? liqPriceLong(price, leverage) : liqPriceShort(price, leverage)) : null;
+    S.positions[symbol] = {
+      id: posId, symbol, side: fillSide, qty,
+      avgPrice: price, currentPrice: price,
+      leverage, marginType: 'isolated',
+      initialMargin: positionMargin, lockedMargin: positionMargin,
+      liquidationPrice: liqPrice,
+      stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
+      strategy: signal.agent,
+      realizedPnl: 0,
+      lifecycleState: 'open',
+      openedAt: now(),
+      tp1Hit: false,
+      history: [{ action: 'open', qty, price }],
+    };
+    postLedger('MARGIN_LOCKED', positionMargin, 0, posId, { reason: 'position margin' });
+    postLedger('FEE', fee, 0, posId, { reason: 'taker fee', rate: '0.04%' });
+    log('exchange', 'position', `<span class="v">${posId}</span> · <span class="${fillSide==='long'?'ok':'err'}">${fillSide.toUpperCase()}</span> <span class="sym">${symbol}</span> qty=<span class="num">${fmtAsset(qty,4)}</span> @ <span class="num">$${fmt(price,2)}</span> · ${leverage}× ISOLATED · liq=<span class="warn">$${liqPrice?fmt(liqPrice,2):'—'}</span> · SL=$${fmt(signal.stopLoss,2)} TP=$${fmt(signal.takeProfit,2)}`);
+    addMarker(symbol, 'fill', price, fillSide);
+    setComponentState('position-manager', 'opened', 'live');
+  } else if (existingPos.side === fillSide) {
+    // ADD to existing
+    const oldQty = existingPos.qty;
+    const oldAvg = existingPos.avgPrice;
+    const newQty = oldQty + qty;
+    const newAvg = (oldAvg * oldQty + price * qty) / newQty;
+    existingPos.qty = newQty;
+    existingPos.avgPrice = newAvg;
+    existingPos.currentPrice = price;
+    existingPos.history.push({ action: 'add', qty, price });
+    const addMargin = initialMargin(price * qty, leverage);
+    postLedger('MARGIN_LOCKED', addMargin, 0, existingPos.id, { reason: 'add' });
+    postLedger('FEE', fee, 0, existingPos.id, { reason: 'taker fee' });
+    existingPos.initialMargin += addMargin;
+    existingPos.lockedMargin += addMargin;
+    // recompute liq
+    existingPos.liquidationPrice = leverage > 1 ? (fillSide === 'long' ? liqPriceLong(newAvg, leverage) : liqPriceShort(newAvg, leverage)) : null;
+    log('exchange', 'position', `<span class="v">${existingPos.id}</span> · ADD <span class="num">+${fmtAsset(qty,4)}</span> @ <span class="num">$${fmt(price,2)}</span> · new qty=<span class="num">${fmtAsset(newQty,4)}</span> · new avg=<span class="num">$${fmt(newAvg,2)}</span>`);
+    addMarker(symbol, 'fill', price, 'add');
+    setComponentState('position-manager', 'added', 'live');
+  } else {
+    // OPPOSITE side — reduce / flip
+    const oldQty = existingPos.qty;
+    if (qty < oldQty) {
+      // REDUCE
+      const realized = (price - existingPos.avgPrice) * qty * (existingPos.side === 'long' ? 1 : -1);
+      existingPos.qty = oldQty - qty;
+      existingPos.realizedPnl = (existingPos.realizedPnl || 0) + realized;
+      existingPos.history.push({ action: 'reduce', qty, price });
+      const reduceMargin = (existingPos.initialMargin / oldQty) * qty;
+      postLedger('MARGIN_UNLOCKED', 0, reduceMargin, existingPos.id, { reason: 'reduce' });
+      existingPos.initialMargin -= reduceMargin;
+      existingPos.lockedMargin -= reduceMargin;
+      postLedger('REALIZED_PNL', 0, realized, existingPos.id, { reason: 'reduce' });
+      postLedger('FEE', fee, 0, existingPos.id, { reason: 'taker fee' });
+      log('exchange', 'position', `<span class="v">${existingPos.id}</span> · REDUCE <span class="num">-${fmtAsset(qty,4)}</span> @ <span class="num">$${fmt(price,2)}</span> · remaining=<span class="num">${fmtAsset(existingPos.qty,4)}</span> · realized=<span class="${realized>=0?'ok':'err'}">${realized>=0?'+':''}$${fmt(realized,2)}</span>`);
+      addMarker(symbol, 'fill', price, 'reduce');
+      setComponentState('position-manager', 'reduced', 'live');
+    } else if (qty === oldQty) {
+      // CLOSE
+      const realized = (price - existingPos.avgPrice) * oldQty * (existingPos.side === 'long' ? 1 : -1);
+      existingPos.realizedPnl = (existingPos.realizedPnl || 0) + realized;
+      existingPos.qty = 0;
+      existingPos.avgPrice = 0;
+      existingPos.lifecycleState = 'flat';
+      existingPos.closedAt = now();
+      existingPos.history.push({ action: 'close', qty, price });
+      postLedger('MARGIN_UNLOCKED', 0, existingPos.initialMargin, existingPos.id, { reason: 'close' });
+      postLedger('REALIZED_PNL', 0, realized, existingPos.id, { reason: 'close' });
+      postLedger('FEE', fee, 0, existingPos.id, { reason: 'taker fee' });
+      log('exchange', 'position', `<span class="v">${existingPos.id}</span> · CLOSE @ <span class="num">$${fmt(price,2)}</span> · realized=<span class="${realized>=0?'ok':'err'}">${realized>=0?'+':''}$${fmt(realized,2)}</span> · state=<span class="err">FLAT</span>`);
+      addMarker(symbol, 'fill', price, 'close');
+      setComponentState('position-manager', 'closed', 'live');
+      S.closedPositions.push({ ...existingPos });
+      delete S.positions[symbol];
+    } else {
+      // FLIP (qty > oldQty)
+      const closedQty = oldQty;
+      const realized = (price - existingPos.avgPrice) * closedQty * (existingPos.side === 'long' ? 1 : -1);
+      existingPos.realizedPnl = (existingPos.realizedPnl || 0) + realized;
+      existingPos.side = fillSide;
+      existingPos.qty = qty - closedQty;
+      existingPos.avgPrice = price;
+      existingPos.currentPrice = price;
+      existingPos.liquidationPrice = leverage > 1 ? (fillSide === 'long' ? liqPriceLong(price, leverage) : liqPriceShort(price, leverage)) : null;
+      existingPos.history.push({ action: 'flip', qty: closedQty, price });
+      // margin delta
+      const newMargin = initialMargin(price * existingPos.qty, leverage);
+      const marginDelta = newMargin - existingPos.initialMargin;
+      if (marginDelta > 0) postLedger('MARGIN_LOCKED', marginDelta, 0, existingPos.id, { reason: 'flip add' });
+      else postLedger('MARGIN_UNLOCKED', 0, -marginDelta, existingPos.id, { reason: 'flip release' });
+      existingPos.initialMargin = newMargin;
+      existingPos.lockedMargin = newMargin;
+      postLedger('REALIZED_PNL', 0, realized, existingPos.id, { reason: 'flip close leg' });
+      postLedger('FEE', fee, 0, existingPos.id, { reason: 'flip fee' });
+      log('exchange', 'position', `<span class="v">${existingPos.id}</span> · <span class="warn">FLIP</span> ${existingPos.side==='long'?'SHORT':'LONG'}→<span class="${fillSide==='long'?'ok':'err'}">${fillSide.toUpperCase()}</span> @ <span class="num">$${fmt(price,2)}</span> · realized=<span class="${realized>=0?'ok':'err'}">${realized>=0?'+':''}$${fmt(realized,2)}</span> · qty=<span class="num">${fmtAsset(existingPos.qty,4)}</span> · SAME ROW (side mutable)`);
+      addMarker(symbol, 'fill', price, 'flip');
+      setComponentState('position-manager', 'flipped', 'warn');
+    }
+  }
+
+  setComponentDetail('position-manager', Object.values(S.positions).filter(p=>p.qty>0).map(p => `<span class="${p.side==='long'?'ok':'err'}">${p.side.toUpperCase()}</span> ${p.symbol} ${fmtAsset(p.qty,4)}@$${fmt(p.avgPrice,0)} ${p.leverage}×`).join(' · ') || '—');
+  log('exchange', 'order', `← <span class="k">201 Created</span> · <span class="v">${orderId}</span> · status=<span class="ok">filled</span>`);
+  spawnFlow('to-agent', '201 Created', 'response');
+  setStatus('exchange', 'idle');
+  renderPositions(); renderAccount(); renderTotals(); renderAgentComponents(); renderExchangeComponents();
+}
+
+// ============================================================
+// BROKER-SIDE LIQUIDATION (async via mark push)
+// ============================================================
+function brokerLiquidationCheck(symbol) {
+  const pos = S.positions[symbol];
+  if (!pos || pos.qty <= 0 || pos.leverage <= 1 || !pos.liquidationPrice) return;
+  const px = S.prices[symbol];
+  const breached = pos.side === 'long' ? px <= pos.liquidationPrice : px >= pos.liquidationPrice;
+  if (!breached) return;
+
+  log('exchange', 'liq', `<span class="purple">LiquidationJob</span> enqueued · <span class="err">POSITION_LIQUIDATED</span> · <span class="sym">${symbol}</span> @ liq=<span class="num">$${fmt(pos.liquidationPrice,2)}</span> · async via SolidQueue`);
+  setComponentState('liquidation-engine', 'triggered', 'err');
+  addMarker(symbol, 'liq', pos.liquidationPrice, 'liquidate');
+
+  // simulate async job processing
+  setTimeout(() => {
+    const closePrice = pos.liquidationPrice;
+    const realized = (closePrice - pos.avgPrice) * pos.qty * (pos.side === 'long' ? 1 : -1);
+    pos.realizedPnl = (pos.realizedPnl || 0) + realized;
+    pos.qty = 0;
+    pos.avgPrice = 0;
+    pos.lifecycleState = 'liquidated';
+    pos.closedAt = now();
+    pos.history.push({ action: 'liquidate', qty: pos.qty || 0, price: closePrice });
+    postLedger('MARGIN_UNLOCKED', 0, pos.initialMargin, pos.id, { reason: 'liquidation' });
+    postLedger('REALIZED_PNL', 0, realized, pos.id, { reason: 'liquidation' });
+    log('exchange', 'position', `<span class="v">${pos.id}</span> · LIQUIDATED @ <span class="num">$${fmt(closePrice,2)}</span> · realized=<span class="${realized>=0?'ok':'err'}">${realized>=0?'+':''}$${fmt(realized,2)}</span> · margin forfeited`);
+    S.closedPositions.push({ ...pos });
+    delete S.positions[symbol];
+    renderPositions(); renderAccount(); renderTotals(); renderAgentComponents(); renderExchangeComponents();
+  }, 200 / S.speed);
+}
+
+// ============================================================
+// MARK PRICE PUSH (agent → broker, every tick)
+// ============================================================
+function pushMarkPrices() {
+  const symbol = S.activeSymbol;
+  const dp = symbol === 'XRPUSDT' ? 4 : 2;
+  spawnFlow('to-exchange', `POST /mark_prices ${symbol}=$${fmt(S.prices[symbol], dp)}`, 'mark');
+  setComponentState('mark-pusher', 'pushing', 'live');
+  setComponentDetail('mark-pusher', `<span class="k">POST</span> /api/mark_prices · idempotent · <span class="sym">${symbol}</span>=<span class="num">$${fmt(S.prices[symbol], dp)}</span>`);
+  setComponentState('liquidation-engine', `${Object.values(S.positions).filter(p=>p.qty>0&&p.leverage>1).length} monitored`, 'live');
+  // broker checks liquidation
+  brokerLiquidationCheck(symbol);
+
+  if (S.liveApi) {
+    fetch(`${CFG.apiBaseUrl}/mark-prices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
+      body: JSON.stringify({ prices: { [symbol]: S.prices[symbol].toFixed(dp) } })
+    }).catch(err => console.warn('Live mark price push error:', err));
+  }
+}
+
+// ============================================================
+// MAIN TICK LOOP
+// ============================================================
+let lastTickAt = 0;
+
+function tick() {
+  S.tickCount++;
+
+  // Update all symbols' prices
+  for (const sym of ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']) {
+    const newPrice = nextPrice(sym);
+    pushTick(sym, newPrice);
+  }
+
+  const sym = S.activeSymbol;
+  const price = S.prices[sym];
+  const ind = S.indicators[sym];
+
+  // log tick occasionally (every 5 ticks)
+  if (S.tickCount % 5 === 0) {
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    setComponentDetail('binance-ws', `tick <span class="sym">${sym}</span> @ <span class="num">$${fmt(price, dp)}</span> · tick #${S.tickCount}`);
+  }
+
+  // Push mark prices every tick (drives broker liquidation)
+  if (S.tickCount % CFG.markPushEveryTicks === 0) {
+    pushMarkPrices();
+  }
+
+  // AGENT: MOMENTUM-γ analyze (only for active symbol)
+  if (S.agentsEnabled.MOMENTUM && ind && ind.ema) {
+    const signal = Agents.MOMENTUM.analyze(sym);
+    setComponentState('signal-engine', signal ? 'signal' : 'scanning', signal ? 'live' : 'live');
+    setComponentDetail('signal-engine', `EMA50=<span class="num">$${fmt(ind.ema,2)}</span> · prev ${ind.prevAbove===undefined?'—':(ind.prevAbove?'above':'below')} · now <span class="${ind.above?'ok':'err'}">${ind.above?'above':'below'}</span>${ind.crossover?' · <span class="warn">CROSSOVER</span>':''} · RSI=<span class="num">${ind.rsi?ind.rsi.toFixed(1):'—'}</span> · ATR=<span class="num">${ind.atr?ind.atr.toFixed(2):'—'}</span> · cooldown ${S.cooldowns[`${sym}:MOMENTUM`] && now() < S.cooldowns[`${sym}:MOMENTUM`] ? Math.ceil((S.cooldowns[`${sym}:MOMENTUM`]-now())/1000)+'s' : '0s'}`);
+    if (signal) {
+      log('agent', 'signal', `<span class="warn">${signal.agent}</span> · <span class="${signal.side==='long'?'ok':'err'}">${signal.type}</span> <span class="sym">${signal.symbol}</span> · entry=<span class="num">$${fmt(signal.entry,2)}</span> SL=<span class="num">$${fmt(signal.stopLoss,2)}</span> TP=<span class="num">$${fmt(signal.takeProfit,2)}</span> · <span class="v">${signal.reason}</span>`);
+      addMarker(sym, 'signal', signal.entry, signal.type);
+      setComponentState('signal-engine', 'generated', 'live');
+      S.cooldowns[`${sym}:MOMENTUM`] = now() + CFG.cooldownMs;
+      // Risk gate
+      const risk = Agents.RISK_MGR.gate(signal);
+      setComponentState('risk-manager', risk.approved ? 'pass' : 'reject', risk.approved ? 'live' : 'err');
+      setComponentDetail('risk-manager', risk.approved
+        ? `<span class="ok">APPROVED</span> · size=<span class="num">$${fmt(risk.positionSizeUsdt,0)}</span> · lev=<span class="num">${risk.leverage}×</span> · ISOLATED · ${risk.reason}`
+        : `<span class="err">REJECT</span> · ${risk.reason}`);
+      log('agent', 'risk', `<span class="warn">${Agents.RISK_MGR.id}</span> · ${risk.approved?'<span class="ok">APPROVED</span>':'<span class="err">REJECT</span>'} · ${risk.reason}`);
+      if (risk.approved) {
+        // EXECUTOR-ε routes the order
+        submitOrder(signal, risk);
+      }
+    }
+  }
+
+  // AGENT: EXECUTOR-ε manage existing positions (SL/TP/trailing)
+  if (S.agentsEnabled.EXECUTOR) {
+    for (const symKey of Object.keys(S.positions)) {
+      const pos = S.positions[symKey];
+      if (pos.qty <= 0) continue;
+      const action = Agents.EXECUTOR.managePosition(pos);
+      if (!action) continue;
+      if (action.action === 'trail') {
+        // already applied in managePosition; log occasionally
+        if (S.tickCount % 3 === 0) {
+          log('agent', 'position', `<span class="warn">EXECUTOR-ε</span> · trail SL on <span class="sym">${symKey}</span> · new SL=<span class="num">$${fmt(pos.stopLoss,2)}</span>`);
+        }
+      } else if (action.action === 'reduce') {
+        // Build a CLOSE signal with reduce qty
+        const signal = {
+          agent: 'EXECUTOR-ε', type: 'CLOSE', symbol: symKey, side: pos.side === 'long' ? 'short' : 'long',
+          entry: action.price, stopLoss: null, takeProfit: null,
+          reason: action.reason, qty: action.qty,
+        };
+        log('agent', 'signal', `<span class="warn">EXECUTOR-ε</span> · <span class="warn">${action.reason}</span> on <span class="sym">${symKey}</span> · qty=<span class="num">${fmtAsset(action.qty,4)}</span> @ <span class="num">$${fmt(action.price,2)}</span>`);
+        addMarker(symKey, 'signal', action.price, action.reason.toLowerCase().replace(' ', '_'));
+        const risk = { approved: true, positionSizeUsdt: action.qty * action.price, leverage: pos.leverage, marginType: 'isolated', liqBufferAtr: 0, reason: 'executor exit' };
+        submitOrderWithQty(signal, risk, action.qty);
+        pos.tp1Hit = true;
+      } else if (action.action === 'close') {
+        const signal = {
+          agent: 'EXECUTOR-ε', type: 'CLOSE', symbol: symKey, side: pos.side === 'long' ? 'short' : 'long',
+          entry: action.price, stopLoss: null, takeProfit: null,
+          reason: action.reason,
+        };
+        log('agent', 'signal', `<span class="warn">EXECUTOR-ε</span> · <span class="${action.reason.includes('STOP')?'err':'ok'}">${action.reason}</span> on <span class="sym">${symKey}</span> @ <span class="num">$${fmt(action.price,2)}</span>`);
+        addMarker(symKey, 'signal', action.price, action.reason.toLowerCase().replace(' ', '_'));
+        const risk = { approved: true, positionSizeUsdt: pos.qty * action.price, leverage: pos.leverage, marginType: 'isolated', liqBufferAtr: 0, reason: 'executor exit' };
+        submitOrderWithQty(signal, risk, pos.qty);
+      }
+    }
+  }
+
+  // Poll positions every N ticks
+  if (S.tickCount - S.lastPollTick >= CFG.pollEveryTicks) {
+    S.lastPollTick = S.tickCount;
+    const activeCount = Object.values(S.positions).filter(p => p.qty > 0).length;
+    setComponentState('position-tracker', 'polling', 'live');
+    setComponentDetail('position-tracker', `<span class="k">GET</span> /api/positions · tick #${S.tickCount} · ${activeCount} active<br>` + (Object.values(S.positions).filter(p=>p.qty>0).map(p => `<span class="${p.side==='long'?'ok':'err'}">${p.side.toUpperCase()}</span> ${p.symbol} ${fmtAsset(p.qty,4)}`).join(' · ') || '— no positions'));
+    if (S.tickCount % 12 === 0) {
+      log('agent', 'tick', `<span class="k">GET</span> /api/positions · poll · equity=<span class="v">$${fmt(S.account.current_equity,2)}</span> · realized=<span class="${S.account.realized_pnl>=0?'ok':'err'}">${S.account.realized_pnl>=0?'+':''}$${fmt(S.account.realized_pnl,2)}</span> · DD=${((S.account.max_equity - S.account.current_equity) / S.account.max_equity * 100).toFixed(2)}%`);
+    }
+
+    if (S.liveApi) {
+      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId } })
+        .then(r => r.json())
+        .then(acc => {
+          if (acc && acc.wallet) {
+            S.account.available_balance = parseFloat(acc.wallet.available);
+            S.account.locked_margin = parseFloat(acc.wallet.locked);
+            S.account.current_equity = parseFloat(acc.equity || acc.wallet.available);
+            S.account.realized_pnl = parseFloat(acc.realized_pnl || 0);
+            S.account.unrealized_pnl = parseFloat(acc.unrealized_pnl || 0);
+            renderAccount();
+            renderTotals();
+          }
+        }).catch(() => {});
+    }
+  }
+
+  // Render
+  renderMeta();
+  renderChartHud();
+  renderMarketMatrix();
+  if (S.chartViewMode === 'chart') {
+    requestChartRender();
+  }
+  renderPositions();
+  renderAccount();
+  renderTotals();
+  renderAgentComponents();
+  renderExchangeComponents();
+  if (S.tickCount % 10 === 0) {
+    setStatus('agent', 'idle');
+    setStatus('exchange', 'idle');
+    highlightComponents([]);
+  }
+}
+
+function submitOrderWithQty(signal, risk, qty) {
+  // bypass risk gate sizing, use provided qty
+  const symbol = signal.symbol;
+  const side = signal.side === 'long' ? 'buy' : 'sell';
+  const price = signal.entry || S.prices[symbol];
+  const leverage = risk.leverage;
+  S.ordCounter++;
+  const orderId = `ord_${String(S.ordCounter).padStart(3,'0')}`;
+  const clientOrderId = `${symbol}-${signal.agent}-${now()}-${Math.random().toString(36).slice(2,8)}`;
+  log('agent', 'order', `→ <span class="k">POST</span> /api/orders · <span class="k">${side}</span> <span class="sym">${symbol}</span> qty=<span class="num">${fmtAsset(qty,4)}</span> @ <span class="num">$${fmt(price,2)}</span> · ${leverage}× · client_oid=<span class="v">…${clientOrderId.slice(-6)}</span>`);
+  spawnFlow('to-exchange', 'POST /orders', 'order');
+  setStatus('agent', 'sending');
+  setStatus('exchange', 'receiving');
+  highlightComponents(['order-router','orders-api']);
+  dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrderId);
+  const latencyMs = 100 + Math.random() * 250;
+  setTimeout(() => brokerPipeline(orderId, clientOrderId, signal, risk, qty, price, side, leverage), latencyMs / S.speed);
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function renderMeta() {
+  document.getElementById('tickCount').textContent = S.tickCount;
+  document.getElementById('regimeName').textContent = S.regime;
+  const symMap = {
+    BTCUSDT: 'priceBtc',
+    ETHUSDT: 'priceEth',
+    SOLUSDT: 'priceSol',
+    XRPUSDT: 'priceXrp',
+  };
+  for (const [sym, elId] of Object.entries(symMap)) {
+    const el = document.getElementById(elId);
+    if (!el) continue;
+    const px = S.prices[sym];
+    const prev = S.prevPrices[sym];
+    const chg = prev ? ((px - prev) / prev) * 100 : 0;
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    el.querySelector('.px').textContent = '$' + fmt(px, dp);
+    const chgEl = el.querySelector('.chg');
+    chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    chgEl.className = 'chg ' + (chg >= 0 ? 'up' : 'dn');
+  }
+}
+
+function renderAccount() {
+  document.getElementById('balEquity').textContent = fmtUsd(S.account.current_equity);
+  document.getElementById('balAvail').textContent = fmtUsd(S.account.available_balance);
+  document.getElementById('balLocked').textContent = fmtUsd(S.account.locked_margin);
+  setComponentDetail('margin-ledger', `available <span class="v">${fmtUsd(S.account.available_balance)}</span> · locked <span class="v">${fmtUsd(S.account.locked_margin)}</span>`);
+}
+
+function renderTotals() {
+  let realized = 0, unrealized = 0;
+  Object.values(S.positions).forEach(p => {
+    if (p.qty > 0) {
+      const px = S.prices[p.symbol];
+      unrealized += p.side === 'long' ? (px - p.avgPrice) * p.qty : (p.avgPrice - px) * p.qty;
+    }
+    realized += p.realizedPnl || 0;
+  });
+  S.closedPositions.forEach(p => { realized += p.realizedPnl || 0; });
+  const rEl = document.getElementById('totalRealized');
+  const uEl = document.getElementById('totalUnrealized');
+  const eEl = document.getElementById('totalEquity');
+  const cEl = document.getElementById('totalCashInvariant');
+  rEl.textContent = (realized >= 0 ? '+' : '') + '$' + fmt(realized, 2);
+  rEl.className = 'val ' + (realized >= 0 ? 'profit' : 'loss');
+  uEl.textContent = (unrealized >= 0 ? '+' : '') + '$' + fmt(unrealized, 2);
+  uEl.className = 'val ' + (unrealized >= 0 ? 'profit' : 'loss');
+  eEl.textContent = '$' + fmt(S.account.current_equity, 2);
+  let posMargin = 0;
+  Object.values(S.positions).forEach(p => { if (p.qty > 0) posMargin += p.initialMargin || 0; });
+  const invariant = S.account.available_balance + S.account.locked_margin + posMargin;
+  cEl.textContent = '$' + fmt(invariant, 2);
+}
+
+function renderPositions() {
+  const grid = document.getElementById('positionsGrid');
+  const actives = Object.values(S.positions).filter(p => p.qty > 0);
+  const all = [...actives, ...S.closedPositions.slice(-3)];
+  document.getElementById('posCount').textContent = actives.length + S.closedPositions.length;
+  if (all.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No positions yet. Press Play and watch the agent react to live ticks.</div>';
+    return;
+  }
+  grid.innerHTML = all.map(p => {
+    const isLong = p.side === 'long';
+    const isFlat = p.qty === 0;
+    const cls = isFlat ? 'flat' : (isLong ? 'long' : 'short');
+    const sideCls = isFlat ? 'flat' : (isLong ? 'long' : 'short');
+    let unrealized = 0;
+    if (!isFlat) {
+      const px = S.prices[p.symbol];
+      unrealized = isLong ? (px - p.avgPrice) * p.qty : (p.avgPrice - px) * p.qty;
+    }
+    const realCls = (p.realizedPnl || 0) >= 0 ? 'profit' : 'loss';
+    const curPrice = S.prices[p.symbol] || p.avgPrice;
+    const liqDist = p.liquidationPrice ? (((curPrice - p.liquidationPrice) / curPrice) * 100).toFixed(2) + '%' : '—';
+    const histChips = (p.history || []).slice(-6).map(h => {
+      const c = h.action;
+      const sign = h.action === 'add' ? '+' : (['reduce','close','liquidate'].includes(h.action)) ? '-' : '';
+      const priceStr = h.price ? `@${h.price.toFixed(0)}` : '';
+      const qtyStr = h.qty ? `${sign}${fmtAsset(h.qty,3)}` : '';
+      return `<span class="history-chip ${c}">${h.action} ${qtyStr}${priceStr}</span>`;
+    }).join('');
+    return `
+      <div class="position-card ${cls}" data-pos="${p.id}">
+        <div class="position-head">
+          <div class="position-id-block">
+            <div class="position-symbol">${p.symbol.replace('USDT','')}</div>
+            <div class="position-id">${p.id} · ${p.symbol} · ${p.strategy || '—'}</div>
+          </div>
+          <div class="position-tags">
+            <span class="tag-side ${sideCls}">${isFlat ? 'FLAT' : (isLong ? 'LONG' : 'SHORT')}</span>
+            <span class="tag-state ${p.lifecycleState || (isFlat ? 'flat' : 'open')}">${(p.lifecycleState || (isFlat ? 'flat' : 'open')).toUpperCase()}</span>
+            ${p.leverage > 1 ? `<span class="tag-leverage">${p.leverage}× ${p.marginType}</span>` : ''}
+          </div>
+        </div>
+        <div class="position-stats">
+          <div class="stat-row"><span class="stat-label">Qty</span><span class="stat-value">${fmtAsset(p.qty)}</span></div>
+          <div class="stat-row"><span class="stat-label">Avg Price</span><span class="stat-value">$${fmt(p.avgPrice,2)}</span></div>
+          <div class="stat-row"><span class="stat-label">Last</span><span class="stat-value">$${fmt(curPrice,2)}</span></div>
+          <div class="stat-row"><span class="stat-label">Realized</span><span class="stat-value ${realCls}">${(p.realizedPnl||0)>=0?'+':''}$${fmt(p.realizedPnl||0,2)}</span></div>
+          ${!isFlat ? `
+            <div class="stat-row"><span class="stat-label">Unrealized</span><span class="stat-value ${unrealized>=0?'profit':'loss'}">${unrealized>=0?'+':''}$${fmt(unrealized,2)}</span></div>
+            <div class="stat-row"><span class="stat-label">SL</span><span class="stat-value">${p.stopLoss?'$'+fmt(p.stopLoss,2):'—'}</span></div>
+            <div class="stat-row"><span class="stat-label">TP</span><span class="stat-value">${p.takeProfit?'$'+fmt(p.takeProfit,2):'—'}</span></div>
+            ${p.leverage > 1 ? `
+              <div class="stat-row"><span class="stat-label">Liq Price</span><span class="stat-value">${p.liquidationPrice?'$'+fmt(p.liquidationPrice,2):'—'}</span></div>
+              <div class="stat-row"><span class="stat-label">Liq Dist</span><span class="stat-value">${liqDist}</span></div>
+            ` : ''}
+          ` : ''}
+        </div>
+        <div class="position-history">${histChips || '<span style="color:var(--text-faint);font-size:10px;">no history</span>'}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderAgentComponents() {
+  const activeCount = Object.values(S.positions).filter(p => p.qty > 0).length;
+  document.getElementById('cmp-position-tracker').textContent = `${activeCount} active`;
+  const ind = S.indicators[S.activeSymbol];
+  if (ind && ind.ema) {
+    document.getElementById('emaVal').textContent = '$' + fmt(ind.ema, 2);
+    document.getElementById('rsiVal').textContent = ind.rsi ? ind.rsi.toFixed(2) : '—';
+    document.getElementById('atrVal').textContent = ind.atr ? '$' + fmt(ind.atr, 2) : '—';
+    document.getElementById('trendVal').textContent = ind.trend || '—';
+    document.getElementById('trendVal').style.color = ind.trend === 'up' ? 'var(--green)' : (ind.trend === 'down' ? 'var(--red)' : 'var(--text)');
+  }
+  // pnl tracker detail
+  let realized = 0, unrealized = 0;
+  Object.values(S.positions).forEach(p => {
+    if (p.qty > 0) {
+      const px = S.prices[p.symbol];
+      unrealized += p.side === 'long' ? (px - p.avgPrice) * p.qty : (p.avgPrice - px) * p.qty;
+    }
+    realized += p.realizedPnl || 0;
+  });
+  S.closedPositions.forEach(p => { realized += p.realizedPnl || 0; });
+}
+
+function renderExchangeComponents() {
+  const activeCount = Object.values(S.positions).filter(p => p.qty > 0).length;
+  document.getElementById('cmp-position-manager').textContent = `${activeCount} open`;
+  // liquidation engine
+  const leveraged = Object.values(S.positions).filter(p => p.qty > 0 && p.leverage > 1);
+  document.getElementById('cmp-liquidation-engine').textContent = `${leveraged.length} monitored`;
+  if (leveraged.length > 0) {
+    setComponentDetail('liquidation-engine', leveraged.map(p => {
+      const px = S.prices[p.symbol];
+      const dist = p.side === 'long' ? ((px - p.liquidationPrice) / px * 100) : ((p.liquidationPrice - px) / px * 100);
+      const cls = dist < 5 ? 'err' : (dist < 15 ? 'warn' : 'ok');
+      return `${p.symbol} ${p.leverage}× liq=<span class="${cls}">$${fmt(p.liquidationPrice,0)}</span> (${dist.toFixed(1)}%)`;
+    }).join(' · '));
+  } else {
+    setComponentDetail('liquidation-engine', '— cache: leveraged positions · checks on mark push');
+  }
+  // position-manager detail
+  if (activeCount > 0) {
+    setComponentDetail('position-manager', Object.values(S.positions).filter(p=>p.qty>0).map(p => `<span class="${p.side==='long'?'ok':'err'}">${p.side.toUpperCase()}</span> ${p.symbol} ${fmtAsset(p.qty,4)}@$${fmt(p.avgPrice,0)} ${p.leverage}×`).join(' · '));
+  } else {
+    setComponentDetail('position-manager', '— keyed by full contract spec · side mutable');
+  }
+}
+
+// ============================================================
+// CHART HUD, TEXT MATRIX & CANVAS
+// ============================================================
+function renderChartHud() {
+  const sym = S.activeSymbol, px = S.prices[sym], prev = S.prevPrices[sym];
+  const chg = prev ? ((px - prev) / prev) * 100 : 0, dp = sym === 'XRPUSDT' ? 4 : 2;
+  const ind = S.indicators[sym] || {}, pos = S.positions[sym];
+
+  const lastEl = document.getElementById('hudLastPrice');
+  lastEl.textContent = `$${fmt(px, dp)}`;
+  lastEl.className = `hud-val ${chg >= 0 ? 'up' : 'dn'}`;
+
+  const chgEl = document.getElementById('hudChg');
+  chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+  chgEl.className = `hud-val ${chg >= 0 ? 'up' : 'dn'}`;
+
+  const emaEl = document.getElementById('hudEma');
+  emaEl.textContent = ind.ema ? `$${fmt(ind.ema, dp)} (${ind.above ? 'ABOVE' : 'BELOW'})` : '—';
+  emaEl.className = `hud-val ${ind.above ? 'up' : 'dn'}`;
+
+  const rsiEl = document.getElementById('hudRsi');
+  const rTag = ind.rsi ? (ind.rsi > 70 ? ' [OB]' : ind.rsi < 30 ? ' [OS]' : ' [NEU]') : '';
+  rsiEl.textContent = ind.rsi ? `${ind.rsi.toFixed(1)}${rTag}` : '—';
+  rsiEl.className = `hud-val ${ind.rsi > 70 ? 'dn' : ind.rsi < 30 ? 'up' : ''}`;
+
+  document.getElementById('hudAtr').textContent = ind.atr ? `$${fmt(ind.atr, dp)}` : '—';
+  document.getElementById('hudBb').textContent = ind.bbLower ? `$${fmt(ind.bbLower, 0)} – $${fmt(ind.bbUpper, 0)}` : '—';
+
+  const posEl = document.getElementById('hudPos');
+  if (pos && pos.qty > 0) {
+    const uPnl = pos.side === 'long' ? (px - pos.avgPrice) * pos.qty : (pos.avgPrice - px) * pos.qty;
+    posEl.textContent = `${pos.side.toUpperCase()} ${fmtAsset(pos.qty, 4)} @ $${fmt(pos.avgPrice, dp)} (${uPnl >= 0 ? '+' : ''}$${fmt(uPnl, 2)})`;
+    posEl.className = `hud-val ${uPnl >= 0 ? 'up' : 'dn'}`;
+  } else {
+    posEl.textContent = 'FLAT (0 pos)';
+    posEl.className = 'hud-val';
+  }
+}
+
+function renderMarketMatrix() {
+  const tbody = document.getElementById('marketMatrixBody');
+  if (!tbody) return;
+  const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
+  tbody.innerHTML = symbols.map(sym => {
+    const px = S.prices[sym], prev = S.prevPrices[sym];
+    const chg = prev ? ((px - prev) / prev) * 100 : 0;
+    const dp = sym === 'XRPUSDT' ? 4 : 2;
+    const ind = S.indicators[sym] || {};
+    const pos = S.positions[sym];
+    const uPnl = pos && pos.qty > 0 ? (pos.side === 'long' ? (px - pos.avgPrice) * pos.qty : (pos.avgPrice - px) * pos.qty) : 0;
+    const isAct = sym === S.activeSymbol;
+    const posStr = pos && pos.qty > 0 ? `${pos.side.toUpperCase()} ${fmtAsset(pos.qty, 4)} @ $${fmt(pos.avgPrice, dp)}` : 'FLAT';
+    const pnlStr = pos && pos.qty > 0 ? `${uPnl >= 0 ? '+' : ''}$${fmt(uPnl, 2)}` : '—';
+    const regime = ind.above !== undefined ? (ind.above ? '🟢 BULLISH' : '🔴 BEARISH') : 'SCANNING';
+    return `
+      <tr class="${isAct ? 'active-row' : ''}" onclick="selectSymbol('${sym}')">
+        <td class="sym-cell">${isAct ? '<span class="dot"></span>' : ''}${sym}</td>
+        <td class="px-cell">$${fmt(px, dp)}</td>
+        <td class="${chg >= 0 ? 'up' : 'dn'}" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</td>
+        <td>${(S.ticks[sym] || []).length}</td>
+        <td>${ind.ema ? '$' + fmt(ind.ema, dp) : '—'}</td>
+        <td style="color:${ind.rsi > 70 ? 'var(--red)' : ind.rsi < 30 ? 'var(--green)' : 'inherit'}">${ind.rsi ? ind.rsi.toFixed(1) : '—'}</td>
+        <td>${ind.atr ? '$' + fmt(ind.atr, dp) : '—'}</td>
+        <td>${regime}</td>
+        <td style="color:${pos && pos.qty > 0 ? (pos.side === 'long' ? 'var(--green)' : 'var(--red)') : 'inherit'}">${posStr}</td>
+        <td style="color:${uPnl > 0 ? 'var(--green)' : uPnl < 0 ? 'var(--red)' : 'inherit'}">${pnlStr}</td>
+      </tr>`;
+  }).join('');
+}
+
+function selectSymbol(sym) {
+  S.activeSymbol = sym;
+  document.getElementById('chartSymbol').textContent = sym;
+  document.querySelectorAll('.cp-btn[data-symbol]').forEach(b => {
+    b.classList.toggle('active', b.dataset.symbol === sym);
+  });
+  log('system', 'state', `Active symbol → <span class="sym">${sym}</span>`);
+  renderChartHud();
+  renderMarketMatrix();
+  if (S.chartViewMode === 'chart') requestChartRender();
+}
+window.selectSymbol = selectSymbol;
+
+const canvas = document.getElementById('priceChart');
+const ctx = canvas.getContext('2d');
+let chartDpr = 1, chartRenderScheduled = false;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  chartDpr = dpr;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  canvas.width = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+
+function requestChartRender() {
+  if (chartRenderScheduled || S.chartViewMode !== 'chart') return;
+  chartRenderScheduled = true;
+  requestAnimationFrame(() => {
+    chartRenderScheduled = false;
+    renderChart();
+  });
+}
+
+function drawChartEmpty(context, sym, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : 2;
+  context.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i = 0; i <= 5; i++) {
+    const y = (i / 5) * dims.H;
+    context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W, y); context.stroke();
+  }
+  context.fillStyle = 'rgba(148,163,184,0.6)';
+  context.font = '11px JetBrains Mono';
+  context.textAlign = 'center';
+  context.fillText(`🟢 Live Binance Feed · Waiting for trade stream on ${sym}...`, dims.W / 2, dims.H / 2 - 8);
+  context.fillStyle = '#94a3b8';
+  context.fillText(`Initial Price: $${fmt(S.prices[sym], dp)}`, dims.W / 2, dims.H / 2 + 12);
+}
+
+function drawChartGridAndLines(context, sym, bounds, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : (bounds.range < 10 ? 2 : 0);
+  const xFor = (i) => (i / (dims.ticks.length - 1)) * (dims.W - 65);
+  const yFor = (p) => dims.H - ((p - bounds.min) / bounds.range) * dims.H;
+  context.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i = 0; i <= 5; i++) {
+    const y = (i / 5) * dims.H;
+    context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W - 65, y); context.stroke();
+    context.fillStyle = 'rgba(148,163,184,0.4)'; context.font = '9px JetBrains Mono'; context.textAlign = 'right';
+    context.fillText('$' + fmt(bounds.min + (1 - i / 5) * bounds.range, dp), dims.W - 4, y - 2);
+  }
+  const ind = S.indicators[sym];
+  if (ind && ind.bbUpper && ind.bbLower) {
+    context.fillStyle = 'rgba(59,130,246,0.05)';
+    context.fillRect(0, yFor(ind.bbUpper), dims.W - 65, yFor(ind.bbLower) - yFor(ind.bbUpper));
+  }
+  if (ind && ind.ema) {
+    context.strokeStyle = 'rgba(234,179,8,0.5)'; context.setLineDash([4, 4]); context.lineWidth = 1.2;
+    context.beginPath(); context.moveTo(0, yFor(ind.ema)); context.lineTo(dims.W - 65, yFor(ind.ema)); context.stroke(); context.setLineDash([]);
+  }
+  const grad = context.createLinearGradient(0, 0, 0, dims.H);
+  grad.addColorStop(0, 'rgba(59, 130, 246, 0.2)'); grad.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+  context.fillStyle = grad; context.beginPath(); context.moveTo(xFor(0), dims.H);
+  dims.ticks.forEach((t, i) => context.lineTo(xFor(i), yFor(t.price)));
+  context.lineTo(xFor(dims.ticks.length - 1), dims.H); context.closePath(); context.fill();
+  context.strokeStyle = '#e2e8f0'; context.lineWidth = 1.5; context.beginPath();
+  dims.ticks.forEach((t, i) => i === 0 ? context.moveTo(xFor(i), yFor(t.price)) : context.lineTo(xFor(i), yFor(t.price)));
+  context.stroke();
+}
+
+function drawChartOverlays(context, sym, bounds, dims) {
+  const dp = sym === 'XRPUSDT' ? 4 : 2;
+  const yFor = (p) => dims.H - ((p - bounds.min) / bounds.range) * dims.H;
+  const last = dims.ticks[dims.ticks.length - 1], prev = dims.ticks[dims.ticks.length - 2] || last;
+  context.fillStyle = last.price >= prev.price ? '#22c55e' : '#ef4444';
+  context.fillRect(dims.W - 63, Math.max(2, Math.min(dims.H - 18, yFor(last.price) - 8)), 61, 16);
+  context.fillStyle = '#ffffff'; context.font = 'bold 9px JetBrains Mono'; context.textAlign = 'right';
+  context.fillText('$' + fmt(last.price, dp), dims.W - 5, Math.max(14, Math.min(dims.H - 6, yFor(last.price) + 3)));
+  const pos = S.positions[sym];
+  if (pos && pos.qty > 0) {
+    const drawLine = (price, color, label) => {
+      if (!price) return;
+      const y = yFor(price); if (y < 0 || y > dims.H) return;
+      context.strokeStyle = color; context.setLineDash([5, 4]); context.lineWidth = 1;
+      context.beginPath(); context.moveTo(0, y); context.lineTo(dims.W - 65, y); context.stroke(); context.setLineDash([]);
+      context.fillStyle = color; context.font = '9px JetBrains Mono'; context.textAlign = 'left';
+      context.fillText(`${label} $${fmt(price, dp)}`, 6, y - 3);
+    };
+    drawLine(pos.avgPrice, 'rgba(59,130,246,0.8)', 'ENTRY');
+    drawLine(pos.stopLoss, 'rgba(6,182,212,0.8)', 'SL');
+    drawLine(pos.takeProfit, 'rgba(34,197,94,0.8)', 'TP');
+    if (pos.leverage > 1 && pos.liquidationPrice) drawLine(pos.liquidationPrice, 'rgba(239,68,68,0.8)', 'LIQ');
+  }
+}
+
+function renderChart() {
+  if (S.chartViewMode !== 'chart') return;
+  const sym = S.activeSymbol, ticks = S.ticks[sym];
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!ticks || ticks.length < 2) {
+    drawChartEmpty(ctx, sym, { W, H });
+    return;
+  }
+  const prices = ticks.map(t => t.price);
+  const minP = Math.min(...prices), maxP = Math.max(...prices);
+  const minSpread = (minP || 1) * 0.003;
+  const range = Math.max(maxP - minP, minSpread), pad = range * 0.12;
+  const pos = S.positions[sym];
+  let extraMin = minP - pad, extraMax = maxP + pad;
+  if (pos && pos.qty > 0) {
+    if (pos.stopLoss) extraMin = Math.min(extraMin, pos.stopLoss);
+    if (pos.takeProfit) extraMax = Math.max(extraMax, pos.takeProfit);
+    if (pos.liquidationPrice) extraMin = Math.min(extraMin, pos.liquidationPrice);
+  }
+  const bounds = { min: extraMin, range: extraMax - extraMin };
+  drawChartGridAndLines(ctx, sym, bounds, { W, H, ticks });
+  drawChartOverlays(ctx, sym, bounds, { W, H, ticks });
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+document.getElementById('playBtn').addEventListener('click', () => {
+  S.running = !S.running;
+  document.getElementById('playBtn').textContent = S.running ? '⏸ Pause' : '▶ Play';
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  S.running = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  tick();
+});
+
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  if (S.liveApi) {
+    try {
+      const res = await fetch(`${CFG.apiBaseUrl}/account/reset`, {
+        method: 'POST',
+        headers: { 'X-Account-Id': CFG.liveAccountId }
+      });
+      if (res.ok) {
+        log('system', 'state', `Account reset to pristine $10,000 on Rails paper_exchange (port 3100)`);
+        await syncWithBroker();
+        return;
+      }
+    } catch (err) {
+      console.warn('Reset error:', err);
+    }
+  }
+  S.running = false;
+  S.tickCount = 0;
+  S.prices = { ...CFG.initialPrices };
+  S.prevPrices = { ...CFG.initialPrices };
+  S.ticks = { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] };
+  S.indicators = { BTCUSDT: {}, ETHUSDT: {}, SOLUSDT: {}, XRPUSDT: {} };
+  S.account = {
+    margin: CFG.initialEquity, available_balance: CFG.initialEquity, locked_margin: 0,
+    realized_pnl: 0, unrealized_pnl: 0, current_equity: CFG.initialEquity, max_equity: CFG.initialEquity,
+  };
+  S.positions = {};
+  S.closedPositions = [];
+  S.posCounter = 0; S.ordCounter = 0;
+  S.ledgerEntries = [];
+  S.cooldowns = {};
+  S.lastPollTick = 0;
+  S.logEntries = [];
+  S.markers = { BTCUSDT: [], ETHUSDT: [], SOLUSDT: [], XRPUSDT: [] };
+  document.getElementById('logEntries').innerHTML = `
+    <div class="log-entry" style="color:var(--text-faint);">
+      <span class="log-time">${timeStr()}</span>
+      <span class="log-source system">system</span>
+      <span class="log-type state">reset</span>
+      <span class="log-msg">Tick engine reset · equity $100,000 · regime=${S.regime} · awaiting play</span>
+    </div>`;
+  document.getElementById('logCount').textContent = '0';
+  document.getElementById('playBtn').textContent = '▶ Play';
+  setStatus('agent', 'idle');
+  setStatus('exchange', 'idle');
+  highlightComponents([]);
+  renderMeta(); renderChartHud(); renderMarketMatrix(); renderPositions(); renderAccount(); renderTotals(); renderAgentComponents(); renderExchangeComponents();
+  if (S.chartViewMode === 'chart') renderChart();
+});
+
+document.getElementById('viewModeTextBtn').addEventListener('click', () => {
+  S.chartViewMode = 'text';
+  document.getElementById('viewModeTextBtn').classList.add('active');
+  document.getElementById('viewModeChartBtn').classList.remove('active');
+  document.getElementById('chartTextWrap').style.display = 'block';
+  document.getElementById('chartCanvasWrap').style.display = 'none';
+  document.getElementById('chartLegend').style.display = 'none';
+  document.getElementById('chartModeTag').textContent = 'text terminal';
+  renderChartHud();
+  renderMarketMatrix();
+});
+
+document.getElementById('viewModeChartBtn').addEventListener('click', () => {
+  S.chartViewMode = 'chart';
+  document.getElementById('viewModeChartBtn').classList.add('active');
+  document.getElementById('viewModeTextBtn').classList.remove('active');
+  document.getElementById('chartTextWrap').style.display = 'none';
+  document.getElementById('chartCanvasWrap').style.display = 'block';
+  document.getElementById('chartLegend').style.display = 'flex';
+  document.getElementById('chartModeTag').textContent = 'tick chart';
+  resizeCanvas();
+  renderChart();
+});
+
+document.getElementById('speedSelect').addEventListener('change', (e) => {
+  S.speed = parseFloat(e.target.value);
+});
+
+document.querySelectorAll('.cp-btn[data-regime]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cp-btn[data-regime]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.regime = btn.dataset.regime;
+    log('system', 'state', `Regime changed → <span class="warn">${S.regime}</span> · vol/drift will adjust on next tick`);
+    renderMeta();
+  });
+});
+
+document.querySelectorAll('.cp-btn[data-symbol]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectSymbol(btn.dataset.symbol);
+  });
+});
+
+document.getElementById('momToggle').addEventListener('click', function() {
+  S.agentsEnabled.MOMENTUM = !S.agentsEnabled.MOMENTUM;
+  this.classList.toggle('active', S.agentsEnabled.MOMENTUM);
+  log('system', 'state', `MOMENTUM-γ ${S.agentsEnabled.MOMENTUM?'enabled':'disabled'}`);
+});
+document.getElementById('executorToggle').addEventListener('click', function() {
+  S.agentsEnabled.EXECUTOR = !S.agentsEnabled.EXECUTOR;
+  this.classList.toggle('active', S.agentsEnabled.EXECUTOR);
+  log('system', 'state', `EXECUTOR-ε ${S.agentsEnabled.EXECUTOR?'enabled':'disabled'}`);
+});
+
+document.getElementById('forceLong').addEventListener('click', () => {
+  const sym = S.activeSymbol;
+  const price = S.prices[sym];
+  const ind = S.indicators[sym];
+  const atr = ind.atr || price * 0.01;
+  const signal = {
+    agent: 'MANUAL', type: 'OPEN_LONG', symbol: sym, side: 'long',
+    entry: price, stopLoss: price - 2.5 * atr, takeProfit: price + 5 * atr,
+    confidence: 0.7, reason: 'manual force long',
+  };
+  const risk = Agents.RISK_MGR.gate(signal);
+  if (risk.approved) submitOrder(signal, risk);
+  else log('agent', 'risk', `<span class="err">Manual long REJECTED</span> · ${risk.reason}`);
+});
+
+document.getElementById('forceShort').addEventListener('click', () => {
+  const sym = S.activeSymbol;
+  const price = S.prices[sym];
+  const ind = S.indicators[sym];
+  const atr = ind.atr || price * 0.01;
+  const signal = {
+    agent: 'MANUAL', type: 'OPEN_SHORT', symbol: sym, side: 'short',
+    entry: price, stopLoss: price + 2.5 * atr, takeProfit: price - 5 * atr,
+    confidence: 0.7, reason: 'manual force short',
+  };
+  const risk = Agents.RISK_MGR.gate(signal);
+  if (risk.approved) submitOrder(signal, risk);
+  else log('agent', 'risk', `<span class="err">Manual short REJECTED</span> · ${risk.reason}`);
+});
+
+document.getElementById('forceClose').addEventListener('click', () => {
+  for (const sym of Object.keys(S.positions)) {
+    const pos = S.positions[sym];
+    if (pos.qty <= 0) continue;
+    const signal = {
+      agent: 'MANUAL', type: 'CLOSE', symbol: sym, side: pos.side === 'long' ? 'short' : 'long',
+      entry: S.prices[sym], stopLoss: null, takeProfit: null, reason: 'manual close all',
+    };
+    const risk = { approved: true, positionSizeUsdt: pos.qty * S.prices[sym], leverage: pos.leverage, marginType: 'isolated', liqBufferAtr: 0, reason: 'manual' };
+    submitOrderWithQty(signal, risk, pos.qty);
+  }
+});
+
+document.getElementById('modeLiveBtn').addEventListener('click', () => {
+  S.mode = 'live';
+  S.liveApi = true;
+  document.getElementById('modeLiveBtn').classList.add('active');
+  document.getElementById('modeSimBtn').classList.remove('active');
+  document.getElementById('regimeGroup').style.display = 'none';
+  connectBinanceWs();
+  syncWithBroker();
+  log('system', 'state', 'Switched to 🟢 LIVE STREAM: Real Binance WS + Rails 3100');
+});
+
+document.getElementById('modeSimBtn').addEventListener('click', () => {
+  S.mode = 'sim';
+  document.getElementById('modeSimBtn').classList.add('active');
+  document.getElementById('modeLiveBtn').classList.remove('active');
+  document.getElementById('regimeGroup').style.display = '';
+  log('system', 'state', 'Switched to 🧪 Stress Test mode (synthetic market regimes)');
+});
+
+document.querySelectorAll('.log-filter').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.logFilter = btn.dataset.filter;
+    const entries = document.querySelectorAll('#logEntries .log-entry');
+    entries.forEach(e => {
+      if (S.logFilter === 'all') e.style.display = '';
+      else {
+        const src = e.dataset.source;
+        const typ = e.dataset.type;
+        let show = false;
+        if (S.logFilter === 'agent') show = src === 'agent';
+        else if (S.logFilter === 'exchange') show = src === 'exchange';
+        else if (S.logFilter === 'flow') show = src === 'flow' || typ === 'order' || typ === 'fill' || typ === 'mark';
+        else if (S.logFilter === 'position') show = typ === 'position';
+        else if (S.logFilter === 'ledger') show = typ === 'ledger';
+        e.style.display = show ? '' : 'none';
+      }
+    });
+  });
+});
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let lastTickWallClock = 0;
+function loop(timestamp) {
+  if (!lastTickWallClock) lastTickWallClock = timestamp;
+  const interval = CFG.tickIntervalMs / S.speed;
+  if (S.running && S.mode === 'sim' && (timestamp - lastTickWallClock) >= interval) {
+    lastTickWallClock = timestamp;
+    tick();
+  }
+  requestAnimationFrame(loop);
+}
+
+// INIT
+resizeCanvas();
+renderMeta();
+renderChartHud();
+renderMarketMatrix();
+renderPositions();
+renderAccount();
+renderTotals();
+renderAgentComponents();
+renderExchangeComponents();
+if (S.chartViewMode === 'chart') renderChart();
+
+// Connect live services
+connectBinanceWs();
+syncWithBroker();
+setInterval(syncWithBroker, 2500);
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
+

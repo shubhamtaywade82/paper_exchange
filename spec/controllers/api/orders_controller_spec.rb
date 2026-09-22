@@ -25,6 +25,30 @@ RSpec.describe Api::OrdersController, type: :controller do
       end
     end
 
+    context 'with reduce_only' do
+      let(:btc_order) do
+        { symbol: 'BTCUSDT', side: 'buy', quantity: 0.1, order_type: 'market', instrument_type: 'CRYPTO_PERPETUAL',
+          leverage: 5, margin_type: 'isolated', execution_price: 65_000.0 }
+      end
+
+      it 'returns 422 when there is no position to reduce' do
+        expect {
+          post :create, params: { order: btc_order.merge(side: 'sell', reduce_only: true) }
+        }.not_to change(::PaperExchange::PaperOrder, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['error']).to match(/reduce_only/)
+      end
+
+      it 'closes an open position and clamps the quantity' do
+        post :create, params: { order: btc_order }
+        post :create, params: { order: btc_order.merge(side: 'sell', quantity: 1, reduce_only: true) }
+
+        expect(response).to have_http_status(:created)
+        expect(JSON.parse(response.body).values_at('status', 'quantity').map(&:to_s)).to eq(%w[filled 0.1])
+      end
+    end
+
     context 'with invalid params' do
       it 'returns unprocessable_content' do
         post :create, params: { order: invalid_attrs.slice(:symbol, :side, :quantity, :order_type, :instrument_type) }

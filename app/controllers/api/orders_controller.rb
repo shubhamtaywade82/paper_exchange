@@ -14,20 +14,28 @@ module Api
     end
 
     def create
-      order_raw = params[:order]
-      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
+      order_raw = params[:order] || params
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price, :reduce_only, context: {})
       received[:account_id] = @account_id
-      received[:order_kind] = received.delete(:order_type) if received.key?(:order_type)
-      valid, errors = Exchange::OrderValidator.call(received)
-      raise "Invalid order: #{errors.inspect}" unless valid
+      received[:order_kind] = (received.delete(:order_type) || received.delete(:type) || "market").to_s.downcase
+      received[:side] = received[:side].to_s.downcase
+      received[:instrument_type] = (received[:instrument_type].presence || "CRYPTO_PERPETUAL").to_s.upcase
+      # OrderValidator raises OrderValidationError on bad input; the rescue
+      # below turns that into a 400.
+      received = Exchange::OrderValidator.call(received)
 
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       order = exchange.submit_order(received)
       render json: order_json(order), status: :created
-    rescue ActionController::ParameterMissing => e
+    rescue Exchange::OrderValidationError => e
+      render_error(:unprocessable_content, e.message)
+    rescue ArgumentError => e
       render_error(:bad_request, e.message)
+    rescue Ledger::InsufficientMarginError => e
+      render_error(:payment_required, e.message)
     rescue => e
-      render_error(:unprocessable_entity, e.message)
+      Rails.logger.error("[OrdersController#create] #{e.class}: #{e.message}")
+      render_error(:internal_server_error, "Internal error")
     end
 
     def destroy
@@ -43,15 +51,10 @@ module Api
       render_error(:not_found, "Order not found") unless @order
     end
 
-    def order_params
-      params.require(:order).permit(:symbol, :side, :quantity, :order_type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price)
-    rescue ActionController::ParameterMissing => e
-      render_error(:bad_request, e.message)
-    end
-
     def order_json(order)
       {
         id: order.id,
+        client_order_id: order.client_order_id,
         symbol: order.symbol,
         side: order.side,
         quantity: order.quantity,
@@ -65,6 +68,9 @@ module Api
         option_type: order.option_type,
         strike_price: order.strike_price,
         expiry_date: order.expiry_date,
+        leverage: order.leverage,
+        margin_type: order.margin_type,
+        locked_margin: order.locked_margin,
         placed_at: order.placed_at,
         updated_at: order.updated_at
       }

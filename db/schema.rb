@@ -10,30 +10,49 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
   create_table "accounts", force: :cascade do |t|
     t.string "account_id", null: false
+    t.decimal "available_balance", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "created_at", null: false
     t.string "currency", default: "INR", null: false
-    t.decimal "current_equity", precision: 18, scale: 4, default: "0.0", null: false
-    t.decimal "margin", precision: 18, scale: 4, default: "0.0", null: false
+    t.decimal "current_equity", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "locked_margin", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "margin", precision: 36, scale: 18, default: "0.0", null: false
     t.string "name", null: false
-    t.decimal "realized_pnl", precision: 18, scale: 4, default: "0.0", null: false
-    t.decimal "unrealized_pnl", precision: 18, scale: 4, default: "0.0", null: false
+    t.decimal "realized_pnl", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "unrealized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_accounts_on_account_id", unique: true
   end
 
+  create_table "funding_payments", force: :cascade do |t|
+    t.string "account_id", null: false
+    t.decimal "amount", precision: 36, scale: 18, null: false
+    t.datetime "created_at", null: false
+    t.decimal "funding_rate", precision: 36, scale: 18, null: false
+    t.datetime "funding_time"
+    t.datetime "occurred_at", null: false
+    t.bigint "paper_position_id"
+    t.decimal "position_notional", precision: 36, scale: 18, null: false
+    t.string "symbol", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_funding_payments_on_account_id"
+    t.index ["paper_position_id", "funding_time"], name: "index_funding_payments_dedup", unique: true, where: "(funding_time IS NOT NULL)"
+    t.index ["paper_position_id"], name: "index_funding_payments_on_paper_position_id"
+    t.index ["symbol", "occurred_at"], name: "index_funding_payments_on_symbol_and_occurred_at"
+  end
+
   create_table "ledger_entries", force: :cascade do |t|
     t.string "account_id", null: false
-    t.decimal "balance_after", precision: 18, scale: 4
+    t.decimal "balance_after", precision: 36, scale: 18
     t.datetime "created_at", null: false
-    t.decimal "credit", precision: 18, scale: 2, default: "0.0", null: false
+    t.decimal "credit", precision: 36, scale: 18, default: "0.0", null: false
     t.string "currency", default: "INR", null: false
-    t.decimal "debit", precision: 18, scale: 2, default: "0.0", null: false
+    t.decimal "debit", precision: 36, scale: 18, default: "0.0", null: false
     t.string "event_type", null: false
     t.datetime "occurred_at", null: false
     t.jsonb "payload", default: {}, null: false
@@ -88,30 +107,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
 
   create_table "paper_exchange_orders", force: :cascade do |t|
     t.string "account_id", null: false
-    t.decimal "avg_fill_price", precision: 18, scale: 2
+    t.decimal "avg_fill_price", precision: 36, scale: 18
     t.string "broker_order_id"
     t.datetime "cancelled_at"
+    t.string "client_order_id"
     t.datetime "created_at", null: false
     t.string "exchange_segment"
     t.date "expiry_date"
     t.datetime "filled_at"
-    t.integer "filled_quantity", default: 0, null: false
+    t.decimal "filled_quantity", precision: 36, scale: 18, default: "0.0", null: false
     t.string "instrument_type", default: "EQUITY", null: false
+    t.integer "leverage", default: 1, null: false
+    t.decimal "locked_margin", precision: 36, scale: 18, default: "0.0", null: false
+    t.string "margin_type", default: "cross", null: false
     t.string "option_type"
     t.integer "order_kind", default: 0, null: false
     t.datetime "placed_at"
-    t.decimal "price", precision: 18, scale: 2
-    t.integer "quantity", null: false
+    t.decimal "price", precision: 36, scale: 18
+    t.decimal "quantity", precision: 36, scale: 18, null: false
     t.datetime "rejected_at"
     t.text "rejection_reason"
     t.string "security_id"
     t.string "series"
     t.integer "side", default: 0, null: false
     t.integer "status", default: 0, null: false
-    t.decimal "strike_price", precision: 18, scale: 2
+    t.decimal "strike_price", precision: 36, scale: 18
     t.string "symbol", null: false
-    t.decimal "trigger_price", precision: 18, scale: 2
+    t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
+    t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_orders_instrument"
     t.index ["status"], name: "index_paper_exchange_orders_on_status"
@@ -120,15 +144,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
 
   create_table "paper_exchange_positions", force: :cascade do |t|
     t.string "account_id", null: false
-    t.decimal "avg_price", precision: 18, scale: 2
+    t.decimal "avg_price", precision: 36, scale: 18
     t.datetime "created_at", null: false
-    t.decimal "current_price", precision: 18, scale: 2
+    t.decimal "current_price", precision: 36, scale: 18
     t.date "expiry_date"
-    t.string "instrument_type", default: "equity", null: false
+    t.decimal "initial_margin", precision: 36, scale: 18, default: "0.0", null: false
+    t.string "instrument_type", default: "EQUITY", null: false
+    t.integer "leverage", default: 1, null: false
+    t.decimal "liquidation_price", precision: 36, scale: 18
+    t.string "margin_type", default: "cross", null: false
     t.string "option_type"
-    t.integer "quantity", default: 0, null: false
+    t.decimal "quantity", precision: 36, scale: 18, default: "0.0", null: false
     t.integer "side", null: false
-    t.decimal "strike_price", precision: 18, scale: 2
+    t.decimal "strike_price", precision: 36, scale: 18
     t.string "symbol", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id", "symbol", "instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_positions_uniqueness", unique: true
@@ -140,10 +168,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
     t.string "fill_type", default: "full"
     t.bigint "paper_order_id", null: false
     t.bigint "paper_position_id"
-    t.decimal "price", precision: 18, scale: 2, null: false
-    t.integer "quantity", null: false
+    t.decimal "price", precision: 36, scale: 18, null: false
+    t.decimal "quantity", precision: 36, scale: 18, null: false
     t.string "side", null: false
-    t.decimal "total_charges", precision: 18, scale: 4, default: "0.0", null: false
+    t.decimal "total_charges", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "traded_at", null: false
     t.datetime "updated_at", null: false
     t.index ["paper_order_id"], name: "index_paper_exchange_trades_on_paper_order_id"
@@ -161,6 +189,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_155819) do
     t.index ["event_type"], name: "index_risk_events_on_event_type"
   end
 
+  add_foreign_key "funding_payments", "paper_exchange_positions", column: "paper_position_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_orders", column: "paper_order_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_positions", column: "paper_position_id"
 end
