@@ -5,6 +5,9 @@ set -e
 # waits for postgres to accept connections before starting this container.
 # So we just prepare the DB and exec the command. Nothing else.
 
+# Remove leftover server PID from previous crashes or abrupt container stops
+rm -f /rails/tmp/pids/server.pid
+
 if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
   echo "Preparing database..."
   ./bin/rails db:prepare
