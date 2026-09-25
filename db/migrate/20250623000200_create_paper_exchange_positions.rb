@@ -17,7 +17,7 @@ class CreatePaperExchangePositions < ActiveRecord::Migration[8.0]
       t.timestamps
     end
     add_index :paper_exchange_positions,
-      [:account_id, :symbol, :instrument_type, :option_type, :strike_price, :expiry_date],
+      [ :account_id, :symbol, :instrument_type, :option_type, :strike_price, :expiry_date ],
       unique: true,
       name: "index_paper_positions_uniqueness"
   end

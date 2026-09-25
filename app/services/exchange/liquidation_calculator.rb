@@ -33,7 +33,7 @@ module Exchange
     end
 
     def self.initial_margin(notional:, leverage:)
-      notional.to_f / [leverage.to_i, 1].max
+      notional.to_f / [ leverage.to_i, 1 ].max
     end
   end
 end

@@ -16,13 +16,13 @@ module Exchange
       fill_qty, fill_price = compute_fill(order, book)
 
       if fill_qty && fill_qty.positive?
-        [fill_qty, fill_price]
+        [ fill_qty, fill_price ]
       else
-        [:unfilled, nil]
+        [ :unfilled, nil ]
       end
     rescue => e
       order.rejected!(e.message)
-      [:rejected, e.message]
+      [ :rejected, e.message ]
     end
 
     private
@@ -37,13 +37,13 @@ module Exchange
           instrument_type: order.instrument_type,
           quantity: qty
         )
-        [qty, price]
+        [ qty, price ]
       when "bounded"
-        marketable?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [:unfilled, nil]
+        marketable?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [ :unfilled, nil ]
       when "stop_loss"
-        triggered?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [:unfilled, nil]
+        triggered?(order, book) ? compute_fill(order.dup.tap { |o| o.order_kind = "market" }, book) : [ :unfilled, nil ]
       else
-        [:rejected, "unsupported"]
+        [ :rejected, "unsupported" ]
       end
     end
 
@@ -51,14 +51,16 @@ module Exchange
       case order.side
       when "buy"  then book[:ask] && book[:ask] <= order.price
       when "sell" then book[:bid] && book[:bid] >= order.price
-      else false end
+      else false
+      end
     end
 
     def triggered?(order, book)
       case order.side
       when "buy"  then book[:ask] && book[:ask] >= order.trigger_price
       when "sell" then book[:bid] && book[:bid] <= order.trigger_price
-      else false end
+      else false
+      end
     end
   end
 end

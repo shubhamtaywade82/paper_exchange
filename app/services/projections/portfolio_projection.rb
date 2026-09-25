@@ -24,7 +24,7 @@ module Projections
         unrealized = positions.sum { |p| p[:unrealized_pnl].to_f }
         realized = Ledger::Ledger.compute_realized_pnl(account_id)
         equity = Ledger::Ledger.compute_equity(account, unrealized)
-        max_equity = [equity, account.margin.to_f].max
+        max_equity = [ equity, account.margin.to_f ].max
         drawdown = max_equity > 0 ? ((max_equity - equity) / max_equity) * 100 : 0.0
 
         {

@@ -51,7 +51,7 @@ module Exchange
           position.margin_type = margin_type
         end
       else
-        closed_qty = [fill_qty, current_qty].min
+        closed_qty = [ fill_qty, current_qty ].min
         old_entry_price = to_decimal(position.avg_price)
         pnl_multiplier = position.side == "long" ? 1 : -1
         realized_pnl = (fill_price - old_entry_price) * closed_qty * pnl_multiplier
@@ -79,8 +79,8 @@ module Exchange
 
     def self.normalize_side(side)
       case side.to_s.downcase
-      when /buy/ then 'long'
-      when /sell/ then 'short'
+      when /buy/ then "long"
+      when /sell/ then "short"
       else side.to_s
       end
     end
