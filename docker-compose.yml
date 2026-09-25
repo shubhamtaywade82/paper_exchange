@@ -37,7 +37,9 @@ services:
       DATABASE_URL: postgres://paper_user:paper_password@db:5432/paper_exchange_development
       REDIS_URL: redis://redis:6379/0
       PORT: 3100
-      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:-f92a4815d4c57c5cf769f72276fb713a}
+      # No default fallback: a missing RAILS_MASTER_KEY must fail loudly at
+      # compose time instead of silently booting with a committed key (audit M1).
+      RAILS_MASTER_KEY: "${RAILS_MASTER_KEY:?RAILS_MASTER_KEY must be set in .env - see .env.example}"
     depends_on:
       db:
         condition: service_healthy
