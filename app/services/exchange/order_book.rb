@@ -62,8 +62,8 @@ module Exchange
 
     def default_depth(bid, ask)
       {
-        bids: Array([[bid, 100]]),
-        asks: Array([[ask, 100]])
+        bids: Array([ [ bid, 100 ] ]),
+        asks: Array([ [ ask, 100 ] ])
       }
     end
   end

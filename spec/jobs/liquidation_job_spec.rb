@@ -19,7 +19,7 @@ RSpec.describe LiquidationJob, type: :job do
 
   before do
     allow_any_instance_of(Exchange::OrderBook).to receive(:snapshot).and_return(
-      { bid: 53_400.0, ask: 53_600.0, ltp: 53_500.0, depth: { bids: [[53_400.0, 100]], asks: [[53_600.0, 100]] } }
+      { bid: 53_400.0, ask: 53_600.0, ltp: 53_500.0, depth: { bids: [ [ 53_400.0, 100 ] ], asks: [ [ 53_600.0, 100 ] ] } }
     )
   end
 

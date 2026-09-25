@@ -4,7 +4,7 @@ RSpec.describe Strategy::StrategyEngine, type: :service do
   it 'returns signal when risk passes' do
     # RiskManager.evaluate returns [ValidatorResult_Map, events]
     # [results, nil] means all passed
-    allow(Risk::RiskManager).to receive(:evaluate).and_return([[:passed, :vix_gate], [:passed, :margin], nil])
+    allow(Risk::RiskManager).to receive(:evaluate).and_return([ [ :passed, :vix_gate ], [ :passed, :margin ], nil ])
     engine = described_class.new(
       indicator_engine: instance_double('Strategy::IndicatorEngine'),
       market_structure_engine: instance_double('Strategy::MarketStructureEngine')

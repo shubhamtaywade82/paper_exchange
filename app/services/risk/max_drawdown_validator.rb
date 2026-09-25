@@ -7,7 +7,7 @@ module Risk
       return :passed unless account
 
       equity = account.current_equity
-      max_equity = [equity, account.margin].max
+      max_equity = [ equity, account.margin ].max
       return :passed if max_equity <= 0
 
       dd = (max_equity - equity) / max_equity

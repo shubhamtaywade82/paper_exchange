@@ -37,8 +37,8 @@ module Ledger
         LedgerEntry.create!(
           account_id: account.account_id,
           event_type: "ADJUSTMENT",
-          debit: [cached_available - available, 0].max,
-          credit: [available - cached_available, 0].max,
+          debit: [ cached_available - available, 0 ].max,
+          credit: [ available - cached_available, 0 ].max,
           balance_after: available,
           payload: {
             reason: "reconciliation_drift",

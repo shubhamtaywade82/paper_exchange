@@ -5,6 +5,6 @@ module Exchange
   # India-specific (EQUITY/FUTIDX/OPTIDX/...) with no crypto equivalent.
   class CryptoInstrumentCatalog
     PERPETUAL = "CRYPTO_PERPETUAL".freeze
-    INSTRUMENT_TYPES = [PERPETUAL].freeze
+    INSTRUMENT_TYPES = [ PERPETUAL ].freeze
   end
 end

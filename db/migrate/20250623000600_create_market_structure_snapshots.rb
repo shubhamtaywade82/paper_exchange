@@ -15,6 +15,6 @@ class CreateMarketStructureSnapshots < ActiveRecord::Migration[8.0]
 
       t.timestamps
     end
-    add_index :market_structure_snapshots, [:symbol, :timeframe, :as_of], name: "index_mss_lookup"
+    add_index :market_structure_snapshots, [ :symbol, :timeframe, :as_of ], name: "index_mss_lookup"
   end
 end

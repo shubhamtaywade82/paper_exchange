@@ -21,7 +21,7 @@ class CreateOptionSnapshots < ActiveRecord::Migration[8.0]
 
       t.timestamps
     end
-    add_index :option_snapshots, [:underlying, :expiry_date, :strike_price, :option_type], name: "index_option_snapshots_lookup"
+    add_index :option_snapshots, [ :underlying, :expiry_date, :strike_price, :option_type ], name: "index_option_snapshots_lookup"
     add_index :option_snapshots, :snapshot_at
   end
 end

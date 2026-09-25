@@ -19,7 +19,7 @@ module Api
 
         applied = MarketData::MarkPriceStore.set(symbol, price)
         Risk::LiquidationEngine.check_symbol!(symbol, applied)
-        [symbol.to_s.upcase, applied]
+        [ symbol.to_s.upcase, applied ]
       end.to_h
 
       render json: { updated: updated }, status: :ok

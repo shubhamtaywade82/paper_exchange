@@ -96,7 +96,7 @@ RSpec.describe Api::AccountsController, type: :controller do
       expect(reset_account.available_balance.to_f).to eq(10_000.0)
     end
 
-    ['0', '-5', 'abc', '1e999'].each do |bad_margin|
+    [ '0', '-5', 'abc', '1e999' ].each do |bad_margin|
       it "rejects margin=#{bad_margin} with 422 and leaves the account untouched" do
         create(:account, account_id: account_id, margin: 500_000.0)
 
