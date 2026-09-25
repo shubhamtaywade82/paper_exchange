@@ -5,7 +5,8 @@ gem "rails", "~> 8.1.3"
 # Use postgresql as the database for Active Record
 gem "pg", "~> 1.1"
 # Use the Puma web server [https://github.com/puma/puma]
-gem "puma", "~> 6.4"
+# >= 8.0.2: CVE-2026-47736 / CVE-2026-47737 (High) — PROXY protocol v1 issues.
+gem "puma", "~> 8.0"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
