@@ -6,7 +6,7 @@ module Exchange
 
     def fill(order, market_snapshot:, instrument_type: "EQUITY", quantity: nil, price: nil)
       qty = quantity || order.remaining_quantity
-      return [:unfilled, 0] if qty <= 0
+      return [ :unfilled, 0 ] if qty <= 0
 
       fill_price = price || @slippage.fill_price(
         market_snapshot: market_snapshot,
@@ -32,7 +32,7 @@ module Exchange
         fill_type: "full",
         traded_at: Time.current
       )
-      [qty, fill_price, trade]
+      [ qty, fill_price, trade ]
     end
   end
 end

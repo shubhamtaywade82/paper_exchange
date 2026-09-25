@@ -31,7 +31,7 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
 
   context 'risk failure path' do
     before do
-      allow(Risk::RiskManager).to receive(:evaluate).and_return([[], [:MAX_DRAWDOWN_REJECTED]])
+      allow(Risk::RiskManager).to receive(:evaluate).and_return([ [], [ :MAX_DRAWDOWN_REJECTED ] ])
     end
 
     let(:attrs) do

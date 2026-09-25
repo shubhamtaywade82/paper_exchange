@@ -7,6 +7,6 @@ class AddClientOrderIdToPaperExchangeOrders < ActiveRecord::Migration[8.1]
     # practice for agent-driven order submission so a network retry can
     # never double-submit — see Exchange::PaperExchange#submit_order.
     add_column :paper_exchange_orders, :client_order_id, :string
-    add_index :paper_exchange_orders, [:account_id, :client_order_id], unique: true, name: "index_paper_orders_on_account_and_client_order_id"
+    add_index :paper_exchange_orders, [ :account_id, :client_order_id ], unique: true, name: "index_paper_orders_on_account_and_client_order_id"
   end
 end

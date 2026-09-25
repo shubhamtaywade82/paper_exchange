@@ -14,7 +14,7 @@ module MarketData
     end
 
     def ingest(event, timeframe: "5m")
-      key = [event.symbol, timeframe]
+      key = [ event.symbol, timeframe ]
       @candles[key] ||= []
 
       bucket = @candles[key].last
@@ -26,7 +26,7 @@ module MarketData
     end
 
     def candles(symbol, timeframe: "5m")
-      (@candles[[symbol, timeframe]] || []).last(200)
+      (@candles[[ symbol, timeframe ]] || []).last(200)
     end
 
     private
@@ -46,8 +46,8 @@ module MarketData
 
     def candle(bucket, event)
       bucket[:close] = event.ltp
-      bucket[:high] = [bucket[:high], event.ltp].compact.max
-      bucket[:low]  = [bucket[:low], event.ltp].compact.min
+      bucket[:high] = [ bucket[:high], event.ltp ].compact.max
+      bucket[:low]  = [ bucket[:low], event.ltp ].compact.min
       bucket[:volume] += event.quantity || 0
       bucket
     end

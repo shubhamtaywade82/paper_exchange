@@ -19,6 +19,5 @@ module Strategy
     def snapshot(symbol, timeframe: "5m")
       @snapshots.dig(symbol, timeframe)
     end
-    
   end
 end

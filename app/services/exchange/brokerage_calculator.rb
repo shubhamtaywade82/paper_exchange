@@ -36,7 +36,7 @@ module Exchange
         0.0
       end
 
-      brokerage = [turnover * 0.0003, @brokerage_floor].max
+      brokerage = [ turnover * 0.0003, @brokerage_floor ].max
       sebi = turnover * @sebi_fee
       stamp = turnover * @stamp_duty if side == "buy"
       exchange = turnover * @exchange_txn

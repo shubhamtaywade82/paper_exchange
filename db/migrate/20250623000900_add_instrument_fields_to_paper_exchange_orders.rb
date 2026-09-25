@@ -11,6 +11,6 @@ class AddInstrumentFieldsToPaperExchangeOrders < ActiveRecord::Migration[8.0]
     add_column :paper_exchange_orders, :security_id, :string unless column_exists?(:paper_exchange_orders, :security_id)
     add_column :paper_exchange_orders, :series, :string unless column_exists?(:paper_exchange_orders, :series)
 
-    add_index :paper_exchange_orders, [:instrument_type, :option_type, :strike_price, :expiry_date], name: "index_paper_orders_instrument" unless index_exists?(:paper_exchange_orders, [:instrument_type, :option_type, :strike_price, :expiry_date], name: "index_paper_orders_instrument")
+    add_index :paper_exchange_orders, [ :instrument_type, :option_type, :strike_price, :expiry_date ], name: "index_paper_orders_instrument" unless index_exists?(:paper_exchange_orders, [ :instrument_type, :option_type, :strike_price, :expiry_date ], name: "index_paper_orders_instrument")
   end
 end

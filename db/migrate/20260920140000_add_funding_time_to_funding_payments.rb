@@ -12,7 +12,7 @@
 class AddFundingTimeToFundingPayments < ActiveRecord::Migration[8.1]
   def up
     add_column :funding_payments, :funding_time, :datetime
-    add_index :funding_payments, [:paper_position_id, :funding_time],
+    add_index :funding_payments, [ :paper_position_id, :funding_time ],
               unique: true,
               name: "index_funding_payments_dedup",
               where: "funding_time IS NOT NULL"

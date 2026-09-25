@@ -61,7 +61,7 @@ class AdaptSchemaForCryptoFutures < ActiveRecord::Migration[8.1]
     end
     add_index :funding_payments, :account_id
     add_index :funding_payments, :paper_position_id
-    add_index :funding_payments, [:symbol, :occurred_at]
+    add_index :funding_payments, [ :symbol, :occurred_at ]
     add_foreign_key :funding_payments, :paper_exchange_positions, column: :paper_position_id
   end
 

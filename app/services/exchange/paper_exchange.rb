@@ -218,7 +218,7 @@ module Exchange
     # clamp_order_to_locked_position! inside the fill transaction.
     def clamp_to_position(attrs)
       position = reducible_position(attrs)
-      attrs.merge(quantity: [attrs[:quantity], position.quantity].min)
+      attrs.merge(quantity: [ attrs[:quantity], position.quantity ].min)
     end
 
     # Authoritative check: re-reads the position under a row lock right before
@@ -227,7 +227,7 @@ module Exchange
     # only runs after this lock is taken, so nothing can slip in before the fill.
     def clamp_order_to_locked_position!(order)
       position = reducible_position(order.slice(:symbol, :side, :instrument_type, :option_type, :strike_price, :expiry_date).symbolize_keys, lock: true)
-      live_quantity = [order.quantity, position.quantity].min
+      live_quantity = [ order.quantity, position.quantity ].min
       order.update_column(:quantity, live_quantity) if live_quantity != order.quantity
     end
 

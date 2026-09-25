@@ -49,7 +49,7 @@ module Ledger
 
         Account.transaction do
           account = Account.lock.find_by!(account_id: account_id)
-          released = [amount, account.locked_margin].min
+          released = [ amount, account.locked_margin ].min
 
           account.update!(
             available_balance: account.available_balance + released,
