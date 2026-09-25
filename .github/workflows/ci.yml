@@ -87,4 +87,6 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
           # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           # REDIS_URL: redis://localhost:6379/0
-        run: bin/rails db:test:prepare test
+        # `bin/rails test` is unrecognized in this API-only app (no Minitest
+        # railtie); the suite is RSpec, which registers `bin/rails spec`.
+        run: bin/rails db:test:prepare spec
