@@ -6,7 +6,10 @@ require 'rails_helper'
 # Transactional fixtures are disabled for this spec: each thread needs its
 # own real database transaction (they cannot share the example's
 # transaction), so the data is created and cleaned up explicitly.
-RSpec.describe Exchange::PositionManager, 'concurrency (audit M4)' do
+# type: :model is required so rspec-rails mixes in the ActiveRecord
+# example-group methods (use_transactional_fixtures among them) —
+# spec/services is not a standard inferred-type directory.
+RSpec.describe Exchange::PositionManager, 'concurrency (audit M4)', type: :model do
   self.use_transactional_fixtures = false
 
   let(:account_id) { 'ACC-CONCURRENCY' }
