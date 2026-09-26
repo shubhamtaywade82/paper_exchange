@@ -1,6 +1,8 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
+# Audit M2: the shared API key every authenticated request must present.
+ENV['PAPER_EXCHANGE_API_KEY'] ||= 'test-api-key-123'
 require_relative '../config/environment'
 # Prevent database truncation if the environment is production
 abort("The Rails environment is running in production mode!") if Rails.env.production?
@@ -32,6 +34,12 @@ RSpec.configure do |config|
   config.filter_gems_from_backtrace('dhanhq', 'coindcx-client')
 
   config.include ActiveJob::TestHelper, type: :job
+
+  # Audit M2: controller specs must authenticate like real clients — the
+  # Api::BaseController before_action would otherwise 401 every request.
+  config.before(:each, type: :controller) do
+    request.headers["X-API-Key"] = ENV.fetch("PAPER_EXCHANGE_API_KEY")
+  end
 
   # Shoulda Matchers config
   Shoulda::Matchers.configure do |shoulda_config|

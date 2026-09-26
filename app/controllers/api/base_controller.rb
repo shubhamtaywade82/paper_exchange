@@ -1,20 +1,29 @@
 module Api
   class BaseController < ApplicationController
+    before_action :authenticate_api_key!
     before_action :set_account
 
     private
 
+    # Single-operator trust boundary (audit M2): every request under /api
+    # must present the shared operator token via X-API-Key. Account
+    # switching (X-Account-Id) happens WITHIN that authenticated boundary —
+    # the account header is identity, not authorization. The comparison is
+    # constant-time so the check cannot leak the key through response
+    # timing. Production refuses to boot without the key set (see
+    # config/initializers/api_authentication.rb).
+    def authenticate_api_key!
+      expected = ENV["PAPER_EXCHANGE_API_KEY"].to_s
+      provided = request.headers["X-API-Key"].to_s
+      return if !expected.empty? && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
+
+      render_error(:unauthorized, "Missing or invalid API key — set the X-API-Key header (PAPER_EXCHANGE_API_KEY on the server)")
+    end
+
     def set_account
       @account_id = (request.headers["X-Account-Id"].presence ||
-                     request.headers["X-API-Key"].presence ||
                      params[:account_id].presence ||
                      "default").to_s
-      # Test scaffolding only — never active in production. Without this gate,
-      # anyone hitting the public API with X-API-Key: test-api-key-123 was
-      # silently mapped to the test-account-1 wallet (B4).
-      if Rails.env.test? && @account_id == "test-api-key-123" && !Account.exists?(account_id: @account_id)
-        @account_id = "test-account-1"
-      end
     end
 
     def render_error(status, message)

@@ -714,6 +714,9 @@ const CFG = {
   trailActivatePct: 0.3,        // trailing activates after 30% gain toward TP
   apiBaseUrl: 'http://127.0.0.1:3100/api/v1',
   liveAccountId: 'test-account-1',
+  // Audit M2: the broker now requires X-API-Key on every /api request.
+  // Set this to your PAPER_EXCHANGE_API_KEY value for live mode.
+  apiKey: '',
   wsUrl: 'wss://fstream.binance.com/ws/btcusdt@trade/ethusdt@trade/solusdt@trade/xrpusdt@trade',
 };
 
@@ -1145,9 +1148,9 @@ async function syncWithBroker() {
   if (!S.liveApi) return;
   try {
     const [accRes, posRes, ledRes] = await Promise.all([
-      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
-      fetch(`${CFG.apiBaseUrl}/positions`, { headers: { 'X-Account-Id': CFG.liveAccountId } }),
-      fetch(`${CFG.apiBaseUrl}/ledger`, { headers: { 'X-Account-Id': CFG.liveAccountId } })
+      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey } }),
+      fetch(`${CFG.apiBaseUrl}/positions`, { headers: { 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey } }),
+      fetch(`${CFG.apiBaseUrl}/ledger`, { headers: { 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey } })
     ]);
 
     if (accRes.ok) {
@@ -1282,7 +1285,7 @@ async function dispatchLiveOrder(symbol, side, qty, price, leverage, clientOrder
   try {
     const res = await fetch(`${CFG.apiBaseUrl}/orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
+      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey },
       body: JSON.stringify({
         symbol,
         side: side.toUpperCase(),
@@ -1572,7 +1575,7 @@ function pushMarkPrices() {
   if (S.liveApi) {
     fetch(`${CFG.apiBaseUrl}/mark-prices`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId },
+      headers: { 'Content-Type': 'application/json', 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey },
       body: JSON.stringify({ prices: { [symbol]: S.prices[symbol].toFixed(dp) } })
     }).catch(err => console.warn('Live mark price push error:', err));
   }
@@ -1680,7 +1683,7 @@ function tick() {
     }
 
     if (S.liveApi) {
-      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId } })
+      fetch(`${CFG.apiBaseUrl}/account`, { headers: { 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey } })
         .then(r => r.json())
         .then(acc => {
           if (acc && acc.wallet) {
@@ -2124,7 +2127,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
     try {
       const res = await fetch(`${CFG.apiBaseUrl}/account/reset`, {
         method: 'POST',
-        headers: { 'X-Account-Id': CFG.liveAccountId }
+        headers: { 'X-Account-Id': CFG.liveAccountId, 'X-API-Key': CFG.apiKey }
       });
       if (res.ok) {
         log('system', 'state', `Account reset to pristine $10,000 on Rails paper_exchange (port 3100)`);
