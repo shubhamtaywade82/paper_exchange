@@ -166,7 +166,16 @@ The agent feeds the broker two things:
    `Risk::LiquidationEngine` — a leveraged position's liquidation price is
    only checked when a price for its symbol arrives here, so push at least
    as often as you need liquidation to react (every few seconds for
-   anything highly leveraged).
+   anything highly leveraged). Known blind window (audit N9, by design and
+   bounded by your push cadence): a leveraged position opened *after* the
+   last push for its symbol is unmonitored until the next push for that
+   symbol arrives.
+
+Tick-level history (as opposed to the latest mark price) has its own
+channel: push what your feed sees to `POST /api/market_events` and read it
+back with `GET /api/market_events` (capped Redis stream — see the API
+reference). Use mark prices for liquidation/wallet math, market events for
+strategy context and analysis.
 
 Perpetual futures funding is likewise agent-driven: call
 `POST /api/funding_events` when your feed reports a funding settlement, and
@@ -237,6 +246,12 @@ GET /api/positions/:id
 ```
 GET /api/ledger
 ```
+Append-only cash-flow history (SCREAMING_SNAKE_CASE `event_type`s: TRADE,
+MARGIN_LOCKED, MARGIN_UNLOCKED, FEE, REALIZED_PNL, FUNDING_FEE, ADJUSTMENT).
+Rows are immutable once written — app-level `readonly?` guard plus a Postgres
+trigger that blocks UPDATE outright; the only deleter is the explicit account
+reset. Corrections are posted as new compensating entries (the boot Reconciler
+derives wallet state from this stream, so history must never change).
 
 ### Performance
 ```
@@ -247,6 +262,17 @@ GET /api/performance
 ```
 GET /api/risk_events
 ```
+
+### List-endpoint pagination
+`GET /api/orders`, `GET /api/ledger` and `GET /api/risk_events` are keyset
+paginated (audit N6) — the old hard caps (200/500/200) silently truncated
+history. Response envelope:
+```json
+{ "data": [ ... ], "next_cursor": "<opaque>" }
+```
+`next_cursor` is null on the last page; pass it back as `?cursor=` to walk
+older items. `?limit=` is clamped to 1–500 (default 100). Tampered cursors
+are a 400, not a 500.
 
 ### Mark Prices (crypto)
 ```
@@ -263,6 +289,50 @@ POST /api/funding_events
 ```json
 { "symbol": "BTCUSDT", "funding_rate": "0.0001", "mark_price": "65123.45" }
 ```
+
+### Market Events (tick stream)
+```
+POST /api/market_events          # single tick or { "events": [ ... ] } batch (max 500)
+GET  /api/market_events?symbol=BTCUSDT&count=50&before=<cursor>
+```
+Push ticks from your feed here; they land in the capped Redis stream
+(`paper_exchange:market:ticks`, ~100k entries) that strategy context and
+future candle building read. `price`/`ltp`/`bid`/`ask` (at least one
+required) must be finite and > 0; a malformed tick rejects the whole request
+422 with nothing enqueued. `GET` reads back newest-first with a stream
+cursor; 503 means the tick stream (Redis) is unavailable and ticks were NOT
+accepted.
+
+### Market Structure (SMC context)
+```
+POST /api/market_structure       # append a snapshot per symbol+timeframe
+GET  /api/market_structure?symbol=BTCUSDT&timeframe=5m
+GET  /api/market_structure?timeframe=5m      # latest per symbol
+```
+```json
+{ "symbol": "BTCUSDT", "timeframe": "5m", "trend": "bullish", "bos": true,
+  "choch": false, "bullish_fvg_count": 2, "bearish_fvg_count": 1,
+  "liquidity_sweep": "sell_side", "order_block": "bullish_ob",
+  "premium_discount": "premium", "as_of": "2026-09-26T10:00:00Z" }
+```
+Snapshots are append-only rows; reads always take the newest per
+(symbol, timeframe). `trend` is one of bullish|bearish|range|neutral.
+
+### Strategy Signals (pre-trade assessment)
+```
+POST /api/strategy/signals
+```
+```json
+{ "signal": { "symbol": "RELIANCE", "side": "buy", "quantity": 2,
+              "instrument_type": "EQUITY", "ltp": 2500.0, "leverage": 1,
+              "context": { "vix": 14.2 } },
+  "timeframe": "5m" }
+```
+Read-only pre-flight through the SAME risk gate `POST /api/orders` runs —
+no order is created, nothing is locked. Returns `decision: allow|reject`,
+the per-check outcomes, `rejections` (the `*_REJECTED` vocabulary
+`/api/risk_events` uses), and the symbol's latest market-structure snapshot
+for context. Submit the trade itself via `POST /api/orders`.
 
 ---
 
@@ -362,12 +432,12 @@ python3 -m http.server 8080
 
 ## Status
 
-> **Scope honesty (audit S7/T4.1, decided 2026-09-26):** the modules below
-> marked **Roadmap** exist in `app/services/` but have **no runtime
-> callers** — no routes, jobs, or services invoke them. They are kept as
-> scaffolding for planned capabilities, not as working features; wire them
-> (e.g. a `POST /api/market_events` endpoint feeding the order book) or
-> remove them in a future sprint. Decision recorded in `memory.md`.
+> **Scope honesty (audit S7/T4.1, decided 2026-09-26; wiring shipped
+> same day):** the modules marked **Roadmap** exist in `app/services/`
+> but have **no runtime callers** — no routes, jobs, or services invoke
+> them. They are kept as scaffolding for planned capabilities, not as
+> working features; wire or remove them in a future sprint. Decision
+> recorded in `memory.md`.
 
 | Area | Status |
 |------|--------|
@@ -384,12 +454,17 @@ python3 -m http.server 8080
 | Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
 | Order idempotency (`client_order_id`) | Done |
 | Ledger reconciliation on boot | Done |
+| Ledger immutability (readonly guard + UPDATE-blocking trigger, audit N3) | Done |
+| Keyset pagination on list endpoints (audit N6) | Done |
 | REST API (authenticated via `X-API-Key`) | Done |
-| Strategy engine (`app/services/strategy/*` — signals, indicators, market structure, option selector) | Roadmap — not wired to any route or job |
-| Tick processing / candle building (`tick_processor`, `candle_builder`) | Roadmap — not wired |
+| Market event ingestion (`POST/GET /api/market_events` → capped Redis tick stream) | Done — wired 2026-09-26 |
+| Market-structure snapshots (`POST/GET /api/market_structure`, DB-backed) | Done — wired 2026-09-26 |
+| Strategy signals (`POST /api/strategy/signals` — read-only pre-trade risk assessment) | Done — wired 2026-09-26 |
+| Indicator engine (`indicator_engine` — SMA-20 from the tick stream) | Roadmap — compute side not wired to a route/job yet |
+| Candle building (`candle_builder`) | Roadmap — not wired |
 | Greeks & option chain services (`greeks_service`, `option_chain_service`) | Roadmap — not wired |
-| VIX gate data source (`vix_gate` — the validator runs, but nothing feeds it VIX) | Roadmap — pass `context: {vix: ...}` on orders to activate |
-| Market event ingestion (`market_event` — order-book snapshots from a live feed) | Roadmap — no `POST /api/market_events` endpoint yet |
+| Option selector (`option_selector` — queries `option_snapshots`) | Roadmap — no snapshot producer wired yet |
+| VIX gate data source (`vix_gate` — the validator runs, but nothing feeds it VIX) | Roadmap — pass `context: {vix: ...}` on orders or signals to activate |
 | Backtesting runner | Next |
 | Live broker adapters | Next |
 

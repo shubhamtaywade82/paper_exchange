@@ -6,7 +6,7 @@
 
 **Status:** `TODO` · `In Progress` · `Done` · `Blocked` (state blocker in Notes)
 **Priority:** `P0` = security/data-integrity emergency · `P1` = broken contract or race on money path · `P2` = correctness debt · `P3` = hygiene/polish
-**Current phase: Phase 0–4 complete (audit-clean v1).** Remaining open work: Phase 5 background polish + the T4.3/T4.4 housekeeping items.
+**Current phase: Phase 5 polish + v1.1 wiring complete (2026-09-26).** Remaining open work: T4.3/T4.4 housekeeping + T5.3/T5.5/T5.6 leftovers.
 
 ---
 
@@ -62,15 +62,16 @@
 - [x] **T4.2 · P3 · Done — Remove unused `sidekiq` gem (audit T4.2)** — 2026-09-26: gem removed, lockfile regenerated (pure 8-line prune; `redis-client` correctly retained as a hard dep of `redis` 6.0.0).
 - [ ] **T4.3 · P3 · TODO — Zeitwerk normalization (audit S10)** — inflections → `config/initializers/inflections.rb`; delete explicit requires + loader unregister in `exchange_catalogs_loader.rb`; rename catalog class/file to kill the self-alias. Add eager-load smoke check to CI (pairs with T5.3).
 - [ ] **T4.4 · P3 · TODO — Order-book lifetime decision (audit S15)** — either extract stateless engines and drop the per-instance `@books`/`Mutex`, or make the book a process-level singleton fed by a real endpoint. Update the class comment either way.
+- [x] **T4.1b · P3 · Done — Wire the v1.1 roadmap modules (follow-up to the T4.1 keep-in-place decision)** — 2026-09-26, `feat/phase5-polish-wiring`: `POST/GET /api/market_events` (feed pushes ticks into the capped Redis stream via a rebuilt class-level `TickProcessor`; all-or-nothing validation, loud 503 when the stream is down), `POST/GET /api/market_structure` (engine now DB-backed on the existing `market_structure_snapshots` table — the in-memory hash never survived a request), `POST /api/strategy/signals` (`StrategyEngine#assess` — read-only pre-trade run of the exact submit-order risk gate, decide-only per M5; `Signal` gained `leverage`). Remaining unwired: indicator engine compute, candle builder, greeks/option chain, option selector — still Roadmap rows in the README.
 
 ## Phase 5 — Background polish (opportunistic, pair with test migration)
 
-- [ ] **T5.1 · P3 · TODO — Enforce ledger immutability (N3)** — `readonly?` guard on `LedgerEntry` (+ note); optional PG rule blocking UPDATE/DELETE.
-- [ ] **T5.2 · P3 · TODO — Normalize `event_type` casing (N2)** — uppercase everywhere incl. legacy `"trade"`; model format validation.
+- [x] **T5.1 · P3 · Done — Enforce ledger immutability (N3)** — 2026-09-26: `LedgerEntry#readonly?` raises on update/destroy of persisted rows; a BEFORE UPDATE trigger (migration 20260926120001, DDL shared via `Ledger::Immutability`) blocks even raw-SQL UPDATEs; DELETE stays allowed for the account-reset wipe. `spec/support/ledger_immutability.rb` re-installs the trigger on schema-loaded test DBs (schema.rb cannot express triggers), so CI tests the real enforcement.
+- [x] **T5.2 · P3 · Done — Normalize `event_type` casing (N2)** — 2026-09-26: legacy lowercase `"trade"` → `TRADE` (write + read paths + data migration 20260926120000, which runs BEFORE the immutability trigger); model format validation pins SCREAMING_SNAKE_CASE forever.
 - [ ] **T5.3 · P3 · TODO — Test gates (N8)** — `SimpleCov.minimum_coverage`; CI eager-load check (`Rails.application.eager_load!` smoke).
-- [ ] **T5.4 · P3 · TODO — Cursor pagination (N6)** — orders/ledger/risk_events on `(occurred_at, id)`; document caps meanwhile.
+- [x] **T5.4 · P3 · Done — Cursor pagination (N6)** — 2026-09-26: `Api::CursorPagination` concern — keyset `(sort_column, id) DESC`, opaque Base64url cursor, `?limit=` clamped 1–500 (default 100), tampered cursor → 400; envelope `{data, next_cursor}` on orders/ledger/risk_events; composite indexes + `placed_at` NOT NULL (migration 20260926130000).
 - [ ] **T5.5 · P3 · TODO — Controller specs → request specs** (migration, opportunistic per file touched).
-- [ ] **T5.6 · P3 · TODO — Remaining N-tier** — N4 MarkPriceStore TTL · N7 dead `locked_total` var (done 2026-09-26 in T1.3) · N9 README liquidation-cache blind-window note · N10 re-baseline brokerage rates vs current FY schedule.
+- [ ] **T5.6 · P3 · TODO — Remaining N-tier** — N4 MarkPriceStore TTL · N7 dead `locked_total` var (done 2026-09-26 in T1.3) · N9 README liquidation-cache blind-window note (done 2026-09-26 — one sentence in "Crypto market data ownership") · N10 re-baseline brokerage rates vs current FY schedule.
 
 ---
 
@@ -82,7 +83,7 @@ Orders with two-layer idempotency · margin wallet under row locks · contract-s
 
 - Per-account API keys (needs multi-operator requirement — `prd.md` non-goal).
 - WebSocket streaming (non-goal for MVP).
-- Wiring `strategy/*` (decided 2026-09-26: wire-or-remove in a v1.1 sprint — see T4.1).
+- ~~Wiring `strategy/*`~~ (decided 2026-09-26 → done same day, T4.1b: market events, market structure, strategy signals wired; indicator compute / candle builder / greeks / option chain / option selector remain Roadmap).
 
 ## Release checkpoint: "audit-clean v1"
 
