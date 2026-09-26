@@ -56,6 +56,11 @@
 | ~2025-09 | B4: `test-api-key-123` remap gated to `Rails.env.test?` | public header remapped anyone to the test wallet | `api/base_controller.rb:12-17` |
 | 2026-09-25 | Adopt audit backlog (`REVIEW.md`) as the stabilization roadmap | 7 must-fix defects, all small targeted fixes | `tasks.md` |
 | 2026-09-25 | Auth approach: shared bearer token first (per-account keys deferred) | matches single-operator deployment story | `tasks.md` T1.2, `prd.md` non-goals |
+| 2026-09-26 | T1.2 executed: `X-API-Key` = `PAPER_EXCHANGE_API_KEY` (constant-time compare, 401, boot-fail in production); X-API-Key no longer an account-id source | closes M2 with the minimum option; B4 scaffolding branch removed with it | `api/base_controller.rb`, `config/initializers/api_authentication.rb` |
+| 2026-09-26 | T2.3 executed: RiskManager decides-only; rejection events persisted in submit_order's post-rollback rescue via `RiskCheckFailedError`; evaluation errors fail CLOSED as `RISK_EVALUATION_ERROR_REJECTED` | events created inside the doomed transaction were rolled back with it (M5) | `risk_manager.rb`, `paper_exchange.rb` |
+| 2026-09-26 | T2.1 executed: position upsert locks rows + savepoint + one retry on RecordNotUnique; partial unique index for NULL-dimension contracts | SELECT FOR UPDATE doesn't block a concurrent insert of a missing row — the index arbitrates, the savepoint makes the violation recoverable (M4) | `position_manager.rb`, migration 20260926100000 |
+| 2026-09-26 | T4.1 decided (option b-lite): keep unwired services in place, mark them Roadmap in the README feature table; wire-or-remove deferred to a v1.1 sprint | moving `app/services/strategy/*` etc. to a roadmap/ namespace changes Zeitwerk paths for zero user value; the README now tells the truth about what runs | README "Status", `tasks.md` T4.1 |
+| 2026-09-26 | T4.2 executed: sidekiq gem removed | never referenced — Solid Queue adapter everywhere, no worker configured; pure supply-chain surface | `Gemfile` |
 
 ## 5. Bugs fixed (historical — from in-code comment trails + regression specs)
 

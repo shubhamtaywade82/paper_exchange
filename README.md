@@ -362,6 +362,13 @@ python3 -m http.server 8080
 
 ## Status
 
+> **Scope honesty (audit S7/T4.1, decided 2026-09-26):** the modules below
+> marked **Roadmap** exist in `app/services/` but have **no runtime
+> callers** — no routes, jobs, or services invoke them. They are kept as
+> scaffolding for planned capabilities, not as working features; wire them
+> (e.g. a `POST /api/market_events` endpoint feeding the order book) or
+> remove them in a future sprint. Decision recorded in `memory.md`.
+
 | Area | Status |
 |------|--------|
 | Exchange simulator core | Production-grade |
@@ -377,7 +384,12 @@ python3 -m http.server 8080
 | Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
 | Order idempotency (`client_order_id`) | Done |
 | Ledger reconciliation on boot | Done |
-| REST API | Done |
+| REST API (authenticated via `X-API-Key`) | Done |
+| Strategy engine (`app/services/strategy/*` — signals, indicators, market structure, option selector) | Roadmap — not wired to any route or job |
+| Tick processing / candle building (`tick_processor`, `candle_builder`) | Roadmap — not wired |
+| Greeks & option chain services (`greeks_service`, `option_chain_service`) | Roadmap — not wired |
+| VIX gate data source (`vix_gate` — the validator runs, but nothing feeds it VIX) | Roadmap — pass `context: {vix: ...}` on orders to activate |
+| Market event ingestion (`market_event` — order-book snapshots from a live feed) | Roadmap — no `POST /api/market_events` endpoint yet |
 | Backtesting runner | Next |
 | Live broker adapters | Next |
 

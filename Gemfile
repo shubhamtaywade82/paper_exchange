@@ -36,9 +36,11 @@ gem "oj"
 gem "dry-validation"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Background Jobs
+# Background Jobs — Solid Queue (Rails default, already a dependency).
+# sidekiq removed (audit T4.2): it was never referenced — the adapter is
+# Solid Queue everywhere and no worker process was configured; it was pure
+# supply-chain surface.
 # ─────────────────────────────────────────────────────────────────────────────
-gem "sidekiq"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Trading
