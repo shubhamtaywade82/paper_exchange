@@ -21,7 +21,9 @@ module Ledger
 
       entry = LedgerEntry.create!(
         account_id: account_id,
-        event_type: "trade",
+        # SCREAMING_SNAKE_CASE like every other event type (audit N2) —
+        # LedgerEntry validates the format.
+        event_type: "TRADE",
         payload: {
           trade_id: trade.id,
           order_id: trade.paper_order_id,
@@ -75,7 +77,7 @@ module Ledger
     end
 
     def self.compute_trade_cash_pnl(account_id)
-      trade_entries = LedgerEntry.where(account_id: account_id, event_type: "trade")
+      trade_entries = LedgerEntry.where(account_id: account_id, event_type: "TRADE")
       (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
     end
 
