@@ -1,10 +1,15 @@
 module Exchange
   class BinanceUSDMFuturesCatalog
     BaseUrl = "https://fapi.binance.com".freeze
+    # Audit S12/T3.8: bare Faraday.get had no timeouts — a hanging Binance
+    # connection held the calling thread forever.
+    OPEN_TIMEOUT = 2
+    TIMEOUT = 5
 
     class << self
       def fetch_instruments
-        response = Faraday.get("#{BaseUrl}/fapi/v1/exchangeInfo")
+        connection = Faraday.new(url: BaseUrl, request: { open_timeout: OPEN_TIMEOUT, timeout: TIMEOUT })
+        response = connection.get("/fapi/v1/exchangeInfo")
         raise "Binance USD-M futures API error: #{response.status}" unless response.success?
 
         data = JSON.parse(response.body)

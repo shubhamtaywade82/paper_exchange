@@ -17,7 +17,9 @@ default: &default
   encoding: unicode
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # Audit S13: this key was `max_connections`, which Rails silently ignores —
+  # the pool size never took this value into account.
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
 
 
 development:
