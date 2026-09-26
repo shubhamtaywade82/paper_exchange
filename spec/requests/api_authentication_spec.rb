@@ -33,6 +33,18 @@ RSpec.describe 'API authentication (audit M2)', type: :request do
 
       post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001' }
       expect(response).to have_http_status(:unauthorized)
+
+      get '/api/market_events'
+      expect(response).to have_http_status(:unauthorized)
+
+      post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }
+      expect(response).to have_http_status(:unauthorized)
+
+      post '/api/market_structure', params: { symbol: 'BTCUSDT' }
+      expect(response).to have_http_status(:unauthorized)
+
+      post '/api/strategy/signals', params: { symbol: 'RELIANCE', side: 'buy', quantity: 1 }
+      expect(response).to have_http_status(:unauthorized)
     end
   end
 
@@ -54,6 +66,15 @@ RSpec.describe 'API authentication (audit M2)', type: :request do
 
       post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001' }, headers: auth_headers
       expect(response).to have_http_status(:accepted)
+
+      post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }, headers: auth_headers
+      expect(response).to have_http_status(:service_unavailable) # no Redis in CI — the gate passed, the stream is down
+
+      post '/api/market_structure', params: { symbol: 'BTCUSDT', trend: 'bullish' }, headers: auth_headers
+      expect(response).to have_http_status(:created)
+
+      post '/api/strategy/signals', params: { symbol: 'RELIANCE', side: 'buy', quantity: 1, ltp: '2500' }, headers: auth_headers
+      expect(response).to have_http_status(:ok)
 
       # No "default" account row exists in this example, so the
       # authenticated response is the account controller's normal 404 —

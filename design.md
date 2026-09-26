@@ -10,29 +10,34 @@
 
 **Boring, predictable, agent-friendly JSON.** The consumer is a machine that must parse every response without guessing:
 
-1. **Flat objects, snake_case keys** — no envelope wrappers like `{ data: { … } }` except where already established (lists are bare JSON arrays).
+1. **Flat objects, snake_case keys** — no envelope wrappers except where a contract needs metadata: the list endpoints (orders / ledger / risk_events / market_events read) use `{ "data": [...], "next_cursor": ...}` for pagination (N6, 2026-09-26). Everything else stays a flat object (or bare array for unpaginated lists like positions).
 2. **One error shape, everywhere:** `{ "error": "<human-readable, actionable message>" }` — single key, no nesting, no error codes yet (add codes only via a `tasks.md` decision, since the agent parses messages).
 3. **Decimals are numbers, parsed as decimal.** Money fields carry full `decimal(36,18)` precision. Agents MUST NOT parse them as float64 — documented in README's smoke-test contract. (If we ever switch to strings, that's a versioned API change, not a silent edit.)
 4. **Timestamps are ISO 8601 with zone** (Rails default serialization of `placed_at`, `occurred_at`, `updated_at`).
-5. **Both path styles work** for legacy reasons: `/api/mark_prices` and `/api/mark-prices` (same for funding). New endpoints: **snake_case only**, mounted under `/api` and `/api/v1` (the router mirrors both — keep it that way).
+5. **Both path styles work** for every multi-word endpoint: `/api/mark_prices` and `/api/mark-prices` (same for funding, market events, market structure, strategy-signals). Mounted under `/api` and `/api/v1` (the router mirrors both — keep it that way).
 
 ## 2. Endpoint catalog (current contract)
 
 | Method | Path | Purpose | Notes |
 |--------|------|---------|-------|
 | GET | `/api/account` | Wallet + equity snapshot | balance, locked, equity, PnL |
-| POST | `/api/account/reset` | Wipe & re-seed account | dev/test only; atomic (one transaction, S11) |
-| GET | `/api/orders` | Recent orders | cap 200, newest first |
+| POST | `/api/account/reset` | Wipe & re-seed account | dev/test only; atomic (one transaction, S11); the only deleter of ledger rows |
+| GET | `/api/orders` | Orders, newest first | keyset paginated (N6): `{data, next_cursor}`, `?cursor=` + `?limit=` (1–500, default 100) |
 | POST | `/api/orders` | Submit order | 201 + order JSON; idempotent on `client_order_id` |
 | GET | `/api/orders/:id` | Order detail | |
 | DELETE | `/api/orders/:id` | Cancel + release locked margin | guarded transition — 409 on double-cancel (S1) |
 | GET | `/api/positions` | Projected open positions | |
 | GET | `/api/positions/:id` | Position detail | consumable — fixed in T1.1 (was M7 always-404) |
-| GET | `/api/risk_events` | Risk audit trail | cap 200; includes `*_REJECTED` events (M5 fixed) |
+| GET | `/api/risk_events` | Risk audit trail | keyset paginated (N6); includes `*_REJECTED` events (M5 fixed) |
 | GET | `/api/performance` | Portfolio metrics | `profit_factor` capped at 999.0 (S14) |
-| GET | `/api/ledger` | Ledger entries | cap 500 |
+| GET | `/api/ledger` | Ledger entries | keyset paginated (N6); rows immutable (N3) |
 | POST | `/api/mark_prices` | Bulk mark-price push | `{ prices: { SYMBOL: price } }`; validated — garbage/0/negative → 422, nothing applied (M3 fixed) |
 | POST | `/api/funding_events` | Funding settlement | validated — rate bounded abs ≤ 0.05, `funding_time` must parse (M3 fixed) |
+| POST | `/api/market_events` | Push tick(s) to the Redis stream | single tick or `{ events: [...] }` (≤ 500); M3-style all-or-nothing validation; 503 when the stream is down |
+| GET | `/api/market_events` | Read ticks back newest-first | `?symbol=`, `?count=` (1–1000, default 100), `?before=` stream cursor |
+| POST | `/api/market_structure` | Append an SMC snapshot | trend allowlist, fvg counts ≥ 0, parseable `as_of` |
+| GET | `/api/market_structure` | Latest snapshot(s) | `?symbol=` (404 when none) or latest-per-symbol for `?timeframe=` (default 5m) |
+| POST | `/api/strategy/signals` | Read-only pre-trade risk assessment | same gate as orders, decide-only (M5); `decision: allow\|reject` + `rejections` + market-structure context |
 | GET | `/up` | Health check | Rails default |
 
 **Authentication (M2/T1.2, shipped):** every request must send `X-API-Key: <PAPER_EXCHANGE_API_KEY>` — 401 otherwise; production refuses to boot without the key.
@@ -43,11 +48,12 @@
 
 | Status | Meaning | Triggered by |
 |--------|---------|--------------|
-| 200 / 201 | OK / created | reads, successful order submit |
-| 400 | Malformed input | `ArgumentError` |
+| 200 / 201 | OK / created | reads, successful order submit; strategy assessment is 200 for BOTH allow and reject (the decision is the payload) |
+| 400 | Malformed input | `ArgumentError`, tampered pagination cursor (N6) |
 | 402 | Insufficient margin | `Ledger::InsufficientMarginError` |
-| 404 | Resource not found (or wrong account) | missing id — **no existence oracle across accounts** |
-| 422 | Validation failure (processable content) | `OrderValidationError` (dry-validation) |
+| 404 | Resource not found (or wrong account) | missing id — **no existence oracle across accounts**; also `GET /api/market_structure?symbol=` with no snapshot |
+| 422 | Validation failure (processable content) | `OrderValidationError` (dry-validation), invalid market event / structure snapshot / signal payloads |
+| 503 | Downstream dependency unavailable | market-events tick stream (Redis) down — ticks were NOT accepted |
 | 500 | Internal error | logged server-side, body is always `{ "error": "Internal error" }` — never leak stack traces |
 
 Error message style: one sentence, actionable, includes the offending field where cheap — e.g. `"quantity must be positive"`, not `"Invalid order"`. `PositionGoneError` messages explain the race (`"…no open position on the opposite side to reduce (position gone)"`) — keep that pattern.
@@ -59,10 +65,12 @@ Error message style: one sentence, actionable, includes the offending field wher
 - **`side`:** `buy` · `sell` (downcased at ingress). Position `side`: `long`/`short` derived from quantity sign.
 - **`instrument_type`:** UPPERCASE — `EQUITY`, `CRYPTO_PERPETUAL`, `FUTURE`, `OPTION` (+ catalog variants). Default when absent: `CRYPTO_PERPETUAL`.
 - **`RiskEvent.event_type`:** `POSITION_LIQUIDATED`, `LIQUIDATION_FAILED`, `*_REJECTED` (suffix is machine-checked by `submit_order`), `RISK_EVALUATION_ERROR`.
-- **`LedgerEntry.event_type`:** UPPERCASE event names (`MARGIN_LOCKED`, `FUNDING_FEE`, `REALIZED_PNL`, `ADJUSTMENT`, …) — ⚠ legacy `"trade"` is lowercase (N2); write no new lowercase values.
+- **`LedgerEntry.event_type`:** SCREAMING_SNAKE_CASE, one convention (N2 fixed 2026-09-26): `TRADE`, `MARGIN_LOCKED`, `MARGIN_UNLOCKED`, `FEE`, `REALIZED_PNL`, `FUNDING_FEE`, `ADJUSTMENT` — model format validation rejects anything else.
 - **Instrument identity (contract scope):** `(symbol, instrument_type, option_type, strike_price, expiry_date)` — the 5-tuple that identifies a position. NULL option dims for non-options.
+- **`decision` (strategy signals):** `allow` · `reject` — paired with `rejections` from the `*_REJECTED` vocabulary above.
+- **`trend` (market structure):** `bullish` · `bearish` · `range` · `neutral`.
 
-**List-cap policy:** every list endpoint has a hard cap (200/500/200). Responses do not advertise truncation today (N6 tracks cursor pagination). Until then: consumers must not assume completeness; a `tasks.md` decision will add pagination metadata.
+**Pagination contract (N6, fixed 2026-09-26):** list endpoints (orders / ledger / risk_events) return `{ "data": [...], "next_cursor": string|null }`, keyset-ordered `(sort_column, id) DESC` with `next_cursor` null on the last page; `?limit=` clamps to 1–500 (default 100); tampered cursors are 400. The market-events read uses the same envelope with a Redis stream-id cursor (`?before=`).
 
 ## 5. Future dashboard visual language (only if a UI is added)
 

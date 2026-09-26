@@ -1,7 +1,13 @@
 module Api
   class BaseController < ApplicationController
+    include CursorPagination
+
     before_action :authenticate_api_key!
     before_action :set_account
+
+    rescue_from CursorPagination::InvalidCursorError do |e|
+      render_error(:bad_request, e.message)
+    end
 
     private
 

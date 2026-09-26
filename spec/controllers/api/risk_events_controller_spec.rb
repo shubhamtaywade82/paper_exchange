@@ -9,11 +9,12 @@ RSpec.describe Api::RiskEventsController, type: :controller do
   end
 
   describe 'GET #index' do
-    it 'returns risk events' do
+    it 'returns risk events in the pagination envelope' do
       get :index
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
-      expect(json).to be_an(Array)
+      expect(json).to include('data' => be_an(Array), 'next_cursor' => nil)
+      expect(json['data'].first['event_type']).to eq('TEST')
     end
   end
 end

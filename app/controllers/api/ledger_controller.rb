@@ -1,10 +1,10 @@
 module Api
   class LedgerController < BaseController
+    # Audit N6 (T5.4): keyset pagination on (occurred_at, id) DESC —
+    # see Api::CursorPagination for the envelope and cursor contract.
     def index
-      entries = LedgerEntry.where(account_id: @account_id)
-        .order(occurred_at: :desc)
-        .limit(500)
-      render json: entries.map { |e| entry_json(e) }
+      entries, next_cursor = paginate(LedgerEntry.where(account_id: @account_id), :occurred_at)
+      render json: { data: entries.map { |e| entry_json(e) }, next_cursor: next_cursor }
     end
 
     private

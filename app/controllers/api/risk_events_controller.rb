@@ -1,10 +1,10 @@
 module Api
   class RiskEventsController < BaseController
+    # Audit N6 (T5.4): keyset pagination on (created_at, id) DESC —
+    # see Api::CursorPagination for the envelope and cursor contract.
     def index
-      events = RiskEvent.where(account_id: @account_id)
-        .order(created_at: :desc)
-        .limit(200)
-      render json: events.map { |e| event_json(e) }
+      events, next_cursor = paginate(RiskEvent.where(account_id: @account_id), :created_at)
+      render json: { data: events.map { |e| event_json(e) }, next_cursor: next_cursor }
     end
 
     private
