@@ -7,6 +7,7 @@ BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_HALF_UP })
 const PORT = process.env.PORT || '3100';
 const BASE_URL = process.env.API_BASE_URL || `http://127.0.0.1:${PORT}/api/v1`;
 const ACCOUNT_ID = process.env.ACCOUNT_ID || 'test-account-1';
+const API_KEY = process.env.PAPER_EXCHANGE_API_KEY || '';
 const SYMBOL = process.env.SYMBOL || 'SMOKE_BTCUSDT';
 const EPSILON = new BigNumber('1e-8'); // Tolerance for DB scale rounding
 
@@ -14,6 +15,8 @@ const http: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: {
     'X-Account-Id': ACCOUNT_ID,
+    // Audit M2: every /api request must authenticate with the operator key.
+    ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
     'Content-Type': 'application/json'
   }
 });

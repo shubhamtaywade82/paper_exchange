@@ -17,6 +17,20 @@ module Exchange
   # contradicted `side` for the very first fill of a short position:
   # `[total_qty, 0].max` with a negative `total_qty` always produced a
   # zero-quantity row — opening a short from flat was silently a no-op.)
+  #
+  # Concurrency (audit M4): every apply takes a SELECT ... FOR UPDATE row
+  # lock on the contract's position, so two concurrent fills of the same
+  # contract can never read-modify-write past each other. The normal
+  # submit_order path already serializes same-account orders on the account
+  # row, but reduce-only/liquidation closes skip that lock — an opening
+  # order racing a liquidation close hit exactly this window. For the
+  # first fill from flat there is no row to lock, so the partial unique
+  # index `index_paper_positions_contract_strict` (added for exactly the
+  # NULL-dimension contracts the old composite index could not protect)
+  # arbitrates the race: the loser gets ActiveRecord::RecordNotUnique,
+  # rolls back to the savepoint, re-locks the winner's now-committed row,
+  # and re-applies its fill on top. The savepoint is what makes the
+  # violation recoverable inside the caller's fill transaction.
   class PositionManager
     def self.apply!(account_id:, symbol:, side:, quantity:, avg_price:, leverage: 1, margin_type: "cross", instrument_type: "EQUITY", option_type: nil, strike_price: nil, expiry_date: nil)
       fill_side = normalize_side(side)
@@ -33,48 +47,66 @@ module Exchange
         expiry_date: expiry_date
       }
 
-      position = ::PaperExchange::PaperPosition.find_by(contract_scope) ||
-        ::PaperExchange::PaperPosition.new(contract_scope.merge(side: fill_side, quantity: 0, avg_price: 0))
+      attempts = 0
+      begin
+        apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type)
+      rescue ActiveRecord::RecordNotUnique
+        attempts += 1
+        raise if attempts > 1
 
-      current_qty = to_decimal(position.quantity)
-      was_flat = current_qty.zero?
-      realized_pnl = BigDecimal("0")
-
-      if was_flat || position.side == fill_side
-        # Opening from flat, or adding to the position in the same direction.
-        position.side = fill_side if was_flat
-        new_qty = current_qty + fill_qty
-        position.avg_price = ((to_decimal(position.avg_price) * current_qty) + (fill_price * fill_qty)) / new_qty
-        position.quantity = new_qty
-        if was_flat
-          position.leverage = leverage
-          position.margin_type = margin_type
-        end
-      else
-        closed_qty = [ fill_qty, current_qty ].min
-        old_entry_price = to_decimal(position.avg_price)
-        pnl_multiplier = position.side == "long" ? 1 : -1
-        realized_pnl = (fill_price - old_entry_price) * closed_qty * pnl_multiplier
-
-        case fill_qty <=> current_qty
-        when -1
-          position.quantity = current_qty - fill_qty
-        when 0
-          position.quantity = 0
-          position.avg_price = 0
-        when 1
-          position.side = fill_side
-          position.quantity = fill_qty - current_qty
-          position.avg_price = fill_price
-          position.leverage = leverage
-          position.margin_type = margin_type
-        end
+        retry
       end
+    end
 
-      position.current_price = fill_price
-      position.last_realized_pnl = realized_pnl
-      position.save!
-      position
+    # Returns the LOCKED, mutated position instance. Callers that need to
+    # act on the position right after the fill (MarginEngine.sync_position!)
+    # must use this instance — its in-memory attributes reflect the fill
+    # that was just applied under the lock (audit S6).
+    def self.apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type)
+      ::PaperExchange::PaperPosition.transaction(requires_new: true) do
+        position = ::PaperExchange::PaperPosition.lock.where(contract_scope).first
+        position ||= ::PaperExchange::PaperPosition.new(contract_scope.merge(side: fill_side, quantity: 0, avg_price: 0))
+
+        current_qty = to_decimal(position.quantity)
+        was_flat = current_qty.zero?
+        realized_pnl = BigDecimal("0")
+
+        if was_flat || position.side == fill_side
+          # Opening from flat, or adding to the position in the same direction.
+          position.side = fill_side if was_flat
+          new_qty = current_qty + fill_qty
+          position.avg_price = ((to_decimal(position.avg_price) * current_qty) + (fill_price * fill_qty)) / new_qty
+          position.quantity = new_qty
+          if was_flat
+            position.leverage = leverage
+            position.margin_type = margin_type
+          end
+        else
+          closed_qty = [ fill_qty, current_qty ].min
+          old_entry_price = to_decimal(position.avg_price)
+          pnl_multiplier = position.side == "long" ? 1 : -1
+          realized_pnl = (fill_price - old_entry_price) * closed_qty * pnl_multiplier
+
+          case fill_qty <=> current_qty
+          when -1
+            position.quantity = current_qty - fill_qty
+          when 0
+            position.quantity = 0
+            position.avg_price = 0
+          when 1
+            position.side = fill_side
+            position.quantity = fill_qty - current_qty
+            position.avg_price = fill_price
+            position.leverage = leverage
+            position.margin_type = margin_type
+          end
+        end
+
+        position.current_price = fill_price
+        position.last_realized_pnl = realized_pnl
+        position.save!
+        position
+      end
     end
 
     def self.normalize_side(side)

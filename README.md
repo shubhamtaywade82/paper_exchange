@@ -111,15 +111,37 @@ redis-server
 bin/rails server
 ```
 
+### Authentication
+
+Every request under `/api` must present the operator's shared API key:
+
+```bash
+curl -H "X-API-Key: $PAPER_EXCHANGE_API_KEY" -H "X-Account-Id: my-account" \
+  http://localhost:3100/api/account
+```
+
+**Trust model (audit M2):** single-operator deployment. The `X-API-Key`
+header authenticates the request (constant-time compare against
+`PAPER_EXCHANGE_API_KEY`); `X-Account-Id` then selects which paper account
+the authenticated operator acts on — it is identity, not authorization.
+Requests without a valid key get `401`. **Production refuses to boot** when
+`PAPER_EXCHANGE_API_KEY` is unset, so the API can never be silently deployed
+unauthenticated. Per-account API keys are a roadmap item (see `prd.md`
+non-goals). CORS is restricted to loopback origins for local browser tools;
+non-browser clients are unaffected by CORS.
+
 ### Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
+| `PAPER_EXCHANGE_API_KEY` | Shared operator API key required by every `/api` request via the `X-API-Key` header (audit M2). No default — production refuses to boot without it |
 | `REDIS_URL` | Redis connection URL (default `redis://localhost:6379/0`) |
+| `PAPER_EXCHANGE_MARGIN` | Default paper margin for new/reset accounts (default `10000`) |
 | `PAPER_EXCHANGE_MAX_DRAWDOWN` | Max portfolio drawdown before rejection (default `0.20`) |
 | `PAPER_EXCHANGE_MAX_POSITIONS` | Max open positions per account (default `10`) |
 | `PAPER_EXCHANGE_MAX_POSITION_VALUE` | Max position value before margin rejection (default `500000`) |
 | `PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE` | Maintenance margin rate used to derive liquidation prices for leveraged futures positions (default `0.004`) |
+| `PAPER_EXCHANGE_ORDER_TTL_MINUTES` | Open orders older than this are expired by the recurring sweep, releasing their locked margin (default `60`) |
 | `DHAN_CLIENT_ID` | DhanHQ client ID (required for data APIs) |
 | `DHAN_ACCESS_TOKEN` | DhanHQ access token |
 
@@ -134,11 +156,11 @@ babysit.
 
 The agent feeds the broker two things:
 
-1. **`execution_price`** on `POST /api/orders` — pins the exact reference
-   price a specific order fills near (a small deterministic slippage model
-   still applies on top, same as every other order type). Required in
-   practice for crypto symbols, since the broker has no other price source
-   for them.
+1. **`execution_price`** on `POST /api/orders` — pins the exact fill price
+   for the order (no slippage is applied when it is given; orders without
+   it fill through the deterministic slippage model off the order-book
+   snapshot). Required in practice for crypto symbols, since the broker has
+   no other price source for them.
 2. **`POST /api/mark_prices`** — a periodic bulk push of `{symbol: price}`
    for every open position's symbol. This is what drives
    `Risk::LiquidationEngine` — a leveraged position's liquidation price is
@@ -340,6 +362,13 @@ python3 -m http.server 8080
 
 ## Status
 
+> **Scope honesty (audit S7/T4.1, decided 2026-09-26):** the modules below
+> marked **Roadmap** exist in `app/services/` but have **no runtime
+> callers** — no routes, jobs, or services invoke them. They are kept as
+> scaffolding for planned capabilities, not as working features; wire them
+> (e.g. a `POST /api/market_events` endpoint feeding the order book) or
+> remove them in a future sprint. Decision recorded in `memory.md`.
+
 | Area | Status |
 |------|--------|
 | Exchange simulator core | Production-grade |
@@ -355,7 +384,12 @@ python3 -m http.server 8080
 | Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
 | Order idempotency (`client_order_id`) | Done |
 | Ledger reconciliation on boot | Done |
-| REST API | Done |
+| REST API (authenticated via `X-API-Key`) | Done |
+| Strategy engine (`app/services/strategy/*` — signals, indicators, market structure, option selector) | Roadmap — not wired to any route or job |
+| Tick processing / candle building (`tick_processor`, `candle_builder`) | Roadmap — not wired |
+| Greeks & option chain services (`greeks_service`, `option_chain_service`) | Roadmap — not wired |
+| VIX gate data source (`vix_gate` — the validator runs, but nothing feeds it VIX) | Roadmap — pass `context: {vix: ...}` on orders to activate |
+| Market event ingestion (`market_event` — order-book snapshots from a live feed) | Roadmap — no `POST /api/market_events` endpoint yet |
 | Backtesting runner | Next |
 | Live broker adapters | Next |
 

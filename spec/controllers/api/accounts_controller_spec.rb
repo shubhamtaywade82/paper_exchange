@@ -87,6 +87,27 @@ RSpec.describe Api::AccountsController, type: :controller do
       expect(::PaperExchange::PaperPosition.where(account_id: account_id)).to be_empty
     end
 
+    # S11 regression guard: the wipe spans five tables; a failure midway
+    # must roll the whole reset back instead of leaving a half-wiped account.
+    it 'rolls the whole wipe back when a step fails mid-reset (atomic reset)' do
+      account = create(:account, account_id: account_id, margin: 1_000.0)
+      create(:paper_position, account_id: account_id, symbol: 'BTCUSDT')
+      create(:paper_order, account_id: account_id, status: :open)
+      # Stub the RELATION's delete_all (what the controller actually calls:
+      # LedgerEntry.where(...).delete_all) — a class-level stub would miss it.
+      relation = instance_double(ActiveRecord::Relation)
+      allow(LedgerEntry).to receive(:where).with(account_id: account_id).and_return(relation)
+      allow(relation).to receive(:delete_all).and_raise(RuntimeError, 'boom')
+
+      expect { post :reset, params: { margin: 500.0 } }.to raise_error(RuntimeError, 'boom')
+
+      expect(::PaperExchange::PaperPosition.where(account_id: account_id).count).to eq(1)
+      expect(::PaperExchange::PaperOrder.where(account_id: account_id).count).to eq(1)
+      account.reload
+      expect(account.margin.to_f).to eq(1_000.0)
+      expect(account.available_balance.to_f).to eq(1_000.0)
+    end
+
     it 'keeps the env default margin when no margin is given' do
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('PAPER_EXCHANGE_MARGIN').and_return('10000.0')

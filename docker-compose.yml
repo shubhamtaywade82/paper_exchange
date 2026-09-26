@@ -40,6 +40,9 @@ services:
       # No default fallback: a missing RAILS_MASTER_KEY must fail loudly at
       # compose time instead of silently booting with a committed key (audit M1).
       RAILS_MASTER_KEY: "${RAILS_MASTER_KEY:?RAILS_MASTER_KEY must be set in .env - see .env.example}"
+      # Same loud-failure policy for the API key (audit M2): without it the
+      # API would 401 every request with no hint why.
+      PAPER_EXCHANGE_API_KEY: "${PAPER_EXCHANGE_API_KEY:?PAPER_EXCHANGE_API_KEY must be set in .env - see .env.example}"
     depends_on:
       db:
         condition: service_healthy

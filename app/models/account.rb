@@ -39,7 +39,11 @@ class Account < ApplicationRecord
   private
 
   def set_defaults
-    self.margin = ENV.fetch("PAPER_EXCHANGE_MARGIN", "100000").to_f if defaultable?(:margin)
+    # Audit S9/T3.3: aligned with the documented default (README +
+    # .env.example + AccountsController#requested_margin all say 10000;
+    # this was the lone 100000 outlier, so new accounts silently started
+    # with 10x the documented paper margin).
+    self.margin = ENV.fetch("PAPER_EXCHANGE_MARGIN", "10000").to_f if defaultable?(:margin)
     self.current_equity = margin if defaultable?(:current_equity)
     self.realized_pnl = 0.0 if defaultable?(:realized_pnl)
     self.unrealized_pnl = 0.0 if defaultable?(:unrealized_pnl)

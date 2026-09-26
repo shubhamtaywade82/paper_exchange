@@ -4,6 +4,12 @@ module Exchange
   # (re)computes the position's liquidation price. Invoked after every fill,
   # once PositionManager has applied the trade.
   #
+  # Contract (audit S6): callers must pass the LOCKED position instance
+  # returned by PositionManager.apply! — the one whose in-memory attributes
+  # reflect the fill just applied under the row lock. Computing `delta`
+  # against a stale instance (re-read without the lock) is what produced
+  # last-writer-wins `initial_margin` values under concurrent fills.
+  #
   # Only positions opened with leverage > 1 participate in this wallet-margin
   # model — unleveraged (leverage 1, the default for equity/F&O) positions
   # keep the pre-existing behavior of settling entirely through the trade's

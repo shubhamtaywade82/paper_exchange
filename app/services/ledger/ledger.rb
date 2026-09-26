@@ -1,9 +1,23 @@
 module Ledger
   class Ledger
+    # Non-crypto cash flow (audit S5/T3.7): a sell's charges are netted
+    # against its proceeds instead of producing a negative credit — when
+    # charges exceed proceeds (a cheap option close), the remainder is
+    # posted as a debit. A negative credit used to violate the ledger's
+    # non-negative invariants and 422 the whole fill.
     def self.record_trade(account_id:, trade:)
       is_crypto_perp = trade.paper_order.respond_to?(:instrument_type) && trade.paper_order.instrument_type == "CRYPTO_PERPETUAL"
-      debit = is_crypto_perp ? 0 : (trade.side == "buy" ? (trade.price * trade.quantity + (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0)
-      credit = is_crypto_perp ? 0 : (trade.side == "sell" ? (trade.price * trade.quantity - (trade.respond_to?(:total_charges) ? trade.total_charges : 0)) : 0)
+      charges = trade.respond_to?(:total_charges) ? trade.total_charges.to_f : 0.0
+      debit = 0.0
+      credit = 0.0
+
+      if !is_crypto_perp && trade.side == "buy"
+        debit = (trade.price * trade.quantity).to_f + charges
+      elsif !is_crypto_perp && trade.side == "sell"
+        net = (trade.price * trade.quantity).to_f - charges
+        credit = [ net, 0.0 ].max
+        debit = net.negative? ? net.abs : 0.0
+      end
 
       entry = LedgerEntry.create!(
         account_id: account_id,
@@ -65,6 +79,10 @@ module Ledger
       (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
     end
 
+    # Audit S4/T3.6: no silent zero. The old bare `rescue; 0.0` masked real
+    # failures (DB errors, corrupted sums) as "no realized PnL" and the
+    # wrong value got cached into the account row — a money-path query that
+    # fails must raise (rules.md §1), not fabricate a number.
     def self.compute_realized_pnl(account_id)
       equity_pnl = compute_trade_cash_pnl(account_id)
 
@@ -72,8 +90,6 @@ module Ledger
       crypto_pnl = (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f
 
       (equity_pnl + crypto_pnl).round(8)
-    rescue
-      0.0
     end
 
     # `mark_price` defaults to the live price from MarketData::MarkPriceStore

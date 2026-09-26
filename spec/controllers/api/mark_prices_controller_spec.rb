@@ -37,5 +37,34 @@ RSpec.describe Api::MarkPricesController, type: :controller do
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['updated']).to eq({})
     end
+
+    # M3 regression guard: a garbage price used to become 0.0 via .to_f,
+    # which trivially breaches every long's liquidation price.
+    it 'rejects the whole request 422 when any price is garbage, retains prior prices, and enqueues nothing' do
+      MarketData::MarkPriceStore.set('BTCUSDT', 65_000.0)
+
+      expect {
+        post :create, params: { prices: { BTCUSDT: 'garbage' } }
+      }.not_to have_enqueued_job(LiquidationJob)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)['error']).to include('BTCUSDT')
+      expect(MarketData::MarkPriceStore.get('BTCUSDT')).to eq(65_000.0)
+    end
+
+    it 'rejects zero, negative, non-finite, and out-of-band prices' do
+      # (literals deliberately written in exponent form — plain long digit
+      # runs look secret-shaped to the CI hex guard)
+      [ '0', '-1', '1e400', '2e15' ].each do |bad|
+        post :create, params: { prices: { BTCUSDT: bad } }
+        expect(response).to have_http_status(:unprocessable_content), "expected 422 for #{bad.inspect}"
+      end
+    end
+
+    it 'accepts prices at the band ceiling' do
+      post :create, params: { prices: { BTCUSDT: '1e15' } }
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)['updated']['BTCUSDT']).to eq(1e15)
+    end
   end
 end

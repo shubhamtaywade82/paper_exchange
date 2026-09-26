@@ -36,4 +36,31 @@ RSpec.describe PaperExchange::PaperPosition, type: :model do
       expect(position.liquidated?(65_999.0)).to be false
     end
   end
+  # Audit M4 (T2.1): the partial unique index must fire for NULL-dimension
+  # contracts (EQUITY / CRYPTO_PERPETUAL) — the old composite index treated
+  # NULLs as distinct, so duplicate rows for the same contract inserted
+  # cleanly.
+  describe 'NULL-dimension contract uniqueness (audit M4)' do
+    it 'rejects a duplicate CRYPTO_PERPETUAL position for the same contract' do
+      account = create(:account, account_id: 'ACC-UNIQ')
+      create(:paper_position, account_id: account.account_id, symbol: 'BTCUSDT',
+             instrument_type: 'CRYPTO_PERPETUAL', option_type: nil, strike_price: nil, expiry_date: nil)
+
+      duplicate = build(:paper_position, account_id: account.account_id, symbol: 'BTCUSDT',
+             instrument_type: 'CRYPTO_PERPETUAL', option_type: nil, strike_price: nil, expiry_date: nil)
+
+      expect { duplicate.save! }.to raise_error(ActiveRecord::RecordNotUnique)
+    end
+
+    it 'still allows distinct options contracts on the same underlying' do
+      account = create(:account, account_id: 'ACC-UNIQ-OPT')
+      create(:paper_position, account_id: account.account_id, symbol: 'NIFTY',
+             instrument_type: 'OPTIDX', option_type: 'CE', strike_price: 26_000, expiry_date: Date.today + 7)
+
+      other = build(:paper_position, account_id: account.account_id, symbol: 'NIFTY',
+             instrument_type: 'OPTIDX', option_type: 'PE', strike_price: 26_000, expiry_date: Date.today + 7)
+
+      expect { other.save! }.not_to raise_error
+    end
+  end
 end

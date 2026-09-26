@@ -1,6 +1,11 @@
 module Risk
   class MaxDrawdownValidator
-    MAX_DD = (ENV.fetch("PAPER_EXCHANGE_MAX_DD", "0.10").to_f)
+    # Audit S9/T3.3: the documented variable name is
+    # PAPER_EXCHANGE_MAX_DRAWDOWN (README + .env.example, default 0.20);
+    # the code used to read PAPER_EXCHANGE_MAX_DD with default 0.10, so
+    # operators configuring the documented knob changed nothing. The
+    # historical spelling is still honored if explicitly set.
+    MAX_DD = ENV.fetch("PAPER_EXCHANGE_MAX_DRAWDOWN") { ENV.fetch("PAPER_EXCHANGE_MAX_DD", "0.20") }.to_f
 
     def evaluate(account_id, signal)
       account = Account.find_by(account_id: account_id)

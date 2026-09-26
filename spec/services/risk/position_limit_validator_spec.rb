@@ -8,13 +8,16 @@ RSpec.describe Risk::PositionLimitValidator, type: :service do
   before { create(:account, account_id: account_id) }
 
   it 'passes when under limit' do
-    5.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
+    # distinct symbols: the strict contract unique index (audit M4) correctly
+    # forbids duplicate (account, symbol, instrument) rows with NULL option
+    # dimensions — the old specs leaned on the broken composite index.
+    5.times { |i| create(:paper_position, account_id: account_id, symbol: "NIFTY#{i}") }
     expect(validator.evaluate(account_id, signal)).to eq(:passed)
   end
 
   it 'rejects when at or over the limit (B1 regression guard)' do
     stub_const('Risk::PositionLimitValidator::MAX_POSITIONS', 3)
-    3.times { create(:paper_position, account_id: account_id, symbol: 'NIFTY') }
+    3.times { |i| create(:paper_position, account_id: account_id, symbol: "NIFTY#{i}") }
     expect(validator.evaluate(account_id, signal)).to eq(:POSITION_LIMIT_REJECTED)
   end
 

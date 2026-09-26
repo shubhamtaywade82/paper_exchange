@@ -78,4 +78,54 @@ RSpec.describe PaperExchange::PaperOrder, type: :model do
       expect(order.rejection_reason).to eq('test reason')
     end
   end
+  # Audit S1/N1 (T3.1): the full legal-transition table. Terminal states
+  # can never transition again; rejected! stays unguarded by design (it is
+  # the terminal safety net in submit_order's rescue path).
+  describe 'state transition guards (audit S1)' do
+    let(:order) { create(:paper_order, status: :pending) }
+
+    def transition_table
+      {
+        cancel: %i[pending open partially_filled],
+        open: %i[pending partially_filled],
+        fill: %i[open partially_filled],
+        partially_fill: %i[open partially_filled],
+        expire: %i[pending open partially_filled]
+      }
+    end
+
+    ALL_STATUSES = %i[pending open partially_filled filled cancelled rejected expired].freeze
+
+    it 'allows exactly the legal transitions and rejects everything else with StateError' do
+      transition_table.each do |action, legal_from|
+        ALL_STATUSES.each do |from|
+          order.update_columns(status: PaperExchange::PaperOrder.statuses[from])
+
+          apply = lambda do
+            case action
+            when :cancel then order.cancel!
+            when :open then order.open!
+            when :fill then order.filled!
+            when :partially_fill then order.partially_filled!(1)
+            when :expire then order.expired!
+            end
+          end
+
+          if legal_from.include?(from)
+            expect { apply.call }.not_to raise_error, "#{action} from #{from} should be legal"
+          else
+            expect { apply.call }.to raise_error(PaperExchange::PaperOrder::StateError, /cannot #{action} a #{from}/),
+              "#{action} from #{from} should be rejected"
+          end
+        end
+      end
+    end
+
+    it 'never raises from rejected! regardless of current status' do
+      ALL_STATUSES.each do |from|
+        order.update_columns(status: PaperExchange::PaperOrder.statuses[from])
+        expect { order.rejected!('reason') }.not_to raise_error
+      end
+    end
+  end
 end

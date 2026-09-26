@@ -29,6 +29,8 @@ module Api
       render json: order_json(order), status: :created
     rescue Exchange::OrderValidationError => e
       render_error(:unprocessable_content, e.message)
+    rescue Exchange::PaperExchange::RiskCheckFailedError => e
+      render_error(:unprocessable_content, e.message)
     rescue ArgumentError => e
       render_error(:bad_request, e.message)
     rescue Ledger::InsufficientMarginError => e
@@ -42,6 +44,10 @@ module Api
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       exchange.cancel_order(@order.id)
       render json: order_json(@order)
+    rescue ::PaperExchange::PaperOrder::StateError => e
+      # Double-cancel or cancelling a terminal order — the current state
+      # conflicts with the requested transition (audit S1).
+      render_error(:conflict, e.message)
     end
 
     private

@@ -1,5 +1,10 @@
 module Projections
   class PerformanceMetrics
+    # Audit S14/T3.9: JSON cannot carry Infinity (it serializes as null),
+    # so an all-wins trade history is reported at the cap instead of an
+    # infinite profit factor the consumer cannot chart.
+    PROFIT_FACTOR_CAP = 999.0
+
     class << self
       # Computed from the ledger (closed trades → realized PnL) and the open
       # position projection (unrealized PnL). Win rate, profit factor, and
@@ -9,25 +14,31 @@ module Projections
       # enough to surface "is the agent profitable" without waiting for a
       # full time-series implementation).
       def for(account_id)
+        summary = PortfolioProjection.summary(account_id) # once, not three times
+
         trades = closed_trades_with_pnl(account_id)
         realized_pnl = trades.sum { |t| t[:pnl] }
-        total_pnl = realized_pnl + PortfolioProjection.summary(account_id)[:unrealized_pnl].to_f
+        total_pnl = realized_pnl + summary[:unrealized_pnl].to_f
         wins = trades.select { |t| t[:pnl] > 0 }
         losses = trades.select { |t| t[:pnl] < 0 }
         gross_profit = wins.sum { |t| t[:pnl] }
         gross_loss = losses.sum { |t| t[:pnl].abs }.to_f
         win_rate = trades.empty? ? 0.0 : (wins.size.to_f / trades.size)
-        profit_factor = gross_loss.zero? ? (gross_profit.positive? ? Float::INFINITY : 0.0) : (gross_profit / gross_loss)
+        profit_factor = if gross_loss.zero?
+          gross_profit.positive? ? PROFIT_FACTOR_CAP : 0.0
+        else
+          [ (gross_profit / gross_loss), PROFIT_FACTOR_CAP ].min
+        end
         sharpe = annualized_sharpe(trades)
 
         {
-          unrealized_pnl: PortfolioProjection.summary(account_id)[:unrealized_pnl],
+          unrealized_pnl: summary[:unrealized_pnl],
           realized_pnl: realized_pnl.round(8),
           total_pnl: total_pnl.round(8),
-          max_drawdown: PortfolioProjection.summary(account_id)[:drawdown],
+          max_drawdown: summary[:drawdown],
           sharpe_ratio: sharpe,
           win_rate: win_rate.round(4),
-          profit_factor: profit_factor.to_f.infinite? ? Float::INFINITY : profit_factor.round(4)
+          profit_factor: profit_factor.round(4)
         }
       end
 

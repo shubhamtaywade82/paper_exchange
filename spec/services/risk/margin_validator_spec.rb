@@ -28,10 +28,28 @@ RSpec.describe Risk::MarginValidator, type: :service do
   end
 
   context 'with an integer equity quantity' do
-    let(:signal_h) { { symbol: 'RELIANCE', quantity: 10, price: 2_500.0, instrument_type: 'EQUITY', leverage: 1 } }
+    # Audit S3/T3.5: unleveraged instruments lock the FULL notional (see
+    # PaperOrder#required_margin), so the gate compares against the same
+    # figure — not a fraction of it. An oversized equity order now gets a
+    # clean pre-mutation 422 here instead of a 402 at MarginLedger after
+    # the order row was already saved.
+    let(:signal_h) { { symbol: 'RELIANCE', quantity: 2, price: 2_500.0, instrument_type: 'EQUITY', leverage: 1 } }
 
-    it 'passes when under the limit' do
+    it 'passes when the full notional fits within available_balance' do
       expect(validator.evaluate(account_id, signal)).to eq(:passed)
+    end
+
+    it 'rejects an order whose full notional exceeds half the balance (50%-of-balance order, audit S3)' do
+      Account.find_by(account_id: account_id).update_columns(available_balance: 4_000.0)
+      expect(validator.evaluate(account_id, signal)).to eq(:MARGIN_REJECTED)
+    end
+
+    it 'rejects an oversized equity order pre-mutation instead of letting it die at the margin lock' do
+      oversized = instance_double('Strategy::Signal', to_h: {
+        symbol: 'RELIANCE', quantity: 10, price: 2_500.0, instrument_type: 'EQUITY', leverage: 1
+      })
+
+      expect(validator.evaluate(account_id, oversized)).to eq(:MARGIN_REJECTED)
     end
   end
 end

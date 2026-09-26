@@ -9,24 +9,24 @@
 
 ---
 
-## 1. Current state (snapshot 2026-09-25)
+## 1. Current state (snapshot 2026-09-26)
 
-- **Phase:** Stabilization. MVP feature-complete (`prd.md` §4 all shipped); full six-dimension audit completed 2026-09-25 using the [`ruby-agent-skills`](https://github.com/shubhamtaywade82/ruby-agent-skills) pack → **`REVIEW.md`**: **7 MUST / 15 SHOULD / 10 NICE findings, none fixed yet** (backlog sequenced in `tasks.md`, Phase 0 starts with the leaked master key).
-- **Test suite:** 53 spec files, ~213 examples — unit coverage of engine math is strong; known gaps: `risk_manager_spec` (mocked-thin), `positions#show` (untested — that's how M7 shipped), no concurrency specs, integration depth thin (3 files).
-- **Deployment story:** Docker Compose (dev) + Kamal 2 (`config/deploy.yml`). Redis required for mark prices. Reconciler runs at boot (`config/initializers/reconciler.rb`), skipped in test.
-- **Known-broken user-facing surface:** `GET /api/positions/:id` (always 404, M7); mark-price input validation (M3); everything else functions.
-- **Nothing in the audit is fixed yet** — if you're reading this after fixes landed, trust `tasks.md` statuses over this paragraph, and update this snapshot.
+- **Phase:** Stabilization complete. MVP feature-complete (`prd.md` §4); audit backlog executed: **all 7 MUST (M1–M7) closed with regression specs, Phase 0–4 done (T4.3/T4.4 + Phase 5 remain)** on branch `feat/audit-clean-v1`. "audit-clean v1" checkpoint MET — tag `v1.0.0-audit-clean` after merge.
+- **Auth:** the API now requires `X-API-Key` = `PAPER_EXCHANGE_API_KEY` (401 otherwise; production fails boot without it). Credentials rotated 2026-09-26 — the old leaked master key can no longer decrypt `credentials.yml.enc`; new key lives only in the operator's uncommitted `.env`.
+- **Test suite:** ~60 spec files — added: auth request spec, concurrency specs (M4), risk fail-closed specs (M5), liquidation outcome spec (M6), transition-table spec (S1), atomic-reset spec (S11), expiry job specs (S2), boundary-validation specs (M3), netting/no-silent-zero ledger specs (S4/S5).
+- **Deployment story:** Docker Compose (dev; requires `RAILS_MASTER_KEY` + `PAPER_EXCHANGE_API_KEY` in `.env`) + Kamal 2 (`config/deploy.yml`). Redis required for mark prices. Reconciler runs at boot, skipped in test.
+- **If you're reading this later, trust `tasks.md` statuses over this paragraph, and update this snapshot.**
 
 ## 2. Critical context — read before touching code
 
-1. **Trust model:** the trading agent is *trusted* and owns market data (it pushes prices/funding). There is **no auth** (M2, fix pending T1.2); the network boundary is the security boundary. Don't add "helpful" auth piecemeal.
+1. **Trust model (updated 2026-09-26):** the trading agent is *trusted* and owns market data (it pushes prices/funding). Auth is a shared operator token: `X-API-Key` must equal `PAPER_EXCHANGE_API_KEY` (M2 closed). Within that boundary, `X-Account-Id` selects the paper account. Per-account keys remain a roadmap item.
 2. **`internal: true` / `reduce_only: true` skip margin + risk gates — INTENTIONAL (B3).** A liquidation force-close on an underwater account would fail its own margin check and deadlock forever. See §5.
 3. **`LedgerEntry` is append-only by convention** (N3 will enforce). Wallet state must always equal Σ entries — that's what the Reconciler assumes at every boot.
-4. **Unwired code:** `app/services/strategy/**` and `market_data/{tick_processor, candle_builder, greeks_service, option_chain_service, market_event, trade_event}`, plus `risk/vix_gate.rb` — no runtime callers (S7). Specs exist for some of it (they test aspiration, not contract). Decision pending (T4.1).
+4. **Unwired code:** `app/services/strategy/**` and `market_data/{tick_processor, candle_builder, greeks_service, option_chain_service, market_event, trade_event}`, plus `risk/vix_gate.rb` — no runtime callers (S7). Specs exist for some of it (they test aspiration, not contract). **Decided 2026-09-26 (T4.1): keep in place, marked Roadmap in README; wire-or-remove in a v1.1 sprint.**
 5. **`PaperExchange` instances are per-request/per-job** (built in `orders_controller#create` and `liquidation_job.rb`) — the instance's `@books`/`Mutex` therefore guards nothing cross-request; cross-request pricing works via Redis `MarkPriceStore` (S15, decision pending T4.4).
 6. **Money is `BigDecimal` over `decimal(36,18)`** — `.to_f` appears in places but only at simulation/serialization edges; never on stored money math (rule in `rules.md` §1).
-7. **Test scaffolding quirk:** `X-API-Key: test-api-key-123` remaps to `test-account-1` **only in `Rails.env.test?`** (B4 fix). Don't remove the gate; don't replicate the pattern.
-8. **Env var drift exists (S9):** code reads `PAPER_EXCHANGE_MAX_DD`; docs say `PAPER_EXCHANGE_MAX_DRAWDOWN`. Until T3.3 lands, the code name is the effective one.
+7. **Test scaffolding quirk (removed 2026-09-26):** the `X-API-Key: test-api-key-123` → `test-account-1` remap was deleted with the auth change — X-API-Key is now the AUTH header, never an account-id source. Controller specs get the header injected globally in `rails_helper.rb`; request specs pass it explicitly.
+8. **Env var drift resolved (S9, fixed 2026-09-26):** code reads the documented `PAPER_EXCHANGE_MAX_DRAWDOWN` (default 0.20; old `PAPER_EXCHANGE_MAX_DD` spelling still honored).
 9. **API paths exist in both `/api` and `/api/v1`**, and mark/funding accept snake_case and kebab-case — legacy aliases, keep them.
 
 ## 3. Key invariants (must hold after any change)
@@ -56,6 +56,11 @@
 | ~2025-09 | B4: `test-api-key-123` remap gated to `Rails.env.test?` | public header remapped anyone to the test wallet | `api/base_controller.rb:12-17` |
 | 2026-09-25 | Adopt audit backlog (`REVIEW.md`) as the stabilization roadmap | 7 must-fix defects, all small targeted fixes | `tasks.md` |
 | 2026-09-25 | Auth approach: shared bearer token first (per-account keys deferred) | matches single-operator deployment story | `tasks.md` T1.2, `prd.md` non-goals |
+| 2026-09-26 | T1.2 executed: `X-API-Key` = `PAPER_EXCHANGE_API_KEY` (constant-time compare, 401, boot-fail in production); X-API-Key no longer an account-id source | closes M2 with the minimum option; B4 scaffolding branch removed with it | `api/base_controller.rb`, `config/initializers/api_authentication.rb` |
+| 2026-09-26 | T2.3 executed: RiskManager decides-only; rejection events persisted in submit_order's post-rollback rescue via `RiskCheckFailedError`; evaluation errors fail CLOSED as `RISK_EVALUATION_ERROR_REJECTED` | events created inside the doomed transaction were rolled back with it (M5) | `risk_manager.rb`, `paper_exchange.rb` |
+| 2026-09-26 | T2.1 executed: position upsert locks rows + savepoint + one retry on RecordNotUnique; partial unique index for NULL-dimension contracts | SELECT FOR UPDATE doesn't block a concurrent insert of a missing row — the index arbitrates, the savepoint makes the violation recoverable (M4) | `position_manager.rb`, migration 20260926100000 |
+| 2026-09-26 | T4.1 decided (option b-lite): keep unwired services in place, mark them Roadmap in the README feature table; wire-or-remove deferred to a v1.1 sprint | moving `app/services/strategy/*` etc. to a roadmap/ namespace changes Zeitwerk paths for zero user value; the README now tells the truth about what runs | README "Status", `tasks.md` T4.1 |
+| 2026-09-26 | T4.2 executed: sidekiq gem removed | never referenced — Solid Queue adapter everywhere, no worker configured; pure supply-chain surface | `Gemfile` |
 
 ## 5. Bugs fixed (historical — from in-code comment trails + regression specs)
 
@@ -99,5 +104,7 @@ House style: fixed bugs get a short ID (`B1…B6`, `H1`) and a `(Bn regression g
 | Date | Event | Artifact |
 |------|-------|----------|
 | 2026-09-25 | Full six-dimension audit (correctness, simplicity, architecture, security, performance, scope) using the `ruby-agent-skills` pack (Iteration 79; 6 skills + 4 pattern guides) | `REVIEW.md` — 7 MUST / 15 SHOULD / 10 NICE, all with file:line evidence + fix sketches; includes meta-evaluation of the skill pack itself (verdict: content correct, gaps: money-math skill, enum guards, ledger patterns, audit mode, 352-pattern navigability) |
+| 2026-09-25 | M1 repo-side purge + CI secret guard, M7 positions#show fix, AI-dev docs, CI recovery, 11 dependabot bumps consolidated and merged (PRs #30–#33) | git history (PR #33 = develop → main consolidation) |
+| 2026-09-26 | Audit backlog executed end-to-end on `feat/audit-clean-v1`: M1 credential rotation, M2 auth, M3 boundary validation, M4 position locking + partial unique index, M5 fail-closed risk gate + post-rollback events, M6 liquidation outcome assertion, S1–S15 + N-tier fixes (Phase 0–4); ~35 new regression specs | this branch; `tasks.md` per-task evidence |
 
 Skill-pack meta-verdict in one line: **content technically sound and Rails 8.1-current; improve coverage (money/BigDecimal, enum state machines, ledger/reconciliation patterns) and navigability (pattern index), not correctness.**
