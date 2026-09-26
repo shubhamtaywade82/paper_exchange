@@ -45,6 +45,29 @@ RSpec.describe Exchange::PaperExchange, type: :service do
         }.not_to change(PaperExchange::PaperOrder, :count)
       end
     end
+
+    # M5 regression guards: the risk gate fails closed, and rejection
+    # events persist AFTER the order transaction has rolled back.
+    context 'when a validator raises mid-evaluation (audit M5)' do
+      before do
+        allow_any_instance_of(Risk::MarginValidator).to receive(:evaluate).and_raise(NoMethodError, 'validator bug')
+      end
+
+      it 'rejects the order — never fills with zero risk checks applied' do
+        expect { exchange.submit_order(valid_attrs) }
+          .to raise_error(Exchange::PaperExchange::RiskCheckFailedError, /RISK_EVALUATION_ERROR_REJECTED/)
+
+        order = PaperExchange::PaperOrder.last
+        expect(order.status).to eq('rejected')
+        expect(order.rejection_reason).to include('RISK_EVALUATION_ERROR_REJECTED')
+      end
+
+      it 'persists the RISK_EVALUATION_ERROR_REJECTED event post-rollback' do
+        expect { exchange.submit_order(valid_attrs) }.to raise_error(Exchange::PaperExchange::RiskCheckFailedError)
+
+        expect(RiskEvent.where(account_id: account_id, event_type: 'RISK_EVALUATION_ERROR_REJECTED').count).to eq(1)
+      end
+    end
   end
 
   describe '#submit_order with a crypto perpetual (no live feed of its own)' do

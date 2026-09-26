@@ -46,9 +46,21 @@ RSpec.describe 'Exchange trading lifecycle', type: :integration do
     end
 
     it 'rejects the order' do
-      expect { exchange.submit_order(attrs) }.to raise_error(RuntimeError, /Risk check failed/)
+      expect { exchange.submit_order(attrs) }.to raise_error(Exchange::PaperExchange::RiskCheckFailedError, /Risk check failed/)
       order = PaperExchange::PaperOrder.last
       expect(order.status).to eq('rejected')
+    end
+
+    # M5 regression guard: rejection events used to be created inside the
+    # order transaction and rolled back with it — the rejection history
+    # /api/risk_events exists to serve was never written.
+    it 'persists the *_REJECTED risk events after the rollback' do
+      expect { exchange.submit_order(attrs) }.to raise_error(Exchange::PaperExchange::RiskCheckFailedError)
+
+      events = RiskEvent.where(account_id: account_id, event_type: 'MAX_DRAWDOWN_REJECTED')
+      expect(events.count).to eq(1)
+      expect(events.last.details['signal']['symbol']).to eq('NIFTY')
+      expect(events.last.details['rejection']).to include('MAX_DRAWDOWN_REJECTED')
     end
   end
 end

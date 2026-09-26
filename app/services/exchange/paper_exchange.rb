@@ -30,6 +30,19 @@ module Exchange
       @fill_engine = FillEngine.new(slippage: @slippage)
     end
 
+    # Raised when the risk gate rejects an order. Carries the rejection
+    # symbols so submit_order's post-rollback rescue can persist the
+    # *_REJECTED RiskEvent rows (audit M5) — persisting them inside the
+    # doomed transaction only rolled them back with it.
+    class RiskCheckFailedError < StandardError
+      attr_reader :rejections
+
+      def initialize(rejections)
+        @rejections = Array(rejections)
+        super("Risk check failed: #{@rejections.join(', ')}")
+      end
+    end
+
     # `internal:` (and `reduce_only`, which can only shrink exposure) skips the
     # margin lock and risk gate. Used by LiquidationJob
     # to force-close a position whose liquidation price has been breached — the
@@ -112,7 +125,7 @@ module Exchange
           result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
           _passed, rejected = result
           if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
-            raise "Risk check failed: #{Array(rejected).join(", ")}"
+            raise RiskCheckFailedError, Array(rejected)
           end
         end
 
@@ -174,6 +187,20 @@ module Exchange
 
       order
     rescue ArgumentError
+      raise
+    rescue RiskCheckFailedError => e
+      order.rejected!(e.message) if order&.persisted?
+      # This rescue runs AFTER the fill transaction has rolled back, so
+      # these rows persist — the rejection history /api/risk_events exists
+      # to serve (audit M5: they used to be created inside the transaction
+      # and vanish with the rollback).
+      e.rejections.each do |event|
+        RiskEvent.create!(
+          account_id: account_id,
+          event_type: event,
+          details: { signal: signal&.to_h, rejection: e.message }
+        )
+      end
       raise
     rescue => e
       order.rejected!(e.message) if order&.persisted?
