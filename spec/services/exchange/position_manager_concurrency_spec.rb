@@ -17,7 +17,6 @@ RSpec.describe Exchange::PositionManager, 'concurrency (audit M4)', type: :model
   before { create(:account, account_id: account_id, margin: 100_000.0) }
 
   after do
-    ::PaperExchange::PaperTrade.where(account_id: account_id).delete_all
     ::PaperExchange::PaperPosition.where(account_id: account_id).delete_all
     ::PaperExchange::PaperOrder.where(account_id: account_id).delete_all
     LedgerEntry.where(account_id: account_id).delete_all

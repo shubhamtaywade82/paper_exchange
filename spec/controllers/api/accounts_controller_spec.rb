@@ -93,7 +93,11 @@ RSpec.describe Api::AccountsController, type: :controller do
       account = create(:account, account_id: account_id, margin: 1_000.0)
       create(:paper_position, account_id: account_id, symbol: 'BTCUSDT')
       create(:paper_order, account_id: account_id, status: :open)
-      allow(LedgerEntry).to receive(:delete_all).and_raise(RuntimeError, 'boom')
+      # Stub the RELATION's delete_all (what the controller actually calls:
+      # LedgerEntry.where(...).delete_all) — a class-level stub would miss it.
+      relation = instance_double(ActiveRecord::Relation)
+      allow(LedgerEntry).to receive(:where).with(account_id: account_id).and_return(relation)
+      allow(relation).to receive(:delete_all).and_raise(RuntimeError, 'boom')
 
       expect { post :reset, params: { margin: 500.0 } }.to raise_error(RuntimeError, 'boom')
 

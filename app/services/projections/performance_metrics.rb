@@ -1,5 +1,10 @@
 module Projections
   class PerformanceMetrics
+    # Audit S14/T3.9: JSON cannot carry Infinity (it serializes as null),
+    # so an all-wins trade history is reported at the cap instead of an
+    # infinite profit factor the consumer cannot chart.
+    PROFIT_FACTOR_CAP = 999.0
+
     class << self
       # Computed from the ledger (closed trades → realized PnL) and the open
       # position projection (unrealized PnL). Win rate, profit factor, and
@@ -8,11 +13,6 @@ module Projections
       # Sharpe needs a proper return series with timestamps, but this is
       # enough to surface "is the agent profitable" without waiting for a
       # full time-series implementation).
-      # Audit S14/T3.9: JSON cannot carry Infinity (it serializes as null),
-      # so an all-wins trade history is reported at the cap instead of an
-      # infinite profit factor the consumer cannot chart.
-      PROFIT_FACTOR_CAP = 999.0
-
       def for(account_id)
         summary = PortfolioProjection.summary(account_id) # once, not three times
 
