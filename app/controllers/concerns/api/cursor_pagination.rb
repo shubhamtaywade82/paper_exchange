@@ -38,10 +38,19 @@ module Api
       requested.clamp(1, MAX_LIMIT)
     end
 
+    # Row comparison "(sort_column, id) < (cursor_ts, cursor_id)" built via
+    # Arel — no string-assembled SQL (brakeman-clean), values quoted as
+    # nodes because raw Times are not Arel-visitable.
     def apply_cursor(scope, column)
       ts, id = decode_cursor
-      table = scope.table_name
-      scope.where("(#{table}.#{column}, #{table}.id) < (:ts, :id)", ts: ts, id: id)
+      table = Arel::Table.new(scope.table_name)
+      scope.where(
+        Arel::Nodes::Grouping.new([ table[column], table[:id] ])
+          .lt(Arel::Nodes::Grouping.new([
+            Arel::Nodes.build_quoted(ts),
+            Arel::Nodes.build_quoted(id)
+          ]))
+      )
     end
 
     def decode_cursor
