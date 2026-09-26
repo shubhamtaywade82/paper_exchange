@@ -13,6 +13,16 @@ Rails.application.routes.draw do
     post "mark-prices", to: "mark_prices#create"
     post "funding_events", to: "funding_events#create"
     post "funding-events", to: "funding_events#create"
+    get "market_events", to: "market_events#index"
+    post "market_events", to: "market_events#create"
+    get "market-events", to: "market_events#index"
+    post "market-events", to: "market_events#create"
+    get "market_structure", to: "market_structure#index"
+    post "market_structure", to: "market_structure#create"
+    get "market-structure", to: "market_structure#index"
+    post "market-structure", to: "market_structure#create"
+    post "strategy/signals", to: "strategy#create"
+    post "strategy-signals", to: "strategy#create"
   end
 
   namespace :api do
