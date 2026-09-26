@@ -37,6 +37,34 @@ class LiquidationJob < ApplicationJob
       reduce_only: true
     )
 
+    # Assert the outcome before declaring victory (audit M6): a close order
+    # that never filled (matching error, empty book) used to still emit
+    # POSITION_LIQUIDATED while the position stayed open — AND the enqueue
+    # in LiquidationEngine.check_symbol! had already removed it from the
+    # in-memory watch cache, so nothing re-checked it until the next push
+    # happened to rebuild the cache. On a non-filled close: emit
+    # LIQUIDATION_FAILED, cancel the orphan close order (internal orders
+    # hold no locked margin), and refresh the cache so the position is
+    # re-armed — the next mark-price push re-drives the liquidation.
+    unless order&.status == "filled"
+      order&.cancel! if order&.open?
+
+      RiskEvent.create!(
+        account_id: position.account_id,
+        event_type: "LIQUIDATION_FAILED",
+        details: {
+          position_id: position.id,
+          symbol: position.symbol,
+          mark_price: mark_price.to_s,
+          close_order_id: order&.id,
+          order_status: order&.status,
+          rejection_reason: order&.rejection_reason
+        }
+      )
+      Risk::LiquidationEngine.refresh_cache!
+      return
+    end
+
     RiskEvent.create!(
       account_id: position.account_id,
       event_type: "POSITION_LIQUIDATED",

@@ -81,4 +81,34 @@ RSpec.describe LiquidationJob, type: :job do
 
     expect(RiskEvent.where(event_type: 'LIQUIDATION_FAILED').count).to eq(1)
   end
+
+  # M6 regression guard: a close order that never filled used to still emit
+  # POSITION_LIQUIDATED while the position stayed open — and the enqueue had
+  # already de-armed the position from the engine's watch cache.
+  context 'when the close order never fills (audit M6)' do
+    before do
+      ActiveJob::Base.queue_adapter = :test
+      # No order book for the symbol → matching returns [:rejected, "No book ..."]
+      allow_any_instance_of(Exchange::OrderBook).to receive(:snapshot).and_return(nil)
+    end
+
+    it 'emits LIQUIDATION_FAILED (not POSITION_LIQUIDATED), keeps the position open, and re-arms the cache' do
+      described_class.perform_now(position.id, 53_500.0)
+
+      position.reload
+      expect(position.quantity.to_f).to eq(1.0), 'position must still be open'
+      expect(RiskEvent.where(event_type: 'LIQUIDATION_FAILED').count).to eq(1)
+      expect(RiskEvent.where(event_type: 'POSITION_LIQUIDATED').count).to eq(0)
+
+      failed = RiskEvent.find_by(event_type: 'LIQUIDATION_FAILED')
+      expect(failed.details['order_status']).to eq('rejected')
+      expect(failed.details['rejection_reason']).to include('No book')
+
+      # Cache re-armed: the next mark-price push for the symbol re-enqueues
+      # the liquidation for this still-open position.
+      expect {
+        Risk::LiquidationEngine.check_symbol!('BTCUSDT', 53_000.0)
+      }.to have_enqueued_job(LiquidationJob).with(position.id, 53_000.0)
+    end
+  end
 end
