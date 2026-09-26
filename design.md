@@ -21,21 +21,23 @@
 | Method | Path | Purpose | Notes |
 |--------|------|---------|-------|
 | GET | `/api/account` | Wallet + equity snapshot | balance, locked, equity, PnL |
-| POST | `/api/account/reset` | Wipe & re-seed account | dev/test only (⚠ no wrapping transaction — S11) |
+| POST | `/api/account/reset` | Wipe & re-seed account | dev/test only; atomic (one transaction, S11) |
 | GET | `/api/orders` | Recent orders | cap 200, newest first |
 | POST | `/api/orders` | Submit order | 201 + order JSON; idempotent on `client_order_id` |
 | GET | `/api/orders/:id` | Order detail | |
-| DELETE | `/api/orders/:id` | Cancel + release locked margin | ⚠ unguarded transition (S1) |
+| DELETE | `/api/orders/:id` | Cancel + release locked margin | guarded transition — 409 on double-cancel (S1) |
 | GET | `/api/positions` | Projected open positions | |
-| GET | `/api/positions/:id` | Position detail | ⚠ **broken, always 404 (M7)** — do not consume until fixed |
-| GET | `/api/risk_events` | Risk audit trail | cap 200 |
-| GET | `/api/performance` | Portfolio metrics | ⚠ `profit_factor` may be `Infinity` (S14) |
+| GET | `/api/positions/:id` | Position detail | consumable — fixed in T1.1 (was M7 always-404) |
+| GET | `/api/risk_events` | Risk audit trail | cap 200; includes `*_REJECTED` events (M5 fixed) |
+| GET | `/api/performance` | Portfolio metrics | `profit_factor` capped at 999.0 (S14) |
 | GET | `/api/ledger` | Ledger entries | cap 500 |
-| POST | `/api/mark_prices` | Bulk mark-price push | `{ prices: { SYMBOL: price } }`; ⚠ unvalidated (M3) |
-| POST | `/api/funding_events` | Funding settlement | ⚠ rate/time unvalidated (M3) |
+| POST | `/api/mark_prices` | Bulk mark-price push | `{ prices: { SYMBOL: price } }`; validated — garbage/0/negative → 422, nothing applied (M3 fixed) |
+| POST | `/api/funding_events` | Funding settlement | validated — rate bounded abs ≤ 0.05, `funding_time` must parse (M3 fixed) |
 | GET | `/up` | Health check | Rails default |
 
-**Account selection (until auth lands, M2/T1.2):** header `X-Account-Id` (or `X-API-Key`, or `params[:account_id]`), defaulting to `"default"`. Treat the account id as case-sensitive string.
+**Authentication (M2/T1.2, shipped):** every request must send `X-API-Key: <PAPER_EXCHANGE_API_KEY>` — 401 otherwise; production refuses to boot without the key.
+
+**Account selection (within the authenticated boundary):** header `X-Account-Id` (or `params[:account_id]`), defaulting to `"default"`. Treat the account id as case-sensitive string.
 
 ## 3. Status codes & error semantics (fixed contract — see `rules.md` §3)
 
