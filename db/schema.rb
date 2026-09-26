@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_120001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -59,6 +59,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_120001) do
     t.datetime "posted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "reference_id"
     t.datetime "updated_at", null: false
+    t.index ["account_id", "occurred_at", "id"], name: "index_ledger_entries_on_account_occurred_id"
     t.index ["account_id"], name: "index_ledger_entries_on_account_id"
     t.index ["event_type"], name: "index_ledger_entries_on_event_type"
     t.index ["occurred_at"], name: "index_ledger_entries_on_occurred_at"
@@ -123,7 +124,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_120001) do
     t.string "margin_type", default: "cross", null: false
     t.string "option_type"
     t.integer "order_kind", default: 0, null: false
-    t.datetime "placed_at"
+    t.datetime "placed_at", null: false
     t.decimal "price", precision: 36, scale: 18
     t.decimal "quantity", precision: 36, scale: 18, null: false
     t.datetime "rejected_at"
@@ -137,6 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_120001) do
     t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
     t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
+    t.index ["account_id", "placed_at", "id"], name: "index_paper_orders_on_account_placed_id"
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_orders_instrument"
     t.index ["status"], name: "index_paper_exchange_orders_on_status"
@@ -186,6 +188,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_120001) do
     t.jsonb "details", default: {}, null: false
     t.string "event_type", null: false
     t.string "signal_id"
+    t.index ["account_id", "created_at", "id"], name: "index_risk_events_on_account_created_id"
     t.index ["account_id"], name: "index_risk_events_on_account_id"
     t.index ["created_at"], name: "index_risk_events_on_created_at"
     t.index ["event_type"], name: "index_risk_events_on_event_type"

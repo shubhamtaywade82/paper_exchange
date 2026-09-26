@@ -3,10 +3,10 @@ module Api
     before_action :set_order, only: %i[show destroy]
 
     def index
-      orders = ::PaperExchange::PaperOrder.where(account_id: @account_id)
-        .order(placed_at: :desc)
-        .limit(200)
-      render json: orders.map { |o| order_json(o) }
+      # Audit N6 (T5.4): keyset pagination on (placed_at, id) DESC — see
+      # Api::CursorPagination for the envelope and cursor contract.
+      orders, next_cursor = paginate(::PaperExchange::PaperOrder.where(account_id: @account_id), :placed_at)
+      render json: { data: orders.map { |o| order_json(o) }, next_cursor: next_cursor }
     end
 
     def show
