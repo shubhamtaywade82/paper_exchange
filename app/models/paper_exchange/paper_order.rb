@@ -55,6 +55,13 @@ module PaperExchange
 
     before_validation :set_placed_at, on: :create
 
+    # Raised when a state transition is attempted from a status it is not
+    # legal from (audit S1/N1) — e.g. cancelling an already-filled order or
+    # expiring a rejected one. `rejected!` deliberately stays unguarded: it
+    # is the terminal safety net in submit_order's rescue path and must
+    # never raise.
+    class StateError < StandardError; end
+
     def remaining_quantity
       quantity - (filled_quantity || 0)
     end
@@ -72,7 +79,13 @@ module PaperExchange
       notional(reference_price) / leverage.to_f
     end
 
+    # Legal transitions (audit S1/N1):
+    #   pending        → open, cancelled, rejected, expired
+    #   open           → filled, partially_filled, cancelled, rejected, expired
+    #   partially_filled → filled, partially_filled, cancelled, open, rejected, expired
+    #   filled/cancelled/rejected/expired are terminal
     def cancel!
+      assert_transition!(%w[pending open partially_filled], :cancel)
       transaction do
         update!(
           status: :cancelled,
@@ -83,11 +96,13 @@ module PaperExchange
     end
 
     def open!
+      assert_transition!(%w[pending partially_filled], :open)
       update!(status: :open)
       self
     end
 
     def filled!
+      assert_transition!(%w[open partially_filled], :fill)
       update!(
         status: :filled,
         filled_at: Time.current,
@@ -97,6 +112,7 @@ module PaperExchange
     end
 
     def partially_filled!(fill_qty)
+      assert_transition!(%w[open partially_filled], :partially_fill)
       update!(
         status: :partially_filled,
         filled_quantity: (filled_quantity || 0) + fill_qty
@@ -114,6 +130,7 @@ module PaperExchange
     end
 
     def expired!
+      assert_transition!(%w[pending open partially_filled], :expire)
       update!(
         status: :expired,
         expired_at: Time.current
@@ -122,6 +139,12 @@ module PaperExchange
     end
 
     private
+
+    def assert_transition!(allowed_statuses, action)
+      return if allowed_statuses.include?(status)
+
+      raise StateError, "cannot #{action} a #{status} order (legal from: #{allowed_statuses.join(', ')})"
+    end
 
     def set_placed_at
       self.placed_at ||= Time.current

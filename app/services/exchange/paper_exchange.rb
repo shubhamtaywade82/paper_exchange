@@ -207,16 +207,19 @@ module Exchange
       raise
     end
 
+    # Locks the row so a double-cancel racing a fill cannot interleave; the
+    # state guard in cancel! makes an already-terminal order a loud
+    # StateError instead of a silent second transition (audit S1).
     def cancel_order(order_id)
-      order = ::PaperExchange::PaperOrder.find(order_id)
-      release_order_margin!(order)
+      order = ::PaperExchange::PaperOrder.lock.find(order_id)
       order.cancel!
+      release_order_margin!(order)
     end
 
     def expire_order(order_id)
-      order = ::PaperExchange::PaperOrder.find(order_id)
-      release_order_margin!(order)
+      order = ::PaperExchange::PaperOrder.lock.find(order_id)
       order.expired!
+      release_order_margin!(order)
     end
 
     def market_event(event)
