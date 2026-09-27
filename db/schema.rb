@@ -34,12 +34,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.decimal "amount", precision: 36, scale: 18, null: false
     t.datetime "created_at", null: false
     t.decimal "funding_rate", precision: 36, scale: 18, null: false
-    t.datetime "funding_time"
     t.datetime "occurred_at", null: false
     t.bigint "paper_position_id"
     t.decimal "position_notional", precision: 36, scale: 18, null: false
     t.string "symbol", null: false
     t.datetime "updated_at", null: false
+    t.datetime "funding_time"
     t.index ["account_id"], name: "index_funding_payments_on_account_id"
     t.index ["paper_position_id", "funding_time"], name: "index_funding_payments_dedup", unique: true, where: "(funding_time IS NOT NULL)"
     t.index ["paper_position_id"], name: "index_funding_payments_on_paper_position_id"
@@ -114,7 +114,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.string "client_order_id"
     t.datetime "created_at", null: false
     t.string "exchange_segment"
-    t.datetime "expired_at"
     t.date "expiry_date"
     t.datetime "filled_at"
     t.decimal "filled_quantity", precision: 36, scale: 18, default: "0.0", null: false
@@ -137,6 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.string "symbol", null: false
     t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
+    t.datetime "expired_at"
     t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
     t.index ["account_id", "placed_at", "id"], name: "index_paper_orders_on_account_placed_id"
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
