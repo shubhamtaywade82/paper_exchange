@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Position Risk & Liquidation Lifecycle",
+    "output": "docs/diagrams/position-lifecycle.html",
+    "viewBox": [980, 680],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "position-rail",
+        "label": "Position lifecycle rail",
+        "focus": ["none", "opened", "active", "closing", "closed"],
+        "note": "Follow standard leveraged position lifecycle from flat to opened, mark floating, and voluntary TP/SL close."
+      },
+      {
+        "id": "margin-call-path",
+        "label": "Margin warning and deficit",
+        "focus": ["active", "margin_call", "insolvent"],
+        "note": "Trace unrealized floating loss breaching maintenance margin into margin warning and bankruptcy deficit."
+      },
+      {
+        "id": "liquidation-recovery",
+        "label": "Liquidation and ledger settlement",
+        "focus": ["closing", "liquidating", "liquidated", "closed", "reconciling", "settled"],
+        "note": "Inspect forced LiquidationJob execution alongside post-close double-entry ledger reconciliation."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Position lifecycle rail" },
+    { "id": "waiting", "label": "Margin warning + health" },
+    { "id": "recovery", "label": "Liquidation controller" },
+    { "id": "terminal", "label": "Terminal outcomes" }
+  ],
+  "states": [
+    { "id": "none", "type": "start", "label": "None / Flat", "sublabel": "zero exposure", "lane": "main", "col": 0, "step": "01", "tag": "neutral" },
+    { "id": "opened", "type": "active", "label": "Opened", "sublabel": "initial margin locked", "lane": "main", "col": 1, "step": "02", "tag": "entry" },
+    { "id": "active", "type": "active", "label": "Active", "sublabel": "unrealized PnL vs mark", "lane": "main", "col": 2, "step": "03", "tag": "floating" },
+    { "id": "closing", "type": "decision", "label": "Closing", "sublabel": "TP/SL exit trigger", "lane": "main", "col": 3, "step": "04", "tag": "exit order" },
+    { "id": "closed", "type": "success", "label": "Closed", "sublabel": "balance released", "lane": "main", "col": 4, "step": "05", "tag": "terminal" },
+    { "id": "margin_call", "type": "waiting", "label": "Margin Call", "sublabel": "equity < maint margin", "lane": "waiting", "col": 0, "tag": "warning" },
+    { "id": "liquidating", "type": "active", "label": "Liquidating", "sublabel": "LiquidationJob active", "lane": "recovery", "col": 1, "tag": "forced exit" },
+    { "id": "reconciling", "type": "waiting", "label": "Reconciling", "sublabel": "ledger audit check", "lane": "waiting", "col": 2, "tag": "audit" },
+    { "id": "insolvent", "type": "failure", "label": "Insolvent", "sublabel": "equity deficit", "lane": "terminal", "col": 0, "tag": "terminal" },
+    { "id": "liquidated", "type": "failure", "label": "Liquidated", "sublabel": "forced close executed", "lane": "terminal", "col": 1, "tag": "terminal" },
+    { "id": "settled", "type": "success", "label": "Settled", "sublabel": "ledger reconciled", "lane": "terminal", "col": 2, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "active-warning", "from": "active", "to": "margin_call", "variant": "security", "route": "straight", "fromSide": "bottom", "toSide": "top" },
+    { "id": "warning-insolvent", "from": "margin_call", "to": "insolvent", "variant": "security", "route": "straight", "fromSide": "bottom", "toSide": "top" },
+    { "id": "closing-liquidation", "from": "closing", "to": "liquidating", "variant": "security", "route": "straight", "fromSide": "bottom", "toSide": "top" },
+    { "id": "liquidation-done", "from": "liquidating", "to": "liquidated", "variant": "security", "route": "straight", "fromSide": "bottom", "toSide": "top" },
+    { "id": "closed-reconcile", "from": "closed", "to": "reconciling", "variant": "dashed", "route": "straight", "fromSide": "bottom", "toSide": "top" },
+    { "id": "reconcile-settled", "from": "reconciling", "to": "settled", "variant": "emphasis", "route": "straight", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Position Lifecycle Rail",
+      "items": [
+        "Positions transition through five sequential phases: Flat, Opened, Active, Closing, and Closed",
+        "Initial margin is locked upon fill using the account leverage multiplier",
+        "Unrealized PnL floats continuously as incoming mark prices update the position record"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Margin Surveillance",
+      "items": [
+        "Position equity dropping below maintenance threshold triggers immediate Margin Call status",
+        "LiquidationEngine caches active leveraged positions and checks breach on every incoming tick",
+        "Insolvent status tracks catastrophic account deficit where losses exceed deposited collateral"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Liquidation & Settlement",
+      "items": [
+        "Breached positions trigger asynchronous LiquidationJob on high-priority :risk queue",
+        "Forced market orders close the position at prevailing book prices, absorbing remaining margin",
+        "Ledger::Reconciler verifies zero-sum balance invariant before confirming terminal Settled state"
+      ]
+    }
+  ]
+}

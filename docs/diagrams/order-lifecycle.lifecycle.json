@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "PaperOrder Execution Lifecycle",
+    "output": "docs/diagrams/order-lifecycle.html",
+    "viewBox": [980, 660],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-execution-path",
+        "label": "Full fill execution rail",
+        "focus": ["pending", "open", "matching", "settling", "filled"],
+        "note": "Follow clean limit and market order lifecycle from ingress to complete fill."
+      },
+      {
+        "id": "partial-fill-loop",
+        "label": "Partial fill accumulator",
+        "focus": ["matching", "partially_filled", "settling", "filled"],
+        "note": "Track partial fill execution accumulating trade volume across order book updates."
+      },
+      {
+        "id": "terminal-exits",
+        "label": "Terminal cancellation and rejection exits",
+        "focus": ["matching", "rejected", "partially_filled", "cancelled", "settling", "expired"],
+        "note": "Inspect explicit terminal termination paths for margin breaches, user cancellations, and expiry."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Order lifecycle phases" },
+    { "id": "waiting", "label": "Partial execution" },
+    { "id": "terminal", "label": "Terminal outcomes" }
+  ],
+  "states": [
+    { "id": "pending", "type": "start", "label": "Pending", "sublabel": "order received", "lane": "main", "col": 0, "step": "01", "tag": "ingress" },
+    { "id": "open", "type": "active", "label": "Open", "sublabel": "resting in book", "lane": "main", "col": 1, "step": "02", "tag": "working" },
+    { "id": "matching", "type": "decision", "label": "Matching", "sublabel": "price crossing", "lane": "main", "col": 2, "step": "03", "tag": "crossing" },
+    { "id": "settling", "type": "active", "label": "Settling", "sublabel": "ledger journal", "lane": "main", "col": 3, "step": "04", "tag": "clearing" },
+    { "id": "filled", "type": "success", "label": "Filled", "sublabel": "100% matched", "lane": "main", "col": 4, "step": "05", "tag": "terminal" },
+    { "id": "partially_filled", "type": "waiting", "label": "Part Fill", "sublabel": "partial executed", "lane": "waiting", "col": 1, "tag": "active" },
+    { "id": "rejected", "type": "failure", "label": "Rejected", "sublabel": "margin breach", "lane": "terminal", "col": 0, "tag": "terminal" },
+    { "id": "cancelled", "type": "failure", "label": "Cancelled", "sublabel": "user cancellation", "lane": "terminal", "col": 1, "tag": "terminal" },
+    { "id": "expired", "type": "failure", "label": "Expired", "sublabel": "time-in-force", "lane": "terminal", "col": 2, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "match-rejected", "from": "matching", "to": "rejected", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" },
+    { "id": "match-partial", "from": "matching", "to": "partially_filled", "variant": "default", "route": "drop" },
+    { "id": "partial-to-settle", "from": "partially_filled", "to": "settling", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "route": "straight" },
+    { "id": "partial-cancel", "from": "partially_filled", "to": "cancelled", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" },
+    { "id": "settle-expired", "from": "settling", "to": "expired", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[635, 157], [635, 479]] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Primary Execution Rail",
+      "items": [
+        "Orders flow through five sequential phases: Pending, Open, Matching, Settling, and Filled",
+        "Open orders rest in the memory-backed OrderBook awaiting market cross or price hit",
+        "Filled status is permanently recorded upon 100% quantity matching and ledger debit"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Partial Fill Accumulation",
+      "items": [
+        "Partially filled orders track remaining open quantity while emitting fill trades",
+        "Accumulated quantity continues matching against subsequent book depth updates",
+        "Partially filled orders can transition cleanly to Filled, Cancelled, or Expired"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Terminal Safety States",
+      "items": [
+        "Cancelled, Rejected, and Expired represent strictly terminal states with balance release",
+        "Rejected status catches post-submission margin degradation without raising exceptions",
+        "StateError raises immediately on illegal transitions (such as cancelling a filled order)"
+      ]
+    }
+  ]
+}

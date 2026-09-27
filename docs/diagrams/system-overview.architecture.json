@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Paper Exchange System Overview",
+    "output": "docs/diagrams/system-overview.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "order-pipeline",
+        "label": "Order submission path",
+        "focus": ["clients", "web_server", "facade", "matching", "fill_engine", "margin_engine", "postgres"],
+        "note": "Follow order execution from external agent into execution engines and database."
+      },
+      {
+        "id": "price-and-state",
+        "label": "Market prices & state",
+        "focus": ["redis", "matching", "postgres", "margin_engine"],
+        "note": "Trace mark price reads and immutable decimal ledger persistence."
+      },
+      {
+        "id": "async-and-audit",
+        "label": "Async risk & reconciliation",
+        "focus": ["queue", "facade", "postgres", "reconciler"],
+        "note": "Observe Solid Queue background processing and boot-time ledger reconciliation."
+      }
+    ]
+  },
+  "components": [
+    { "id": "clients", "type": "external", "label": "API Clients", "sublabel": "trading agents", "tag": "X-Account-Id", "pos": [40, 300], "size": [120, 60] },
+    { "id": "web_server", "type": "frontend", "label": "Puma / Thruster", "sublabel": "Rails 8.1 API", "tag": ":3000 HTTP", "pos": [230, 300], "size": [130, 60] },
+    { "id": "facade", "type": "backend", "label": "Exchange Facade", "sublabel": "Exchange::PaperExchange", "tag": "submit_order", "pos": [430, 300], "size": [140, 60] },
+    { "id": "matching", "type": "backend", "label": "MatchingEngine", "sublabel": "order book & depth", "pos": [430, 140], "size": [140, 60] },
+    { "id": "fill_engine", "type": "backend", "label": "FillEngine", "sublabel": "slippage & brokerage", "pos": [650, 300], "size": [130, 60] },
+    { "id": "margin_engine", "type": "backend", "label": "MarginEngine", "sublabel": "position margin sync", "pos": [650, 450], "size": [130, 60] },
+    { "id": "queue", "type": "messagebus", "label": "Solid Queue", "sublabel": "DB-backed scheduler", "tag": ":risk queue", "pos": [430, 450], "size": [140, 60] },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "MarkPriceStore", "brand": "redis", "tag": "in-memory cache", "pos": [650, 140], "size": [130, 60] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "decimal(36,18)", "brand": "postgresql", "tag": "source of truth", "pos": [860, 300], "size": [130, 60] },
+    { "id": "reconciler", "type": "security", "label": "Reconciler", "sublabel": "boot audit & sync", "tag": "balance invariant", "pos": [860, 450], "size": [130, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "paper_exchange Core (Rails 8.1 API)", "wraps": ["web_server", "facade", "matching", "fill_engine", "margin_engine", "queue"] },
+    { "kind": "security-group", "label": "Execution Engines", "wraps": ["matching", "fill_engine", "margin_engine"] }
+  ],
+  "connections": [
+    { "id": "client-http", "from": "clients", "to": "web_server", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "puma-facade", "from": "web_server", "to": "facade", "label": "dispatch", "variant": "emphasis" },
+    { "id": "facade-matching", "from": "facade", "to": "matching", "label": "match", "variant": "default", "fromSide": "top", "toSide": "bottom", "labelDy": -45 },
+    { "id": "matching-redis", "from": "matching", "to": "redis", "label": "mark price", "variant": "default" },
+    { "id": "facade-fill", "from": "facade", "to": "fill_engine", "label": "fill", "variant": "default" },
+    { "id": "fill-margin", "from": "fill_engine", "to": "margin_engine", "label": "margin sync", "variant": "default", "fromSide": "bottom", "toSide": "top", "labelDy": 45 },
+    { "id": "fill-postgres", "from": "fill_engine", "to": "postgres", "label": "ledger (36,18)", "variant": "emphasis" },
+    { "id": "facade-queue", "from": "facade", "to": "queue", "label": "enqueue", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 45 },
+    { "id": "queue-margin", "from": "queue", "to": "margin_engine", "label": "audit risk", "variant": "dashed" },
+    { "id": "reconciler-postgres", "from": "reconciler", "to": "postgres", "label": "reconcile", "variant": "security", "fromSide": "top", "toSide": "bottom", "labelDy": -45 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ingress & Routing",
+      "items": [
+        "Clients authenticate and select account via X-Account-Id header",
+        "Puma and Thruster front the Rails 8.1 API-only application",
+        "Exchange::PaperExchange acts as the single entry facade for order submission"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Execution Pipeline",
+      "items": [
+        "MatchingEngine checks liquidity with fallback to MarkPriceStore",
+        "FillEngine computes realistic execution with slippage and exchange fees",
+        "MarginEngine calculates and enforces position-level initial margin"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "State & Integrity",
+      "items": [
+        "All currency values stored as exact decimal(36,18) in PostgreSQL",
+        "Solid Queue handles asynchronous liquidation and funding schedules",
+        "Ledger::Reconciler guarantees wallet balance equals sum of ledger entries at boot"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Order & Trade Event Streams",
+    "output": "docs/diagrams/financial-event-stream.html",
+    "viewBox": [1080, 780],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "order-fill-path",
+        "label": "Order matching and fill stream",
+        "focus": ["market_stream", "order_stream", "order_book", "fill_engine", "paper_trade"],
+        "note": "Follow incoming market events and order intents through the order book into trade fills."
+      },
+      {
+        "id": "ledger-journal-path",
+        "label": "Immutable ledger and projections",
+        "focus": ["paper_trade", "ledger_entry", "perf_metrics", "portfolio_proj"],
+        "note": "Trace trade fills into the immutable double-entry ledger and downstream projection views."
+      },
+      {
+        "id": "solvency-audit-path",
+        "label": "Solvency audit and risk alerts",
+        "focus": ["fill_engine", "trade_dlq", "ledger_entry", "reconciler", "risk_alert"],
+        "note": "Audit rejected orders, margin checks, and periodic zero-sum solvency verification."
+      }
+    ]
+  },
+  "stages": [
+    { "label": "Event Ingress" },
+    { "label": "Matching & Fills" },
+    { "label": "Trade Stream" },
+    { "label": "Immutable Ledger" },
+    { "label": "Projections & Ops" }
+  ],
+  "nodes": [
+    { "id": "market_stream", "type": "external", "label": "MarketEvent", "sublabel": "live tick stream", "stage": 0, "row": 0, "tag": "external feed" },
+    { "id": "order_stream", "type": "frontend", "label": "Order Intent", "sublabel": "POST /api/orders", "stage": 0, "row": 2, "tag": "order ingress" },
+    { "id": "order_book", "type": "backend", "label": "OrderBook", "sublabel": "price-time priority", "stage": 1, "row": 0, "tag": "matching" },
+    { "id": "fill_engine", "type": "backend", "label": "FillEngine", "sublabel": "slippage & fills", "stage": 1, "row": 2, "tag": "execution" },
+    { "id": "paper_trade", "type": "database", "label": "PaperTrade", "sublabel": "fill event stream", "brand": "postgresql", "stage": 2, "row": 1, "tag": "immutable fills" },
+    { "id": "trade_dlq", "type": "messagebus", "label": "RejectedOrders", "sublabel": "margin breach stream", "stage": 2, "row": 4, "tag": "dead letters" },
+    { "id": "ledger_entry", "type": "database", "label": "LedgerEntry", "sublabel": "double-entry journal", "brand": "postgresql", "stage": 3, "row": 1, "tag": "append-only" },
+    { "id": "reconciler", "type": "security", "label": "Reconciler", "sublabel": "Ledger::Reconciler", "stage": 3, "row": 4, "tag": "solvency audit" },
+    { "id": "perf_metrics", "type": "backend", "label": "PerfMetrics", "sublabel": "PerformanceMetrics", "stage": 4, "row": 0, "tag": "projections" },
+    { "id": "portfolio_proj", "type": "backend", "label": "Portfolio", "sublabel": "PortfolioProjection", "stage": 4, "row": 2, "tag": "projections" },
+    { "id": "risk_alert", "type": "external", "label": "Risk Ops", "sublabel": "solvency alerts", "stage": 4, "row": 4, "tag": "on-call" }
+  ],
+  "flows": [
+    { "id": "market-to-book", "from": "market_stream", "to": "order_book", "label": "market ticks", "classification": "L1 quotes", "variant": "emphasis", "route": "straight" },
+    { "id": "client-to-fill", "from": "order_stream", "to": "fill_engine", "label": "order intent", "classification": "validated order", "variant": "emphasis", "route": "straight" },
+    { "id": "book-to-trade", "from": "order_book", "to": "paper_trade", "label": "matched orders", "classification": "crossing event", "variant": "emphasis", "route": "vertical-channel" },
+    { "id": "fill-to-trade", "from": "fill_engine", "to": "paper_trade", "label": "fill execution", "classification": "trade event", "variant": "emphasis", "route": "vertical-channel" },
+    { "id": "fill-to-dlq", "from": "fill_engine", "to": "trade_dlq", "label": "rejected order", "classification": "margin breach", "variant": "security", "fromSide": "bottom", "toSide": "left", "via": [[315, 490], [422, 490], [422, 613]], "labelAt": [368, 478] },
+    { "id": "trade-to-ledger", "from": "paper_trade", "to": "ledger_entry", "label": "journal append", "classification": "debit/credit", "variant": "emphasis", "route": "straight" },
+    { "id": "dlq-to-reconciler", "from": "trade_dlq", "to": "reconciler", "label": "breach audit", "classification": "rejection fact", "variant": "security", "route": "straight" },
+    { "id": "ledger-audit", "from": "ledger_entry", "to": "reconciler", "label": "periodic audit", "classification": "zero-sum audit", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelAt": [745, 442] },
+    { "id": "ledger-to-perf", "from": "ledger_entry", "to": "perf_metrics", "label": "realized PnL", "classification": "performance facts", "variant": "emphasis", "route": "vertical-channel" },
+    { "id": "ledger-to-portfolio", "from": "ledger_entry", "to": "portfolio_proj", "label": "equity stream", "classification": "balance updates", "variant": "default", "route": "vertical-channel" },
+    { "id": "reconciler-to-alert", "from": "reconciler", "to": "risk_alert", "label": "discrepancy", "classification": "solvency alarm", "variant": "security", "route": "straight" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dual Event Transit",
+      "items": [
+        "Market ticks and client order intents travel along segregated deterministic channels",
+        "OrderBook matches resting bids/asks with sub-millisecond price-time priority",
+        "FillEngine computes dynamic slippage and fee deduction before committing trades"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Immutable Ledger Core",
+      "items": [
+        "Every PaperTrade fill emits double-entry LedgerEntry records with decimal(36,18) precision",
+        "Ledger records are append-only; balance updates derive strictly from journal sum",
+        "PerformanceMetrics and PortfolioProjection update asynchronously from ledger stream"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Solvency & Recovery",
+      "items": [
+        "Margin rejections route to RejectedOrders dead-letter stream for audit inspection",
+        "Ledger::Reconciler continuously verifies zero-sum balance invariant across accounts",
+        "Any equity discrepancy triggers immediate high-priority alerts to Risk Ops on-call"
+      ]
+    }
+  ]
+}

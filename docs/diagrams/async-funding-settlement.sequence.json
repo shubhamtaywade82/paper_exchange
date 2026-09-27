@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Async Funding Settlement Roundtrip",
+    "output": "docs/diagrams/async-funding-settlement.html",
+    "viewBox": [980, 720],
+    "column_fit": "spread",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "trigger-and-lookup",
+        "label": "Trigger and price lookup",
+        "focus": ["scheduler", "queue", "worker", "price_store"],
+        "note": "Scheduled recurring trigger and Redis mark price query."
+      },
+      {
+        "id": "idempotent-dedup",
+        "label": "Idempotent payment deduplication",
+        "focus": ["worker", "settlement", "database"],
+        "note": "Payment calculation and unique constraint enforcement on (position_id, funding_time)."
+      },
+      {
+        "id": "ledger-entry",
+        "label": "Balance and ledger settlement",
+        "focus": ["worker", "ledger", "queue"],
+        "note": "Account balance adjustment and immutable LedgerEntry creation."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "scheduler", "type": "cloud", "label": "Scheduler", "sublabel": "recurring trigger" },
+    { "id": "queue", "type": "messagebus", "label": "Queue", "sublabel": "Solid Queue" },
+    { "id": "worker", "type": "backend", "label": "Worker", "sublabel": "FundingJob#perform" },
+    { "id": "price_store", "type": "database", "label": "PriceStore", "sublabel": "MarkPriceStore", "brand": "redis" },
+    { "id": "settlement", "type": "backend", "label": "FundingEngine", "sublabel": "rate calculator" },
+    { "id": "database", "type": "database", "label": "Postgres", "sublabel": "FundingPayment", "brand": "postgresql" },
+    { "id": "ledger", "type": "database", "label": "Ledger", "sublabel": "MarginLedger" }
+  ],
+  "segments": [
+    { "from": 140, "to": 280, "label": "Scheduled trigger & lookup" },
+    { "from": 285, "to": 435, "label": "Payment calculation & dedup" },
+    { "from": 440, "to": 630, "label": "Idempotent ledger settlement" }
+  ],
+  "messages": [
+    { "id": "schedule-trigger", "from": "scheduler", "to": "queue", "y": 160, "label": "funding tick event", "variant": "emphasis" },
+    { "id": "queue-dispatch", "from": "queue", "to": "worker", "y": 195, "label": "dispatch FundingJob", "variant": "emphasis" },
+    { "id": "query-price", "from": "worker", "to": "price_store", "y": 235, "label": "GET mark_price(symbol)", "variant": "default" },
+    { "id": "price-returned", "from": "price_store", "to": "worker", "y": 270, "label": "mark price decimal", "variant": "return" },
+    { "id": "calculate-payment", "from": "worker", "to": "settlement", "y": 310, "label": "calc_funding(position, rate)", "variant": "emphasis" },
+    { "id": "calc-return", "from": "settlement", "to": "worker", "y": 345, "label": "payment amount & side", "variant": "return" },
+    { "id": "dedup-check", "from": "worker", "to": "database", "y": 385, "label": "check (position_id, funding_time)", "variant": "security" },
+    { "id": "dedup-ok", "from": "database", "to": "worker", "y": 420, "label": "uniqueness confirmed", "variant": "return" },
+    { "id": "insert-payment", "from": "worker", "to": "database", "y": 460, "label": "INSERT FundingPayment", "variant": "emphasis" },
+    { "id": "payment-saved", "from": "database", "to": "worker", "y": 495, "label": "record persisted", "variant": "return" },
+    { "id": "apply-ledger", "from": "worker", "to": "ledger", "y": 535, "label": "apply_funding_fee!(Account)", "variant": "security" },
+    { "id": "ledger-saved", "from": "ledger", "to": "worker", "y": 570, "label": "LedgerEntry committed (36,18)", "variant": "return" },
+    { "id": "job-ack", "from": "worker", "to": "queue", "y": 605, "label": "job completed", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "scheduler", "from": 155, "to": 195, "type": "cloud" },
+    { "participant": "queue", "from": 160, "to": 200, "type": "messagebus" },
+    { "participant": "worker", "from": 190, "to": 610, "type": "backend" },
+    { "participant": "price_store", "from": 230, "to": 275, "type": "database" },
+    { "participant": "settlement", "from": 305, "to": 350, "type": "backend" },
+    { "participant": "database", "from": 380, "to": 500, "type": "database" },
+    { "participant": "ledger", "from": 530, "to": 575, "type": "database" },
+    { "participant": "queue", "from": 600, "to": 615, "type": "messagebus" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Trigger & Price Query",
+      "items": [
+        "Event or recurring trigger initiates funding settlement cycle for open leveraged positions",
+        "Solid Queue worker queries process-local cache with Redis MarkPriceStore fallback",
+        "Worker executes asynchronously without blocking client order submission paths"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Strict Idempotency",
+      "items": [
+        "Partial unique index on (paper_position_id, funding_time) guarantees exactly-once settlement",
+        "Duplicate funding triggers are gracefully rescued and discarded without side-effects",
+        "Funding rate is strictly bounded (abs <= 0.05) to protect against bad data inputs"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ledger Audit Trail",
+      "items": [
+        "Wallet balance is credited or debited under Account row lock FOR UPDATE",
+        "Immutable LedgerEntry is appended with event_type FUNDING_FEE and decimal(36,18) precision",
+        "Maintains the non-negotiable invariant: wallet balance == sum of all ledger entries"
+      ]
+    }
+  ]
+}

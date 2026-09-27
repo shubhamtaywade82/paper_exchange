@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Paper Exchange Deployment Ownership",
+    "output": "docs/diagrams/deployment-ownership.html",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "engineering_profile": "deployment-ownership",
+    "views": [
+      {
+        "id": "container-topology",
+        "label": "Kamal container topology",
+        "focus": ["kamal", "docker", "puma", "worker"],
+        "note": "Follow Kamal 2 deployment workflow to provision containerized workloads."
+      },
+      {
+        "id": "ownership-boundaries",
+        "label": "Team ownership & state",
+        "focus": ["puma", "worker", "redis", "postgres"],
+        "note": "Separate application-owned runtime from platform and data-team-owned persistence."
+      },
+      {
+        "id": "external-catalogs",
+        "label": "External catalog APIs",
+        "focus": ["puma", "binance", "coindcx", "dhanhq"],
+        "note": "Track outbound HTTPS dependencies for instrument metadata catalogs."
+      }
+    ]
+  },
+  "components": [
+    { "id": "kamal", "type": "external", "label": "Kamal 2 CLI", "sublabel": "bin/kamal deploy", "tag": "SRE", "pos": [30, 300], "size": [120, 60] },
+    { "id": "redis", "type": "database", "label": "Redis Cache", "sublabel": "MarkPriceStore :6379", "brand": "redis", "tag": "platform", "pos": [230, 140], "size": [130, 60] },
+    { "id": "docker", "type": "cloud", "label": "Docker Engine", "sublabel": "Ubuntu / amd64", "brand": "docker", "tag": "platform", "pos": [230, 300], "size": [130, 60] },
+    { "id": "puma", "type": "backend", "label": "Puma App Container", "sublabel": "Rails 8.1 API :3000", "tag": "app team", "pos": [450, 300], "size": [140, 60] },
+    { "id": "worker", "type": "backend", "label": "Solid Queue", "sublabel": "supervisor (:risk)", "tag": "app team", "pos": [450, 460], "size": [140, 60] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL DB", "sublabel": "decimal(36,18) :5432", "brand": "postgresql", "tag": "data team", "pos": [450, 600], "size": [140, 60] },
+    { "id": "binance", "type": "external", "label": "Binance USD-M", "sublabel": "perpetuals catalog", "tag": "external vendor", "pos": [740, 180], "size": [140, 60] },
+    { "id": "coindcx", "type": "external", "label": "CoinDCX API", "sublabel": "crypto spot catalog", "tag": "external vendor", "pos": [740, 300], "size": [140, 60] },
+    { "id": "dhanhq", "type": "external", "label": "DhanHQ API", "sublabel": "NSE F&O catalog", "tag": "external vendor", "pos": [740, 420], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Kamal 2 Target Host (192.168.0.1)", "wraps": ["redis", "docker", "puma", "worker", "postgres"], "pad": 24 },
+    { "kind": "security-group", "label": "Kamal Container Network", "wraps": ["redis", "puma", "worker", "postgres"], "pad": 12 },
+    { "kind": "region", "label": "External Catalog Providers", "wraps": ["binance", "coindcx", "dhanhq"] }
+  ],
+  "connections": [
+    { "id": "kamal-docker", "from": "kamal", "to": "docker", "label": "deploy", "variant": "emphasis" },
+    { "id": "docker-puma", "from": "docker", "to": "puma", "label": "runs", "variant": "default" },
+    { "id": "docker-worker", "from": "docker", "to": "worker", "label": "supervises", "variant": "default", "fromSide": "bottom", "toSide": "left", "via": [[295, 490]] },
+    { "id": "puma-redis", "from": "puma", "to": "redis", "label": "cache", "variant": "default", "fromSide": "top", "toSide": "right", "via": [[520, 170]] },
+    { "id": "puma-worker", "from": "puma", "to": "worker", "label": "enqueue jobs", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 45 },
+    { "id": "worker-postgres", "from": "worker", "to": "postgres", "label": "ACID state", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelDy": 45 },
+    { "id": "puma-binance", "from": "puma", "to": "binance", "label": "perpetuals", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[615, 330], [615, 210]] },
+    { "id": "puma-coindcx", "from": "puma", "to": "coindcx", "label": "spot assets", "variant": "dashed", "route": "straight", "labelDx": 25 },
+    { "id": "puma-dhanhq", "from": "puma", "to": "dhanhq", "label": "F&O contracts", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[685, 330], [685, 450]] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Containerized Topology",
+      "items": [
+        "Kamal 2 orchestrates zero-downtime rolling container deployments",
+        "Puma web server and Solid Queue background worker run isolated containers",
+        "Docker bridge network restricts internal traffic to authorized accessories"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Service Ownership",
+      "items": [
+        "App team owns Puma application code and background risk processing logic",
+        "Platform team manages Redis cache container and Docker host runtime",
+        "Data team manages PostgreSQL primary storing decimal(36,18) monetary ledgers"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Catalog API Boundaries",
+      "items": [
+        "External gems (DhanHQ, coindcx-client, Binance) used strictly for catalog data",
+        "No live orders or capital route to external exchange APIs",
+        "Isolated catalog failures do not impact internal paper trading engine"
+      ]
+    }
+  ]
+}

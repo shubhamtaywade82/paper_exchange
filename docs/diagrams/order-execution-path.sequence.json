@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Order Execution Money Path",
+    "output": "docs/diagrams/order-execution-path.html",
+    "viewBox": [980, 720],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "ingress-validation",
+        "label": "Ingress & validation",
+        "focus": ["client", "controller", "exchange", "validator"],
+        "note": "Client submission, account resolution, and dry-validation parameter checking."
+      },
+      {
+        "id": "margin-matching",
+        "label": "Margin lock & matching",
+        "focus": ["exchange", "ledger", "matching"],
+        "note": "Account row lock FOR UPDATE and fill execution with slippage."
+      },
+      {
+        "id": "ledger-settlement",
+        "label": "Position & ledger settlement",
+        "focus": ["exchange", "position_mgr", "ledger", "controller", "client"],
+        "note": "Position upsert, immutable LedgerEntry creation, and 201 response."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "client", "type": "external", "label": "Client", "sublabel": "trading agent" },
+    { "id": "controller", "type": "frontend", "label": "Orders API", "sublabel": "OrdersController" },
+    { "id": "exchange", "type": "backend", "label": "PaperExchange", "sublabel": "submit_order" },
+    { "id": "validator", "type": "security", "label": "OrderValidator", "sublabel": "dry-validation" },
+    { "id": "matching", "type": "backend", "label": "MatchingEngine", "sublabel": "FillEngine + Slippage" },
+    { "id": "position_mgr", "type": "backend", "label": "PositionManager", "sublabel": "PaperPosition upsert" },
+    { "id": "ledger", "type": "database", "label": "Ledger", "sublabel": "MarginLedger (36,18)", "brand": "postgresql" }
+  ],
+  "segments": [
+    { "from": 140, "to": 285, "label": "Ingress & validation" },
+    { "from": 290, "to": 430, "label": "Margin lock & matching" },
+    { "from": 435, "to": 645, "label": "Position update & ledger settlement" }
+  ],
+  "messages": [
+    { "id": "post-orders", "from": "client", "to": "controller", "y": 160, "label": "POST /api/orders", "variant": "emphasis" },
+    { "id": "submit-call", "from": "controller", "to": "exchange", "y": 195, "label": "submit_order(attrs)", "variant": "emphasis" },
+    { "id": "validate-schema", "from": "exchange", "to": "validator", "y": 230, "label": "validate(attrs)", "variant": "security" },
+    { "id": "validator-return", "from": "validator", "to": "exchange", "y": 265, "label": "typed parameters", "variant": "return" },
+    { "id": "lock-margin", "from": "exchange", "to": "ledger", "y": 300, "label": "lock_margin! (SELECT FOR UPDATE)", "variant": "security" },
+    { "id": "margin-locked", "from": "ledger", "to": "exchange", "y": 335, "label": "margin reserved", "variant": "return" },
+    { "id": "execute-matching", "from": "exchange", "to": "matching", "y": 375, "label": "execute(order)", "variant": "emphasis" },
+    { "id": "matching-fill", "from": "matching", "to": "exchange", "y": 410, "label": "fill [qty, price, fees]", "variant": "return" },
+    { "id": "apply-position", "from": "exchange", "to": "position_mgr", "y": 445, "label": "apply!(fill)", "variant": "emphasis" },
+    { "id": "position-updated", "from": "position_mgr", "to": "exchange", "y": 480, "label": "position updated", "variant": "return" },
+    { "id": "create-ledger", "from": "exchange", "to": "ledger", "y": 520, "label": "record_trade + LedgerEntry", "variant": "emphasis" },
+    { "id": "ledger-committed", "from": "ledger", "to": "exchange", "y": 555, "label": "commit transaction", "variant": "return" },
+    { "id": "order-filled", "from": "exchange", "to": "controller", "y": 590, "label": "order.filled!", "variant": "return" },
+    { "id": "http-201", "from": "controller", "to": "client", "y": 625, "label": "201 Created + order JSON", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "client", "from": 155, "to": 630, "type": "external" },
+    { "participant": "controller", "from": 160, "to": 625, "type": "frontend" },
+    { "participant": "exchange", "from": 190, "to": 595, "type": "backend" },
+    { "participant": "validator", "from": 225, "to": 270, "type": "security" },
+    { "participant": "ledger", "from": 295, "to": 340, "type": "database" },
+    { "participant": "matching", "from": 370, "to": 415, "type": "backend" },
+    { "participant": "position_mgr", "from": 440, "to": 485, "type": "backend" },
+    { "participant": "ledger", "from": 515, "to": 560, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ingress & Idempotency",
+      "items": [
+        "Client sends client_order_id and account context via X-Account-Id header",
+        "OrderValidator enforces dry-validation schema returning actionable 422 errors",
+        "Unique DB index on (account_id, client_order_id) enables rescue-replay idempotency"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Atomic Isolation (H1)",
+      "items": [
+        "Account row locked FOR UPDATE inside a single PostgreSQL transaction",
+        "MarginLock reserves capital before matching begins; any exception triggers rollback",
+        "Reduce-only and internal orders bypass margin lock to prevent liquidation deadlocks"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Settlement & Persistence",
+      "items": [
+        "PositionManager updates contract-scoped PaperPosition with average entry price",
+        "Ledger::MarginLedger generates immutable LedgerEntry rows with decimal(36,18) precision",
+        "Order transitions to filled! and returns 201 Created with complete fill execution details"
+      ]
+    }
+  ]
+}

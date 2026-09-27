@@ -1,0 +1,100 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Strategy & Risk Execution Loop",
+    "output": "docs/diagrams/strategy-risk-loop.html",
+    "visual_preset": "signal-flow",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-loop",
+        "label": "Full execution loop",
+        "focus": ["market_tick", "tick_processor", "indicator_engine", "strategy_engine", "option_selector", "risk_manager", "risk_gates", "submit_order", "ledger_fill"],
+        "note": "Follow incoming market tick through strategy, risk evaluation, and order fill."
+      },
+      {
+        "id": "risk-gates",
+        "label": "Risk validation gates",
+        "focus": ["option_selector", "risk_manager", "risk_gates", "gate_rejected", "submit_order"],
+        "note": "Inspect MarginValidator, VIXGateValidator, and MaxDrawdownValidator enforcement."
+      },
+      {
+        "id": "execution-path",
+        "label": "Order settlement",
+        "focus": ["submit_order", "ledger_fill"],
+        "note": "Atomic lock and immutable LedgerEntry persistence under account lock."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "market", "label": "Market Data Ingress" },
+    { "id": "strategy", "label": "Strategy & Alpha Engine" },
+    { "id": "risk", "label": "Risk Validation Gates", "variant": "exception" },
+    { "id": "exchange", "label": "Paper Exchange Core" }
+  ],
+  "phases": [
+    { "id": "feed", "label": "Tick Ingestion", "fromCol": 0, "toCol": 1 },
+    { "id": "generation", "label": "Signal Generation", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "risk_exec", "label": "Risk & Execution", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "groups": [
+    { "id": "alpha_loop", "label": "Signal loop", "lane": "strategy", "fromCol": 1, "toCol": 3, "variant": "emphasis" },
+    { "id": "risk_guard", "label": "Pre-trade risk gates", "lane": "risk", "fromCol": 3, "toCol": 5, "variant": "security" },
+    { "id": "order_exec", "label": "Atomic execution", "lane": "exchange", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["market_tick", "tick_processor", "indicator_engine", "strategy_engine", "option_selector", "risk_manager", "risk_gates", "submit_order", "ledger_fill"],
+  "nodes": [
+    { "id": "market_tick", "lane": "market", "col": 0, "type": "external", "label": "Market Tick", "sublabel": "price feed event", "width": 132 },
+    { "id": "tick_processor", "lane": "market", "col": 1, "type": "backend", "label": "TickProcessor", "sublabel": "MarkPriceStore cache", "tag": "real-time", "width": 132 },
+    { "id": "indicator_engine", "lane": "strategy", "col": 1, "type": "backend", "label": "IndicatorEngine", "sublabel": "MarketStructureEngine", "tag": "SMC trend", "width": 132 },
+    { "id": "strategy_engine", "lane": "strategy", "col": 2, "type": "backend", "label": "StrategyEngine", "sublabel": "generate trading setup", "tag": "alpha", "width": 132 },
+    { "id": "option_selector", "lane": "strategy", "col": 3, "type": "backend", "label": "OptionSelector", "sublabel": "strike & expiry picker", "tag": "F&O/Perp", "width": 132 },
+    { "id": "risk_manager", "lane": "risk", "col": 3, "type": "security", "label": "Risk::RiskManager", "sublabel": "evaluate(account, signal)", "tag": "fail-closed", "width": 132 },
+    { "id": "risk_gates", "lane": "risk", "col": 4, "type": "security", "label": "Validation Gates", "sublabel": "Margin, VIX, MaxDD", "tag": "pre-trade check", "width": 132 },
+    { "id": "gate_rejected", "lane": "risk", "col": 5, "type": "security", "label": "Gate Rejected", "sublabel": "*_REJECTED audit event", "tag": "stop order", "width": 132 },
+    { "id": "submit_order", "lane": "exchange", "col": 4, "type": "backend", "label": "PaperExchange", "sublabel": "submit_order", "tag": "atomic lock", "width": 132 },
+    { "id": "ledger_fill", "lane": "exchange", "col": 5, "type": "database", "label": "Fill & Ledger", "sublabel": "immutable LedgerEntry", "tag": "decimal(36,18)", "width": 132 }
+  ],
+  "edges": [
+    { "id": "tick-ingest", "from": "market_tick", "to": "tick_processor", "label": "tick", "variant": "default" },
+    { "id": "proc-indicator", "from": "tick_processor", "to": "indicator_engine", "label": "price update", "variant": "default" },
+    { "id": "indicator-strat", "from": "indicator_engine", "to": "strategy_engine", "label": "trend & FVG", "variant": "emphasis" },
+    { "id": "strat-selector", "from": "strategy_engine", "to": "option_selector", "label": "setup signal", "variant": "default" },
+    { "id": "selector-risk", "from": "option_selector", "to": "risk_manager", "label": "evaluate", "variant": "security" },
+    { "id": "risk-gates-eval", "from": "risk_manager", "to": "risk_gates", "label": "run validators", "variant": "security" },
+    { "id": "gates-pass", "from": "risk_gates", "to": "submit_order", "label": "allow", "variant": "emphasis" },
+    { "id": "gates-fail", "from": "risk_gates", "to": "gate_rejected", "label": "reject", "variant": "security", "role": "error" },
+    { "id": "exchange-fill", "from": "submit_order", "to": "ledger_fill", "label": "fill trade", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Strategy Pipeline",
+      "items": [
+        "Market ticks stream into TickProcessor and update MarkPriceStore",
+        "MarketStructureEngine evaluates trend, fair value gaps, and liquidity sweeps",
+        "OptionSelector resolves specific instrument contract and strike parameters"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Risk Validation Gates",
+      "items": [
+        "MarginValidator checks initial margin and leverage headroom",
+        "VIXGateValidator restricts new exposure during extreme market volatility",
+        "MaxDrawdownValidator enforces account-level maximum daily drawdown limits"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Atomic Execution",
+      "items": [
+        "Only orders passing all validation gates reach Exchange::PaperExchange.submit_order",
+        "Account row lock ensures atomic margin lock and matching engine fill",
+        "Successful executions emit immutable LedgerEntry records with exact decimal precision"
+      ]
+    }
+  ]
+}

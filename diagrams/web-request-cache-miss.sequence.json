@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Web Request: Cache Miss & Database Fallback",
+    "output": "diagrams/web-request-cache-miss.html",
+    "viewBox": [1000, 540],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "cache-check",
+        "label": "Cache Check",
+        "focus": ["browser", "api", "redis"],
+        "note": "Browser sends request to API, which queries Redis for cached data."
+      },
+      {
+        "id": "db-fallback",
+        "label": "DB Fallback",
+        "focus": ["api", "postgres"],
+        "note": "Cache miss triggers query to PostgreSQL as source of truth."
+      },
+      {
+        "id": "cache-fill-response",
+        "label": "Cache Fill & Response",
+        "focus": ["api", "redis", "browser"],
+        "note": "API populates Redis cache and returns the payload to Browser."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Browser",
+      "sublabel": "client application"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API Server",
+      "sublabel": "request handler"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "in-memory cache",
+      "brand": "redis"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "primary database",
+      "brand": "postgresql"
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 250, "label": "Cache Lookup" },
+    { "from": 255, "to": 325, "label": "Database Fallback" },
+    { "from": 330, "to": 400, "label": "Cache Fill & Response" }
+  ],
+  "messages": [
+    {
+      "id": "http-request",
+      "from": "browser",
+      "to": "api",
+      "y": 170,
+      "label": "GET /api/v1/users/42",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cache-check",
+      "from": "api",
+      "to": "redis",
+      "y": 200,
+      "label": "GET user:42",
+      "variant": "default"
+    },
+    {
+      "id": "cache-miss",
+      "from": "redis",
+      "to": "api",
+      "y": 230,
+      "label": "(nil) cache miss",
+      "variant": "return"
+    },
+    {
+      "id": "db-query",
+      "from": "api",
+      "to": "postgres",
+      "y": 270,
+      "label": "SELECT * FROM users WHERE id = 42",
+      "variant": "emphasis"
+    },
+    {
+      "id": "db-result",
+      "from": "postgres",
+      "to": "api",
+      "y": 300,
+      "label": "user record (1 row)",
+      "variant": "return"
+    },
+    {
+      "id": "cache-fill",
+      "from": "api",
+      "to": "redis",
+      "y": 345,
+      "label": "SETEX user:42 3600 data",
+      "variant": "dashed"
+    },
+    {
+      "id": "http-response",
+      "from": "api",
+      "to": "browser",
+      "y": 380,
+      "label": "200 OK (user JSON)",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    { "participant": "browser", "from": 165, "to": 385, "type": "frontend" },
+    { "participant": "api", "from": 170, "to": 382, "type": "backend" },
+    { "participant": "redis", "from": 195, "to": 235, "type": "database" },
+    { "participant": "postgres", "from": 265, "to": 305, "type": "database" },
+    { "participant": "redis", "from": 340, "to": 355, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Cache Miss Flow",
+      "items": [
+        "Browser calls API requesting user resource",
+        "API inspects Redis cache using unique key",
+        "Redis returns nil indicating cache miss"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Database Fallback",
+      "items": [
+        "API queries PostgreSQL source of truth",
+        "PostgreSQL executes indexed query and returns row",
+        "Authoritative data recovered without user disruption"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Hydration & Return",
+      "items": [
+        "API populates Redis cache with TTL (SETEX)",
+        "API returns 200 OK payload to Browser",
+        "Subsequent queries serve directly from Redis"
+      ]
+    }
+  ]
+}

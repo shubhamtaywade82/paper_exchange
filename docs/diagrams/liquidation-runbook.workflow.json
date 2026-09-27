@@ -1,0 +1,99 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Liquidation & Solvency Runbook",
+    "output": "docs/diagrams/liquidation-runbook.html",
+    "visual_preset": "signal-flow",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-runbook",
+        "label": "Full incident runbook",
+        "focus": ["mark_tick", "detection", "liq_job", "verify_underwater", "forced_order", "reconciler", "risk_event", "solvency_alert"],
+        "note": "Follow underwater detection through forced order, ledger audit, and solvency alerting."
+      },
+      {
+        "id": "liquidation-execution",
+        "label": "Liquidation execution",
+        "focus": ["liq_job", "verify_underwater", "forced_order", "recovered"],
+        "note": "Verify underwater position check and force-close order placement."
+      },
+      {
+        "id": "solvency-audit",
+        "label": "Solvency audit & alert",
+        "focus": ["forced_order", "reconciler", "risk_event", "solvency_alert"],
+        "note": "Ledger reconciliation and operator alerting following position close."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "signals", "label": "Signals & Ingress" },
+    { "id": "jobs", "label": "Solid Queue (:risk queue)" },
+    { "id": "liquidation", "label": "Liquidation Engine & Execution" },
+    { "id": "audit", "label": "Ledger Audit & Solvency" },
+    { "id": "exceptions", "label": "Alerts & Exceptions", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "phase_detect", "label": "Underwater Detection", "fromCol": 0, "toCol": 1 },
+    { "id": "phase_exec", "label": "Liquidation Execution", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "phase_audit", "label": "Audit & Solvency Alert", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "groups": [
+    { "id": "grp_trigger", "label": "Async dispatch", "lane": "jobs", "fromCol": 1, "toCol": 2 },
+    { "id": "grp_engine", "label": "Force-close execution", "lane": "liquidation", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "grp_reconcile", "label": "Solvency verification", "lane": "audit", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["mark_tick", "detection", "liq_job", "verify_underwater", "forced_order", "reconciler", "risk_event", "solvency_alert"],
+  "nodes": [
+    { "id": "mark_tick", "lane": "signals", "col": 0, "type": "external", "label": "Mark Price Tick", "sublabel": "price <= liquidation_price", "tag": "price feed", "width": 132 },
+    { "id": "detection", "lane": "signals", "col": 1, "type": "backend", "label": "Underwater Position", "sublabel": "LiquidationEngine check", "tag": "breach signal", "width": 132 },
+    { "id": "liq_job", "lane": "jobs", "col": 1, "type": "backend", "label": "LiquidationJob", "sublabel": "Solid Queue :risk queue", "tag": "async worker", "width": 132 },
+    { "id": "verify_underwater", "lane": "liquidation", "col": 2, "type": "security", "label": "Verify Liquidation", "sublabel": "liquidated?(mark_price)", "tag": "DB row check", "width": 132 },
+    { "id": "forced_order", "lane": "liquidation", "col": 3, "type": "backend", "label": "Forced Market Order", "sublabel": "internal & reduce_only", "tag": "force close", "width": 132 },
+    { "id": "recovered", "lane": "exceptions", "col": 3, "type": "security", "label": "Price Recovered", "sublabel": "no-op / de-arm cache", "tag": "benign exit", "width": 132 },
+    { "id": "reconciler", "lane": "audit", "col": 4, "type": "security", "label": "Ledger::Reconciler", "sublabel": "audit wallet balance", "tag": "balance invariant", "width": 132 },
+    { "id": "risk_event", "lane": "audit", "col": 5, "type": "database", "label": "Record RiskEvent", "sublabel": "POSITION_LIQUIDATED", "tag": "audit trail", "width": 132 },
+    { "id": "solvency_alert", "lane": "exceptions", "col": 5, "type": "external", "label": "Solvency Alert", "sublabel": "notify on-call / webhook", "tag": "SEV-1 event", "width": 132 }
+  ],
+  "edges": [
+    { "id": "tick-detection", "from": "mark_tick", "to": "detection", "label": "push tick", "variant": "default" },
+    { "id": "detect-job", "from": "detection", "to": "liq_job", "label": "enqueue :risk", "variant": "emphasis" },
+    { "id": "job-verify", "from": "liq_job", "to": "verify_underwater", "label": "perform", "variant": "emphasis" },
+    { "id": "verify-force", "from": "verify_underwater", "to": "forced_order", "label": "underwater", "variant": "emphasis" },
+    { "id": "verify-recover", "from": "verify_underwater", "to": "recovered", "label": "recovered", "variant": "security", "role": "branch" },
+    { "id": "force-reconcile", "from": "forced_order", "to": "reconciler", "label": "fill close", "variant": "emphasis" },
+    { "id": "reconcile-event", "from": "reconciler", "to": "risk_event", "label": "balance ok", "variant": "emphasis" },
+    { "id": "event-alert", "from": "risk_event", "to": "solvency_alert", "label": "emit alert", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Breach Detection",
+      "items": [
+        "In-memory LiquidationEngine monitors mark prices against active leveraged positions",
+        "Breach triggers cache de-arming and enqueues LiquidationJob on the dedicated :risk queue",
+        "Background job re-verifies position.liquidated?(price) against PostgreSQL to avoid stale liquidations"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Forced Market Close",
+      "items": [
+        "Position force-closed using internal: true and reduce_only: true to bypass margin gates",
+        "Bypass rule prevents liquidation deadlock on underwater accounts with zero free margin",
+        "FillEngine computes exact execution price and updates position state atomically"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Solvency Audit & Alert",
+      "items": [
+        "Ledger::Reconciler verifies the fundamental invariant: wallet balance == sum of ledger entries",
+        "Immutable RiskEvent is recorded with event_type POSITION_LIQUIDATED",
+        "Solvency webhook alerts on-call operators with position details and realized loss"
+      ]
+    }
+  ]
+}

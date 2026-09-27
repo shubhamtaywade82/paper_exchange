@@ -1,0 +1,101 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Paper Exchange Delivery Pipeline",
+    "output": "docs/diagrams/delivery-pipeline.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-pipeline",
+        "label": "Full delivery pipeline",
+        "focus": ["git_push", "bin_ci", "static_sec", "test_suite", "docker_build", "kamal_deploy", "db_migrate", "health_check"],
+        "note": "Follow code change through CI quality gates, Docker build, and Kamal deploy."
+      },
+      {
+        "id": "ci-gates",
+        "label": "CI quality gates",
+        "focus": ["bin_ci", "static_sec", "test_suite", "ci_failed"],
+        "note": "Inspect Brakeman, bundler-audit, RuboCop, RSpec, and TypeScript smoke checks."
+      },
+      {
+        "id": "deployment-verification",
+        "label": "Kamal deploy & verify",
+        "focus": ["docker_build", "kamal_deploy", "db_migrate", "health_check", "rollback"],
+        "note": "Track rolling deploy, DB migrations, Solid Queue restart, and health check."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "dev", "label": "Source & Development" },
+    { "id": "ci", "label": "CI Quality Gates (bin/ci)" },
+    { "id": "deploy", "label": "Kamal Deployment" },
+    { "id": "verify", "label": "Verification & Jobs" },
+    { "id": "exceptions", "label": "Failure & Recovery", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "phase_source", "label": "Source Ingestion", "fromCol": 0, "toCol": 1 },
+    { "id": "phase_ci", "label": "Quality Gates", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "phase_deploy", "label": "Deploy & Verify", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "groups": [
+    { "id": "grp_ci", "label": "CI pipeline (bin/ci)", "lane": "ci", "fromCol": 1, "toCol": 3, "variant": "emphasis" },
+    { "id": "grp_deploy", "label": "Kamal release", "lane": "deploy", "fromCol": 3, "toCol": 4, "variant": "dashed" },
+    { "id": "grp_verify", "label": "Post-deploy verify", "lane": "verify", "fromCol": 4, "toCol": 5, "variant": "emphasis" },
+    { "id": "grp_recovery", "label": "Recovery path", "lane": "exceptions", "fromCol": 2, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["git_push", "bin_ci", "static_sec", "test_suite", "docker_build", "kamal_deploy", "db_migrate", "health_check"],
+  "nodes": [
+    { "id": "git_push", "lane": "dev", "col": 0, "type": "frontend", "label": "Git Push", "sublabel": "commit to repository", "width": 132 },
+    { "id": "bin_ci", "lane": "ci", "col": 1, "type": "backend", "label": "bin/ci Runner", "sublabel": "config/ci.rb orchestrator", "tag": "local CI", "width": 132 },
+    { "id": "static_sec", "lane": "ci", "col": 2, "type": "security", "label": "Static & Security", "sublabel": "Brakeman + audit + RuboCop", "tag": "blocking", "width": 132 },
+    { "id": "test_suite", "lane": "ci", "col": 3, "type": "backend", "label": "Test Suites", "sublabel": "RSpec + TS smoke tests", "tag": "invariant pass", "width": 132 },
+    { "id": "ci_failed", "lane": "exceptions", "col": 2, "type": "security", "label": "CI Aborted", "sublabel": "fail-closed gate", "tag": "block deploy", "width": 132 },
+    { "id": "docker_build", "lane": "deploy", "col": 3, "type": "cloud", "label": "Docker Build", "sublabel": "amd64 image tagged", "brand": "docker", "tag": "registry push", "width": 132 },
+    { "id": "kamal_deploy", "lane": "deploy", "col": 4, "type": "backend", "label": "kamal deploy", "sublabel": "config/deploy.yml", "tag": "rolling update", "width": 132 },
+    { "id": "db_migrate", "lane": "verify", "col": 4, "type": "backend", "label": "DB Migrations", "sublabel": "Solid Queue restart", "tag": "schema sync", "width": 132 },
+    { "id": "health_check", "lane": "verify", "col": 5, "type": "security", "label": "Health Check", "sublabel": "GET /up (Puma :3000)", "tag": "healthy 200", "width": 132 },
+    { "id": "rollback", "lane": "exceptions", "col": 5, "type": "security", "label": "Kamal Rollback", "sublabel": "revert to previous image", "tag": "failover", "width": 132 }
+  ],
+  "edges": [
+    { "id": "push-ci", "from": "git_push", "to": "bin_ci", "label": "trigger", "variant": "default" },
+    { "id": "ci-static", "from": "bin_ci", "to": "static_sec", "label": "step 1-3", "variant": "emphasis" },
+    { "id": "static-fail", "from": "static_sec", "to": "ci_failed", "label": "audit fail", "variant": "security", "role": "error" },
+    { "id": "static-tests", "from": "static_sec", "to": "test_suite", "label": "code valid", "variant": "emphasis" },
+    { "id": "tests-docker", "from": "test_suite", "to": "docker_build", "label": "tests pass", "variant": "emphasis" },
+    { "id": "docker-kamal", "from": "docker_build", "to": "kamal_deploy", "label": "deploy image", "variant": "emphasis" },
+    { "id": "kamal-migrate", "from": "kamal_deploy", "to": "db_migrate", "label": "run migrations", "variant": "default" },
+    { "id": "migrate-health", "from": "db_migrate", "to": "health_check", "label": "verify /up", "variant": "emphasis" },
+    { "id": "health-rollback", "from": "health_check", "to": "rollback", "label": "unhealthy", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Continuous Integration",
+      "items": [
+        "bin/ci orchestrates local quality gates prior to production release",
+        "Brakeman and bundler-audit enforce zero known security vulnerabilities",
+        "RSpec test suite and TypeScript Docker smoke tests ensure system invariants hold"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Zero-Downtime Deployment",
+      "items": [
+        "Docker builds amd64 production image and pushes to target registry",
+        "Kamal 2 coordinates zero-downtime rolling container swap on target host",
+        "Database migrations execute automatically before container promotion"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Verification & Recovery",
+      "items": [
+        "Solid Queue supervisor process restarts to pick up updated job definitions",
+        "Automated health checks probe GET /up before traffic switchover completes",
+        "Health check regressions trigger automated rollback to the previous good image"
+      ]
+    }
+  ]
+}
