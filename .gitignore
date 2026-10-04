@@ -28,3 +28,4 @@
 coverage
 /node_modules
 .railsforge
+/.agents
