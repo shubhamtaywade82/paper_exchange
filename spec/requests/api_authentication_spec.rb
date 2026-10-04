@@ -68,7 +68,7 @@ RSpec.describe 'API authentication (audit M2)', type: :request do
       expect(response).to have_http_status(:accepted)
 
       post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }, headers: auth_headers
-      expect(response).to have_http_status(:service_unavailable) # no Redis in CI — the gate passed, the stream is down
+      expect(response.status).to be_in([ 201, 503 ]) # 201 when Redis stream active, 503 when down — proves auth passed in both cases
 
       post '/api/market_structure', params: { symbol: 'BTCUSDT', trend: 'bullish' }, headers: auth_headers
       expect(response).to have_http_status(:created)

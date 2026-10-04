@@ -55,7 +55,7 @@ module MarketData
     def bucket_start(time, timeframe)
       case timeframe
       when "1m" then time.beginning_of_minute
-      when "5m" then time.beginning_of_hour - ((time.min / 5) * 5).minutes
+      when "5m" then time.beginning_of_hour + ((time.min / 5) * 5).minutes
       else time.beginning_of_hour
       end
     end

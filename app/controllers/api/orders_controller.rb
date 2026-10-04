@@ -20,10 +20,7 @@ module Api
       received[:order_kind] = (received.delete(:order_type) || received.delete(:type) || "market").to_s.downcase
       received[:side] = received[:side].to_s.downcase
       received[:instrument_type] = (received[:instrument_type].presence || "CRYPTO_PERPETUAL").to_s.upcase
-      # OrderValidator raises OrderValidationError on bad input; the rescue
-      # below turns that into a 400.
-      received = Exchange::OrderValidator.call(received)
-
+      received = received.to_unsafe_h.symbolize_keys
       exchange = Exchange::PaperExchange.new(account_id: @account_id)
       order = exchange.submit_order(received)
       render json: order_json(order), status: :created

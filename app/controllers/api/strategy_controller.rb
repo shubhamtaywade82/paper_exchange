@@ -96,7 +96,7 @@ module Api
       )
     end
 
-    # context passes through to the validators (VixGate reads context[:vix]).
+    # context passes through to the validators (VixGateValidator reads context[:vix]).
     def parse_context
       context = raw[:context]
       return {} unless context.is_a?(ActionController::Parameters) || context.is_a?(Hash)
