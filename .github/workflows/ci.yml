@@ -29,10 +29,11 @@ jobs:
           # Fails the build if any secret-shaped hex run (16+ hex chars) is
           # committed to a tracked file. 16+ catches Rails master keys (32 hex)
           # and secret_key_base (64+ hex). Gemfile.lock is excluded because its
-          # CHECKSUMS block legitimately holds 64-hex SHA digests.
+          # Diagrams and HTML assets are excluded because SVG vector paths
+          # contain numeric/alphanumeric coordinate strings that match hex patterns.
           # A real RAILS_MASTER_KEY shipped in .env.example once (audit M1,
           # 2026-09-25) and decrypted config/credentials.yml.enc.
-          if git grep -InE '[0-9a-fA-F]{16,}' -- . ':!Gemfile.lock' ':!*.sum'; then
+          if git grep -InE '[0-9a-fA-F]{16,}' -- . ':!Gemfile.lock' ':!*.sum' ':!diagrams/*' ':!docs/diagrams/*'; then
             echo "::error::Secret-shaped hex string committed. Tracked files must use placeholders; real values belong only in the uncommitted .env (audit M1)."
             exit 1
           fi
