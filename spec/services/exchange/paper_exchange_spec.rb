@@ -5,7 +5,7 @@ RSpec.describe Exchange::PaperExchange, type: :service do
   let(:exchange) { described_class.new(account_id: account_id) }
 
   before do
-    create(:account, account_id: account_id)
+    create(:account, account_id: account_id, currency: "USD")
   end
 
   describe '#submit_order' do

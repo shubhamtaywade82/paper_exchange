@@ -69,7 +69,7 @@ RSpec.describe 'P1-2: Notional-value limit bypass', type: :integration do
   let(:exchange) { Exchange::PaperExchange.new(account_id: account_id) }
 
   before do
-    create(:account, account_id: account_id, margin: 1_000_000.0)
+    create(:account, account_id: account_id, margin: 1_000_000.0, currency: 'USD')
     stub_const('Risk::MarginValidator::MAX_POSITION_VALUE', 50_000.0)
   end
 

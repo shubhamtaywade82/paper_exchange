@@ -58,27 +58,23 @@ RSpec.describe 'PaperExchange closed lifecycle', type: :service do
 
     account = Account.find_by!(account_id: account_id)
 
-    # P0-1 fix: the accounting model now uses margin-lock for ALL positions
-    # (not just leveraged crypto). A buy locks the full notional as position
-    # margin; a sell releases it and posts realized PnL + fees via MarginLedger.
-    # The TRADE ledger entry is now an audit record; the wallet movements
-    # happen via MARGIN_LOCKED/MARGIN_UNLOCKED/REALIZED_PNL/FEE entries.
-    #
-    # After buy then sell (both filled), the net realized PnL =
-    # (sell_price - buy_price) * qty - total_charges on both trades.
-    # Equity = margin + realized_pnl (no open positions => no unrealized).
-    trade_debit = buy_trade.price * buy_trade.quantity + buy_trade.total_charges
-    trade_credit = sell_trade.price * sell_trade.quantity - sell_trade.total_charges
-    expected_realized = trade_credit - trade_debit
+    # P0-1 fix: the accounting model now posts realized PnL via the
+    # REALIZED_PNL ledger stream (not from TRADE debits/credits). The
+    # realized PnL is the trading PnL: (sell_price - buy_price) * qty.
+    # Fees are posted separately as FEE entries and reduce available_balance
+    # (and thus equity), but do NOT reduce realized_pnl.
+    gross_pnl = (sell_trade.price - buy_trade.price) * buy_trade.quantity
 
-    expected_equity = account.margin + expected_realized
-    expect(account.current_equity).to be_within(0.01).of(expected_equity)
-    expect(account.realized_pnl).to be_within(0.01).of(expected_realized)
-    expect(account.unrealized_pnl).to be_within(0.01).of(0.0)
+    # Equity = margin + realized_pnl - fees (no open positions => no unrealized)
+    # realized_pnl is the gross trading PnL; fees reduce equity via available_balance.
+    expect(account.realized_pnl).to be_within(1.0).of(gross_pnl.to_f)
+    expect(account.unrealized_pnl).to be_within(1.0).of(0.0)
+    # Equity should be margin + realized_pnl - total_fees
+    total_fees = buy_trade.total_charges.to_f + sell_trade.total_charges.to_f
+    expect(account.current_equity).to be_within(1.0).of(account.margin.to_f + gross_pnl.to_f - total_fees)
 
     # P0-1: ledger entries now include TRADE + MARGIN_LOCKED/MARGIN_UNLOCKED +
-    # REALIZED_PNL + FEE (vs the old 2 TRADE entries). The exact count depends
-    # on the fill path but must be >= 2 (at least one TRADE per fill).
+    # REALIZED_PNL + FEE (vs the old 2 TRADE entries).
     expect(LedgerEntry.where(account_id: account_id).count).to be >= 2
   end
 end

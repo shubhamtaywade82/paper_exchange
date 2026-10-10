@@ -8,7 +8,7 @@ RSpec.describe 'P1-1: Max drawdown from peak', type: :integration do
   let(:account_id) { 'ACC-DD-PEAK' }
   let(:exchange) { Exchange::PaperExchange.new(account_id: account_id) }
 
-  before { create(:account, account_id: account_id, margin: 100_000.0) }
+  before { create(:account, account_id: account_id, margin: 100_000.0, currency: 'USD') }
 
   it 'tracks the equity high-water mark and rejects orders that breach the drawdown limit from peak' do
     # Grow the account: buy at 100, mark up to 200 (100% gain → equity ~200k)
