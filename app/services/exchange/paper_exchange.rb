@@ -70,6 +70,17 @@ module Exchange
       attrs = clamp_to_position(attrs) if attrs[:reduce_only]
       skip_gates = internal || attrs[:reduce_only]
 
+      # P1-2 fix: build ONE authoritative reference price before risk
+      # evaluation. The margin validator and the margin lock must see the
+      # same notional — previously the signal carried :ltp but not
+      # :execution_price, so a market order with only execution_price had
+      # zero notional in the risk gate (bypassing MAX_POSITION_VALUE) while
+      # the actual margin lock used the real execution_price.
+      reference_price = (attrs[:execution_price] || attrs[:price] || attrs[:ltp]).to_f
+      if reference_price <= 0
+        raise ArgumentError, "cannot determine reference price: provide execution_price, price, or ltp (got #{reference_price})"
+      end
+
       signal = Strategy::Signal.new(
         account_id: account_id,
         symbol: attrs[:symbol],
@@ -80,7 +91,7 @@ module Exchange
         option_type: attrs[:option_type],
         strike_price: attrs[:strike_price],
         expiry_date: attrs[:expiry_date],
-        ltp: attrs[:ltp],
+        ltp: reference_price,
         context: attrs.fetch(:context, {})
       )
 
@@ -112,7 +123,12 @@ module Exchange
         end
 
         unless skip_gates
-          reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
+          # P1-2: use the same reference_price the risk gate saw, not a
+          # separately-computed value that could disagree. The old code
+          # read (order.price || attrs[:execution_price] || attrs[:ltp])
+          # here while the signal used attrs[:ltp] — a market order with
+          # only execution_price passed the risk gate with zero notional
+          # but locked the real margin here, creating an inconsistency.
           required_margin = order.required_margin(reference_price)
           Ledger::MarginLedger.lock_margin!(
             account_id: account_id,
@@ -158,7 +174,9 @@ module Exchange
             trade.update!(paper_position: position)
             release_order_margin!(order) unless skip_gates
             MarginEngine.sync_position!(position, account_id: account_id)
-            Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
+            # P0-1: pass realized_pnl explicitly so record_trade doesn't
+            # depend on the position association being reloaded from DB.
+            Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
             if order.instrument_type == "CRYPTO_PERPETUAL"
               if trade.total_charges.to_f > 0
@@ -207,19 +225,30 @@ module Exchange
       raise
     end
 
-    # Locks the row so a double-cancel racing a fill cannot interleave; the
-    # state guard in cancel! makes an already-terminal order a loud
-    # StateError instead of a silent second transition (audit S1).
+    # P1-5 fix: the lock, state validation, status transition, and margin
+    # release are all inside ONE transaction with consistent lock ordering.
+    # Previously cancel_order did a locked read, then cancel! opened its own
+    # transaction, and release_order_margin! was a third — a fill could race
+    # between the locked read and the cancel transaction, and a failure in
+    # margin release after the cancel committed left the account with locked
+    # funds on a cancelled order. Now the order row is locked for the
+    # duration of the entire operation.
     def cancel_order(order_id)
-      order = ::PaperExchange::PaperOrder.lock.find(order_id)
-      order.cancel!
-      release_order_margin!(order)
+      ::PaperExchange::PaperOrder.transaction do
+        order = ::PaperExchange::PaperOrder.lock.find_by!(id: order_id, account_id: account_id)
+        order.cancel!
+        release_order_margin!(order)
+        order
+      end
     end
 
     def expire_order(order_id)
-      order = ::PaperExchange::PaperOrder.lock.find(order_id)
-      order.expired!
-      release_order_margin!(order)
+      ::PaperExchange::PaperOrder.transaction do
+        order = ::PaperExchange::PaperOrder.lock.find_by!(id: order_id, account_id: account_id)
+        order.expired!
+        release_order_margin!(order)
+        order
+      end
     end
 
     def market_event(event)

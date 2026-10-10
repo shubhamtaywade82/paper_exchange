@@ -15,14 +15,14 @@ module Api
       # which posts a paired MARGIN_LOCKED/MARGIN_UNLOCKED entry, so the
       # sum is reconcilable against the ledger (issue #11).
       #
-      # Prod-hardening (N7): position_locked was computed but never rendered
-      # (the prior dead-variable fix renamed it without wiring the output).
-      # Expose it in the wallet split so callers can reconcile the two
-      # components of locked_margin, and so the figure is auditable rather
-      # than silently thrown away.
+      # P2-2 fix: wallet.locked now includes BOTH position-level initial_margin
+      # (for open leveraged positions) AND order-level locked_margin (for open
+      # orders) — matching the account's authoritative locked_margin column.
+      # Previously wallet.locked only returned order_locked, so an agent
+      # syncing from the wallet object underestimated committed collateral.
       position_locked = ::PaperExchange::PaperPosition
         .where(account_id: account.account_id)
-        .where("leverage > 1 AND quantity <> 0")
+        .where("quantity <> 0")
         .sum(:initial_margin)
       order_locked = ::PaperExchange::PaperOrder
         .where(account_id: account.account_id, status: :open)
@@ -36,8 +36,9 @@ module Api
         locked_margin: account.locked_margin,
         wallet: {
           available: account.available_balance,
-          locked: order_locked.to_f,
-          position_locked: position_locked.to_f
+          locked: (order_locked + position_locked).to_f,
+          position_locked: position_locked.to_f,
+          order_locked: order_locked.to_f
         },
         equity: summary[:equity],
         unrealized_pnl: summary[:unrealized_pnl],
@@ -70,6 +71,7 @@ module Api
         account.update!(
           name: "Smoke Test Account", currency: "USD", margin: reset_margin,
           available_balance: reset_margin, current_equity: reset_margin,
+          max_equity_achieved: reset_margin,
           realized_pnl: 0.0, unrealized_pnl: 0.0, locked_margin: 0.0
         )
       end

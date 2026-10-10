@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -23,6 +23,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_120000) do
     t.decimal "locked_margin", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "margin", precision: 36, scale: 18, default: "0.0", null: false
     t.string "name", null: false
+    # P1-1: persisted equity high-water mark for the drawdown risk gate.
+    t.decimal "max_equity_achieved", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "realized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "unrealized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "updated_at", null: false

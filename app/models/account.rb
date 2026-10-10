@@ -45,6 +45,10 @@ class Account < ApplicationRecord
     # with 10x the documented paper margin).
     self.margin = ENV.fetch("PAPER_EXCHANGE_MARGIN", "10000").to_f if defaultable?(:margin)
     self.current_equity = margin if defaultable?(:current_equity)
+    # P1-1: the equity high-water mark starts at the initial margin — the
+    # baseline for drawdown. PortfolioProjection.summary bumps it lazily
+    # whenever live equity exceeds the stored value.
+    self.max_equity_achieved = margin if defaultable?(:max_equity_achieved)
     self.realized_pnl = 0.0 if defaultable?(:realized_pnl)
     self.unrealized_pnl = 0.0 if defaultable?(:unrealized_pnl)
     self.available_balance = margin if defaultable?(:available_balance)

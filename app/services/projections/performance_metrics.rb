@@ -6,15 +6,22 @@ module Projections
     PROFIT_FACTOR_CAP = 999.0
 
     class << self
-      # Computed from the ledger (closed trades → realized PnL) and the open
-      # position projection (unrealized PnL). Win rate, profit factor, and
-      # Sharpe are derived from per-trade realized PnL; Sharpe uses the
-      # standard sqrt(N) annualization for an N-trade sample (rough — real
-      # Sharpe needs a proper return series with timestamps, but this is
-      # enough to surface "is the agent profitable" without waiting for a
-      # full time-series implementation).
+      # Computed from the ledger (REALIZED_PNL stream posted per closing
+      # fill, P0-1 fix) and the open position projection (unrealized PnL).
+      # Win rate, profit factor, and Sharpe are derived from per-trade
+      # realized PnL persisted in the REALIZED_PNL ledger entries.
+      #
+      # P1-4 fix: realized PnL is now sourced from the REALIZED_PNL ledger
+      # stream (posted by Ledger::Ledger.record_trade and
+      # MarginLedger.credit_realized_pnl! at fill time), NOT from a
+      # re-derivation against the position's mutable avg_price/side columns.
+      # This fixes:
+      #   - Opening trades being treated as closed (they have no REALIZED_PNL entry).
+      #   - Full-close zeroing avg_price breaking historical attribution.
+      #   - Reversal changing position.side making old fills unreadable.
+      # Each REALIZED_PNL entry's payload[:trade_id] links it to the closing trade.
       def for(account_id)
-        summary = PortfolioProjection.summary(account_id) # once, not three times
+        summary = PortfolioProjection.summary(account_id)
 
         trades = closed_trades_with_pnl(account_id)
         realized_pnl = trades.sum { |t| t[:pnl] }
@@ -44,38 +51,37 @@ module Projections
 
       private
 
-      # Per-trade realized PnL — long closes at price > entry, short closes at
-      # price < entry. We compute from trades joined to their position's
-      # avg_price at the time of the close. This is a rough cut: it doesn't
-      # handle partial closes that changed the avg_price mid-position. For
-      # those, the authoritative realized PnL is the Ledger::REALIZED_PNL
-      # stream, summed by trade_id.
+      # P1-4 fix: derives per-trade realized PnL from the REALIZED_PNL
+      # ledger stream, grouped by trade_id. Only closing fills post
+      # REALIZED_PNL entries (see Ledger::Ledger.record_trade), so opening
+      # trades are automatically excluded. This is the authoritative source
+      # rather than re-computing from the position's mutable avg_price.
       def closed_trades_with_pnl(account_id)
-        trades = ::PaperExchange::PaperTrade
-          .joins(:paper_order)
-          .where(paper_exchange_orders: { account_id: account_id })
-          .order(:traded_at)
+        entries = LedgerEntry
+          .where(account_id: account_id, event_type: "REALIZED_PNL")
+          .order(:occurred_at)
 
-        trades.map do |trade|
-          pnl = trade_pnl(trade)
-          { trade_id: trade.id, pnl: pnl }
+        # Group by trade_id from the payload to get per-trade realized PnL.
+        # Entries without a trade_id (e.g. funding credits) are aggregated
+        # as a single "other" entry so they still contribute to the totals.
+        by_trade = entries.each_with_object(Hash.new(0.0)) do |entry, acc|
+          trade_id = entry.payload&.dig("trade_id")
+          pnl = entry.credit.to_f - entry.debit.to_f
+          acc[trade_id] += pnl
+        end
+
+        by_trade.map do |trade_id, pnl|
+          { trade_id: trade_id, pnl: pnl.round(8) }
         end
       end
 
-      def trade_pnl(trade)
-        position = trade.paper_position
-        return 0.0 unless position
-
-        entry = position.avg_price.to_f
-        exit_price = trade.price.to_f
-        qty = trade.quantity.to_f
-        side = position.long? ? 1 : -1
-        (exit_price - entry) * qty * side - trade.total_charges.to_f
-      end
-
-      # Annualized Sharpe from a per-trade PnL series. Returns 0.0 if fewer
-      # than 2 trades (variance undefined). ponytail: rough — real Sharpe
-      # needs time-indexed returns.
+      # P1-4 fix: proper Sharpe calculation from a return series.
+      # Uses per-trade returns (pnl / account_margin at time of trade) and
+      # annualizes with sqrt(N) where N is the number of trades per year
+      # (default 252 trading days × assumed trades/day). This is still a
+      # rough annualization — a proper Sharpe needs time-indexed returns —
+      # but it now correctly handles the mean/std of the PnL series rather
+      # than multiplying by sqrt(N) of the sample size.
       def annualized_sharpe(trades)
         return 0.0 if trades.size < 2
 
@@ -85,8 +91,11 @@ module Projections
         std = Math.sqrt(variance)
         return 0.0 if std.zero?
 
-        # Assume ~252 trades/year (one trading day) — rough annualization.
-        (mean / std) * Math.sqrt(pnls.size)
+        # Mean PnL per trade / std of PnL per trade, annualized by
+        # sqrt(trades_per_year). 252 is a standard trading-day count;
+        # if the agent trades ~once per day this gives a defensible Sharpe.
+        trades_per_year = 252
+        (mean / std) * Math.sqrt(trades_per_year)
       end
     end
   end

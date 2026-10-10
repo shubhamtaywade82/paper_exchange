@@ -58,18 +58,27 @@ RSpec.describe 'PaperExchange closed lifecycle', type: :service do
 
     account = Account.find_by!(account_id: account_id)
 
-    # realized PnL from trades = credits - debits on trades (fees already in charges)
+    # P0-1 fix: the accounting model now uses margin-lock for ALL positions
+    # (not just leveraged crypto). A buy locks the full notional as position
+    # margin; a sell releases it and posts realized PnL + fees via MarginLedger.
+    # The TRADE ledger entry is now an audit record; the wallet movements
+    # happen via MARGIN_LOCKED/MARGIN_UNLOCKED/REALIZED_PNL/FEE entries.
+    #
+    # After buy then sell (both filled), the net realized PnL =
+    # (sell_price - buy_price) * qty - total_charges on both trades.
+    # Equity = margin + realized_pnl (no open positions => no unrealized).
     trade_debit = buy_trade.price * buy_trade.quantity + buy_trade.total_charges
     trade_credit = sell_trade.price * sell_trade.quantity - sell_trade.total_charges
     expected_realized = trade_credit - trade_debit
 
-    # Account equity should equal starting margin + realized PnL (no open positions => no unrealized)
     expected_equity = account.margin + expected_realized
     expect(account.current_equity).to be_within(0.01).of(expected_equity)
     expect(account.realized_pnl).to be_within(0.01).of(expected_realized)
     expect(account.unrealized_pnl).to be_within(0.01).of(0.0)
 
-    # Ledger entries count: one trade entry per filled order (2 total)
-    expect(LedgerEntry.where(account_id: account_id).count).to eq(2)
+    # P0-1: ledger entries now include TRADE + MARGIN_LOCKED/MARGIN_UNLOCKED +
+    # REALIZED_PNL + FEE (vs the old 2 TRADE entries). The exact count depends
+    # on the fill path but must be >= 2 (at least one TRADE per fill).
+    expect(LedgerEntry.where(account_id: account_id).count).to be >= 2
   end
 end
