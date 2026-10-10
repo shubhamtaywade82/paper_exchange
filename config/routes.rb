@@ -1,5 +1,10 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
+  # Prod-hardening (NEW-16): deep dependency probe for load balancers.
+  # Unauthenticated (NOT under /api) — returns 200 only when Postgres,
+  # Redis, and Solid Queue all answer. /up still exists for the shallow
+  # "did Rails boot" probe docker compose uses.
+  get "health" => "health#show", as: :deep_health
 
   concern :api_endpoints do
     get "account", to: "accounts#show"

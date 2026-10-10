@@ -5,6 +5,41 @@ module Api
     before_action :authenticate_api_key!
     before_action :set_account
 
+    # Global API contract (prod-hardening NEW-6): every unhandled exception
+    # used to bubble to Rails' default ActionController::API 500 handler,
+    # which in production renders an HTML error page — not the documented
+    # { "error": "..." } JSON shape the agent expects. Centralising the
+    # rescue here guarantees a consistent JSON envelope for every endpoint,
+    # logs the failure with the request id for forensic correlation, and
+    # keeps a 404 for not-found lookups instead of a 500. Local `rescue`
+    # clauses in individual actions (e.g. OrdersController#create) still
+    # take precedence — this only catches what they let through.
+    #
+    # ORDERING NOTE: ActiveSupport::Rescuable checks handlers most-recently-
+    # registered first (each rescue_from unshifts onto the handler list).
+    # The general StandardError handler MUST be registered FIRST so it lands
+    # at the end of the list and is only reached when no more specific handler
+    # matches — otherwise it would shadow InvalidCursorError / ParameterMissing
+    # / RecordNotFound and turn their 400/404 responses into 500s.
+    rescue_from StandardError do |e|
+      # In test env, let exceptions propagate so specs can assert on them
+      # (e.g. AccountsController#reset's atomic-rollback spec expects the
+      # RuntimeError to surface). In production/dev, render the documented
+      # JSON envelope so the agent never gets an HTML error page.
+      raise e if Rails.env.test?
+
+      Rails.logger.error("[#{self.class.name}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+      render_error(:internal_server_error, "Internal error")
+    end
+
+    rescue_from ActiveRecord::RecordNotFound do
+      render_error(:not_found, "Resource not found")
+    end
+
+    rescue_from ActionController::ParameterMissing do |e|
+      render_error(:bad_request, e.message)
+    end
+
     rescue_from CursorPagination::InvalidCursorError do |e|
       render_error(:bad_request, e.message)
     end

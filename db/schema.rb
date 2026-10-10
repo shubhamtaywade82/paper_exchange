@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -197,4 +197,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
   add_foreign_key "funding_payments", "paper_exchange_positions", column: "paper_position_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_orders", column: "paper_order_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_positions", column: "paper_position_id"
+  # Prod-hardening (NEW-30): structural integrity from every money table back
+  # to accounts(account_id). Previously app-layer only; a stray write for a
+  # non-existent account would corrupt the Reconciler's wallet derivation.
+  add_foreign_key "funding_payments", "accounts", column: "account_id"
+  add_foreign_key "ledger_entries", "accounts", column: "account_id"
+  add_foreign_key "paper_exchange_orders", "accounts", column: "account_id"
+  add_foreign_key "paper_exchange_positions", "accounts", column: "account_id"
+  add_foreign_key "risk_events", "accounts", column: "account_id"
 end

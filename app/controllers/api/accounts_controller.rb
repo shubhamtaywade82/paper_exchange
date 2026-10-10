@@ -14,6 +14,12 @@ module Api
       # order-level locked_margin for open orders. Both move via MarginLedger
       # which posts a paired MARGIN_LOCKED/MARGIN_UNLOCKED entry, so the
       # sum is reconcilable against the ledger (issue #11).
+      #
+      # Prod-hardening (N7): position_locked was computed but never rendered
+      # (the prior dead-variable fix renamed it without wiring the output).
+      # Expose it in the wallet split so callers can reconcile the two
+      # components of locked_margin, and so the figure is auditable rather
+      # than silently thrown away.
       position_locked = ::PaperExchange::PaperPosition
         .where(account_id: account.account_id)
         .where("leverage > 1 AND quantity <> 0")
@@ -30,7 +36,8 @@ module Api
         locked_margin: account.locked_margin,
         wallet: {
           available: account.available_balance,
-          locked: order_locked.to_f
+          locked: order_locked.to_f,
+          position_locked: position_locked.to_f
         },
         equity: summary[:equity],
         unrealized_pnl: summary[:unrealized_pnl],

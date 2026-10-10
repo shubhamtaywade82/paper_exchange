@@ -77,11 +77,16 @@ jobs:
           - 5432:5432
         options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
 
-      # redis:
-      #   image: valkey/valkey:8
-      #   ports:
-      #     - 6379:6379
-      #   options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+      # Prod-hardening (NEW-17): Redis was commented out, so CI was exercising
+      # the Redis-unavailable degradation path (MarkPriceStore/TickProcessor
+      # rescue Redis::BaseError -> nil) instead of the real production path.
+      # The mark_prices / market_events / liquidation specs depend on Redis
+      # being reachable to assert their happy-path behaviour truthfully.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
       - name: Install packages
@@ -99,8 +104,8 @@ jobs:
         env:
           RAILS_ENV: test
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          REDIS_URL: redis://localhost:6379/0
           # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
         # `bin/rails test` is unrecognized in this API-only app (no Minitest
         # railtie); the suite is RSpec, which registers `bin/rails spec`.
         run: bin/rails db:test:prepare spec

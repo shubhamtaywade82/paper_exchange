@@ -16,6 +16,12 @@
 class FundingJob < ApplicationJob
   queue_as :risk
 
+  # Prod-hardening (NEW-9): a position deleted between enqueue and perform
+  # (manual close, account reset, liquidation) is not a retriable failure —
+  # there is nothing to settle funding on. Discard cleanly instead of
+  # burning all 3 deadlock-retry attempts against a row that will never exist.
+  discard_on ActiveRecord::RecordNotFound
+
   def perform(symbol, funding_rate, mark_price = nil, funding_time = nil)
     positions = ::PaperExchange::PaperPosition
       .where(symbol: symbol)
