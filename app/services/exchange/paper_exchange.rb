@@ -251,6 +251,75 @@ module Exchange
       end
     end
 
+    # Architecture alignment (target architecture §4): autonomous matching.
+    # Called by the MatchingWorker when a market event makes an open order
+    # executable. Fills the order at the given live fill_price (derived from
+    # the QuoteStore's best bid/ask), bypassing the risk gate (margin was
+    # already locked at submit time) and the matching engine's slippage
+    # model (the fill price is the actual executable book price).
+    #
+    # The caller (MatchingWorker) holds the order row lock; this method
+    # runs the fill-engine + position-manager + ledger sequence inside the
+    # caller's transaction. Idempotent via the order's status guard — a
+    # double fill attempt raises StateError (caught by the caller).
+    def match_and_fill(order, fill_price)
+      raise ::PaperExchange::PaperOrder::StateError, "order is not open" unless order.status == "open"
+
+      @order_book.apply_snapshot(order.symbol, bid: fill_price, ask: fill_price, ltp: fill_price)
+
+      fill_qty, actual_fill_price, trade = @fill_engine.fill(
+        order,
+        market_snapshot: @order_book.snapshot(order.symbol),
+        instrument_type: order.instrument_type,
+        quantity: order.remaining_quantity,
+        price: fill_price
+      )
+
+      return nil unless trade
+
+      position = PositionManager.apply!(
+        account_id: account_id,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: fill_qty,
+        avg_price: actual_fill_price,
+        leverage: order.leverage,
+        margin_type: order.margin_type,
+        instrument_type: order.instrument_type,
+        option_type: order.option_type,
+        strike_price: order.strike_price,
+        expiry_date: order.expiry_date
+      )
+      trade.update!(paper_position: position)
+      release_order_margin!(order)
+      MarginEngine.sync_position!(position, account_id: account_id)
+      Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
+
+      if order.instrument_type == "CRYPTO_PERPETUAL"
+        if trade.total_charges.to_f > 0
+          Ledger::MarginLedger.deduct_fee!(
+            account_id: account_id,
+            amount: trade.total_charges,
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: order.symbol, reason: "trade_fee" }
+          )
+        end
+        if position.last_realized_pnl && !position.last_realized_pnl.zero?
+          Ledger::MarginLedger.credit_realized_pnl!(
+            account_id: account_id,
+            amount: position.last_realized_pnl,
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: order.symbol, reason: "realized_pnl" }
+          )
+        end
+        Ledger::Ledger.refresh_cached_equity!(account_id)
+      end
+      MarketData::MarkPriceStore.set(order.symbol, actual_fill_price)
+
+      order.filled!
+      order
+    end
+
     def market_event(event)
       if event.respond_to?(:symbol) && event.respond_to?(:bid) && event.respond_to?(:ask)
         @order_book.apply_snapshot(

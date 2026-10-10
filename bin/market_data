@@ -1,0 +1,29 @@
+#!/usr/bin/env ruby
+# Architecture alignment (target architecture §7): standalone market-data
+# supervisor process. Runs the ConnectionSupervisor which maintains
+# WebSocket connections to Binance/CoinDCX, normalizes events into
+# QuoteStore + the Redis tick stream, and reconnects on failure.
+#
+# In production this runs as an independently supervised process alongside
+# the web (Puma) and jobs (Solid Queue) processes. Only ONE active
+# market_data process should own WebSocket subscriptions for a given
+# provider/shard — use a distributed lease if running multiple replicas.
+require_relative "../config/environment"
+
+providers = []
+providers << MarketData::Providers::BinanceUsdm.new if ENV["PAPER_EXCHANGE_ENABLE_BINANCE"] == "true"
+providers << MarketData::Providers::CoindcxFutures.new if ENV["PAPER_EXCHANGE_ENABLE_COINDCX"] == "true"
+
+if providers.empty?
+  warn "[market_data] No providers enabled. Set PAPER_EXCHANGE_ENABLE_BINANCE=true"
+  warn "[market_data] and/or PAPER_EXCHANGE_ENABLE_COINDCX=true to start."
+  exit 1
+end
+
+supervisor = MarketData::ConnectionSupervisor.new(providers: providers)
+
+# Graceful shutdown on SIGTERM (Kamal deploy) / SIGINT (Ctrl-C).
+trap("TERM") { supervisor.stop }
+trap("INT")  { supervisor.stop }
+
+supervisor.start

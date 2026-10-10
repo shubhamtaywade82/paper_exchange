@@ -56,7 +56,15 @@ gem "dotenv-rails"
 # Exchange Clients
 # ─────────────────────────────────────────────────────────────────────────────
 gem "DhanHQ", "~> 3.4", require: "dhan_hq"
-gem "coindcx-client", "~> 0.1.0", require: "coindcx"
+# Architecture alignment: pin coindcx-client to 1.x (the repo declares 1.0.0;
+# the old ~> 0.1.0 constraint would not select it). The adapter layer under
+# MarketData::Providers::CoindcxFutures wraps the public futures market-data
+# methods exposed by the SDK.
+gem "coindcx-client", "~> 1.0", require: "coindcx"
+# Binance USD-M SDK — the provider adapter under
+# MarketData::Providers::BinanceUsdm wraps its public REST + WebSocket methods.
+# The SDK ships as `binance-client` on RubyGems; the require path is "binance".
+gem "binance-client", "~> 0.1", require: "binance"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Backtest / real-time ingest
