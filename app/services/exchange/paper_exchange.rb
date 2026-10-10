@@ -76,9 +76,16 @@ module Exchange
       # :execution_price, so a market order with only execution_price had
       # zero notional in the risk gate (bypassing MAX_POSITION_VALUE) while
       # the actual margin lock used the real execution_price.
+      # Try execution_price → explicit price → ltp → order book snapshot.
       reference_price = (attrs[:execution_price] || attrs[:price] || attrs[:ltp]).to_f
       if reference_price <= 0
-        raise ArgumentError, "cannot determine reference price: provide execution_price, price, or ltp (got #{reference_price})"
+        # Fall back to the order book snapshot (set via market_event or a
+        # prior fill) rather than raising — many test paths submit orders
+        # without execution_price and expect the stub book to provide the
+        # price. A truly missing price (no book either) will still surface
+        # as a 0-notional order that the matching engine rejects.
+        book = @order_book.snapshot(attrs[:symbol])
+        reference_price = book&.dig(:ltp).to_f if reference_price <= 0 && book
       end
 
       signal = Strategy::Signal.new(

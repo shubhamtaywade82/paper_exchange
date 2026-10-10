@@ -64,8 +64,8 @@ RSpec.describe FundingJob, type: :job do
     expect(FundingPayment.last.position_notional).to eq(60_000.0) # long_position.current_price
   end
 
-  it 'skips unleveraged positions' do
-    long_position.update!(leverage: 1)
+  it 'skips non-crypto positions (P0-2: funding eligibility is instrument-based, not leverage-based)' do
+    long_position.update!(leverage: 1, instrument_type: 'EQUITY')
 
     expect {
       described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)

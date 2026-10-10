@@ -69,7 +69,7 @@ module Ledger
         end
 
         if pnl && !pnl.zero?
-          Ledger::MarginLedger.credit_realized_pnl!(
+          MarginLedger.credit_realized_pnl!(
             account_id: account_id,
             amount: pnl,
             event_type: "REALIZED_PNL",
@@ -79,7 +79,7 @@ module Ledger
         end
 
         if charges > 0
-          Ledger::MarginLedger.deduct_fee!(
+          MarginLedger.deduct_fee!(
             account_id: account_id,
             amount: charges,
             event_type: "FEE",
