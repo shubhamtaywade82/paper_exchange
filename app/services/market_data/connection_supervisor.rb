@@ -23,7 +23,7 @@ module MarketData
   # publishers.
   #
   # This is the skeleton — the actual SDK-specific connection lifecycle is
-  # delegated to the provider adapters (BinanceUSDM, CoindcxFutures).
+  # delegated to the provider adapters (BinanceUSDM, CoinDCXFutures).
   class ConnectionSupervisor
     def initialize(providers: [])
       @providers = providers

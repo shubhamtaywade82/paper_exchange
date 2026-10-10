@@ -18,7 +18,7 @@ module MarketData
     # Until the funding endpoint is verified, this adapter does NOT emit
     # funding events — they should come from the Binance adapter or from
     # the agent pushing POST /api/funding_events.
-    class CoindcxFutures < Base
+    class CoinDCXFutures < Base
       VENUE = "coindcx_futures"
 
       def initialize(client: nil)

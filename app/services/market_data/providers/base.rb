@@ -1,7 +1,7 @@
 module MarketData
   module Providers
     # Common contract for all exchange market-data adapters. Concrete
-    # adapters (BinanceUSDM, CoindcxFutures) translate their SDK's raw
+    # adapters (BinanceUSDM, CoinDCXFutures) translate their SDK's raw
     # responses into the common internal event schema and expose a uniform
     # interface so the connection supervisor and matching worker never need
     # to know which venue a quote came from.
