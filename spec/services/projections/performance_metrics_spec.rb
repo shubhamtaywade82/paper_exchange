@@ -24,12 +24,22 @@ RSpec.describe Projections::PerformanceMetrics, type: :service do
       instrument_type: order.instrument_type,
       option_type: order.option_type, strike_price: order.strike_price,
       expiry_date: order.expiry_date)
-    create(:paper_trade,
+    trade = create(:paper_trade,
       paper_order: order, paper_position: position,
       side: 'sell', quantity: 10, price: 110.0, total_charges: 1.0)
 
-    metrics = described_class.for(account_id)
+    # P1-4 fix: realized PnL is now sourced from the REALIZED_PNL ledger
+    # stream (posted at fill time by Ledger::Ledger.record_trade), not
+    # from a re-derivation against the position's mutable avg_price. Post
+    # the entry that would have been created during a real fill.
     # (110 - 100) * 10 - 1 = 99
+    LedgerEntry.create!(
+      account_id: account_id, event_type: 'REALIZED_PNL',
+      debit: 0, credit: 99.0, occurred_at: Time.current,
+      payload: { trade_id: trade.id, symbol: order.symbol, reason: 'trade_realized_pnl' }
+    )
+
+    metrics = described_class.for(account_id)
     expect(metrics[:realized_pnl]).to be_within(0.01).of(99.0)
   end
   # Audit S14/T3.9: an all-wins history must not serialize profit_factor as
@@ -44,9 +54,16 @@ RSpec.describe Projections::PerformanceMetrics, type: :service do
         instrument_type: order.instrument_type,
         option_type: order.option_type, strike_price: order.strike_price,
         expiry_date: order.expiry_date)
-      create(:paper_trade,
+      trade = create(:paper_trade,
         paper_order: order, paper_position: position,
         side: 'sell', quantity: 10, price: 110.0, total_charges: 1.0)
+
+      # P1-4: realized PnL sourced from the REALIZED_PNL ledger stream.
+      LedgerEntry.create!(
+        account_id: account_id, event_type: 'REALIZED_PNL',
+        debit: 0, credit: 99.0, occurred_at: Time.current,
+        payload: { trade_id: trade.id, symbol: order.symbol, reason: 'trade_realized_pnl' }
+      )
 
       metrics = described_class.for(account_id)
 

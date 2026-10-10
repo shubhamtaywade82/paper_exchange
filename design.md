@@ -1,6 +1,6 @@
 # Design — Design System & UI Guidelines for paper_exchange
 
-> **Primary reader:** AI developer. Last updated: 2026-09-25.
+> **Primary reader:** AI developer. Last updated: 2026-10-10.
 > **Scope note:** paper_exchange is **API-only** — there is no browser UI today. The real "design surface" is the **HTTP/JSON interface** the trading agent consumes, so this file defines (§1–§4) the API design language: response shapes, error semantics, status codes, naming vocabulary. §5 defines the visual language **if** a monitoring dashboard is ever added, so it doesn't get invented ad-hoc later.
 > Companion files: `design` cross-references `rules.md` (backend constraints) and `architecture.md` (module map).
 
@@ -38,7 +38,12 @@
 | POST | `/api/market_structure` | Append an SMC snapshot | trend allowlist, fvg counts ≥ 0, parseable `as_of` |
 | GET | `/api/market_structure` | Latest snapshot(s) | `?symbol=` (404 when none) or latest-per-symbol for `?timeframe=` (default 5m) |
 | POST | `/api/strategy/signals` | Read-only pre-trade risk assessment | same gate as orders, decide-only (M5); `decision: allow\|reject` + `rejections` + market-structure context |
-| GET | `/up` | Health check | Rails default |
+| GET | `/api/exchange/status` | Provider connectivity + quote freshness | 200 when healthy, 503 when degraded; includes per-provider health + per-position quote staleness |
+| POST | `/api/positions/:id/protections` | Attach SL/TP/trailing-stop policy | durable in PostgreSQL; `ProtectionMonitorJob` (every 3s) triggers force-close on breach; supports OCO via `oco_group_id` |
+| GET | `/api/positions/:id/protections` | List protections for a position | |
+| DELETE | `/api/positions/:id/protections/:id` | Cancel a protection | sets `status: cancelled` |
+| GET | `/up` | Shallow health check | Rails default — boots = 200 |
+| GET | `/health` | Deep health check | Postgres + Redis + Solid Queue; 200 when all healthy, 503 when degraded |
 
 **Authentication (M2/T1.2, shipped):** every request must send `X-API-Key: <PAPER_EXCHANGE_API_KEY>` — 401 otherwise; production refuses to boot without the key.
 
@@ -64,8 +69,10 @@ Error message style: one sentence, actionable, includes the offending field wher
 - **`status` (order):** `pending → open → filled | partially_filled | cancelled | expired | rejected`. Transitions must be guarded (S1); `expired` currently unreachable (S2).
 - **`side`:** `buy` · `sell` (downcased at ingress). Position `side`: `long`/`short` derived from quantity sign.
 - **`instrument_type`:** UPPERCASE — `EQUITY`, `CRYPTO_PERPETUAL`, `FUTURE`, `OPTION` (+ catalog variants). Default when absent: `CRYPTO_PERPETUAL`.
-- **`RiskEvent.event_type`:** `POSITION_LIQUIDATED`, `LIQUIDATION_FAILED`, `*_REJECTED` (suffix is machine-checked by `submit_order`), `RISK_EVALUATION_ERROR`.
-- **`LedgerEntry.event_type`:** SCREAMING_SNAKE_CASE, one convention (N2 fixed 2026-09-26): `TRADE`, `MARGIN_LOCKED`, `MARGIN_UNLOCKED`, `FEE`, `REALIZED_PNL`, `FUNDING_FEE`, `ADJUSTMENT` — model format validation rejects anything else.
+- **`RiskEvent.event_type`:** `POSITION_LIQUIDATED`, `LIQUIDATION_FAILED`, `*_REJECTED` (suffix is machine-checked by `submit_order`), `RISK_EVALUATION_ERROR`, `PROTECTION_TRIGGERED`, `OPTION_EXPIRED`.
+- **`LedgerEntry.event_type`:** SCREAMING_SNAKE_CASE, one convention (N2 fixed 2026-09-26): `TRADE`, `MARGIN_LOCKED`, `MARGIN_UNLOCKED`, `FEE`, `REALIZED_PNL`, `FUNDING_FEE`, `ADJUSTMENT` — model format validation rejects anything else. P0-1: `TRADE` entries are audit records only; wallet movements happen via `MARGIN_*`/`FEE`/`REALIZED_PNL` entries.
+- **`PositionProtection.protection_type`:** `stop_loss` · `take_profit` · `trailing_stop`. `status`: `active` → `triggered` | `cancelled` | `expired`. OCO legs share an `oco_group_id`.
+- **`venue`:** `binance_usdm` · `coindcx_futures` · `paper` (default for agent-driven orders). Part of the composite key for quotes, orders, and positions so the same symbol on different venues is distinct.
 - **Instrument identity (contract scope):** `(symbol, instrument_type, option_type, strike_price, expiry_date)` — the 5-tuple that identifies a position. NULL option dims for non-options.
 - **`decision` (strategy signals):** `allow` · `reject` — paired with `rejections` from the `*_REJECTED` vocabulary above.
 - **`trend` (market structure):** `bullish` · `bearish` · `range` · `neutral`.

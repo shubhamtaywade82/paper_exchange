@@ -15,23 +15,25 @@ RSpec.describe Risk::MaxDrawdownValidator, type: :service do
   end
 
   it 'passes while drawdown is within the limit' do
-    Account.find_by(account_id: account_id).update_columns(current_equity: 9_000.0) # 10% dd
+    # P1-1: the validator now computes live equity from available_balance
+    # (not the cached current_equity column), so we set available_balance.
+    Account.find_by(account_id: account_id).update_columns(available_balance: 9_000.0, current_equity: 9_000.0) # 10% dd
 
     expect(validator.evaluate(account_id, signal)).to eq(:passed)
   end
 
   it 'rejects once drawdown exceeds the limit' do
     stub_const('Risk::MaxDrawdownValidator::MAX_DD', 0.05)
-    Account.find_by(account_id: account_id).update_columns(current_equity: 9_000.0) # 10% dd > 5%
+    Account.find_by(account_id: account_id).update_columns(available_balance: 9_000.0, current_equity: 9_000.0) # 10% dd > 5%
 
     expect(validator.evaluate(account_id, signal)).to eq(:MAX_DD_REJECTED)
   end
 
   it 'still passes at exactly the 20% boundary and rejects beyond it' do
-    Account.find_by(account_id: account_id).update_columns(current_equity: 8_000.0) # exactly 20% dd
+    Account.find_by(account_id: account_id).update_columns(available_balance: 8_000.0, current_equity: 8_000.0) # exactly 20% dd
     expect(validator.evaluate(account_id, signal)).to eq(:passed)
 
-    Account.find_by(account_id: account_id).update_columns(current_equity: 7_900.0) # 21% dd
+    Account.find_by(account_id: account_id).update_columns(available_balance: 7_900.0, current_equity: 7_900.0) # 21% dd
     expect(validator.evaluate(account_id, signal)).to eq(:MAX_DD_REJECTED)
   end
 end

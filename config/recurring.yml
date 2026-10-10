@@ -21,7 +21,30 @@ production:
     class: ExpireOrdersJob
     schedule: every 5 minutes
 
-  # Funding settlement is event-driven, not scheduled here — the trading bot
-  # (which owns the Binance market-data connection) posts to
-  # POST /api/funding_events when a funding event occurs, which enqueues
-  # FundingJob directly. See Api::FundingEventsController.
+  # Architecture alignment: autonomous matching. The MatchingWorker consumes
+  # market events from the Redis tick stream and fills open orders against
+  # the latest quotes — this is what makes PaperExchange independent of the
+  # trading bot staying alive. Runs every 2 seconds so resting orders fill
+  # promptly when market conditions are met.
+  run_matching_worker:
+    class: MatchingWorkerJob
+    schedule: every 2 seconds
+
+  # Architecture alignment: autonomous position protection. Scans active
+  # SL/TP/trailing-stop policies and triggers force-close orders when
+  # breach conditions are met. Runs every 3 seconds so protections trigger
+  # promptly on mark-price moves.
+  run_protection_monitor:
+    class: ProtectionMonitorJob
+    schedule: every 3 seconds
+
+  # Architecture alignment: option expiry settlement. Settles expiring
+  # option positions (cash settlement for index options) at market close
+  # daily. See OptionExpiryJob.
+  settle_option_expiries:
+    class: OptionExpiryJob
+    schedule: every day at 15:30
+
+  # Funding settlement is event-driven, not scheduled here — the provider
+  # adapters (or the agent pushing POST /api/funding_events) enqueue
+  # FundingJob directly when a funding settlement occurs.

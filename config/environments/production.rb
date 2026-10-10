@@ -18,14 +18,22 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  # config.assume_ssl = true
+  # Assume all access to the app is happening through a SSL-terminating reverse
+  # proxy (Kamal's thruster/kamal-proxy, nginx, ALB). Prod-hardening (NEW-3):
+  # enable by default so X-Forwarded-Proto is trusted and force_ssl's redirect
+  # works behind the proxy. Disable only if the app is directly on the wire.
+  config.assume_ssl = ENV.fetch("PAPER_EXCHANGE_ASSUME_SSL", "true") == "true"
 
-  # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # config.force_ssl = true
+  # Force all access to the app over SSL, set Strict-Transport-Security, and
+  # use secure cookies. Prod-hardening (NEW-3): a "production-grade" simulator
+  # shipping plain HTTP leaks the operator API key on every request. Defaults
+  # on; flip PAPER_EXCHANGE_FORCE_SSL=false ONLY for an air-gapped/loopback
+  # deployment where you understand the risk. Requires the SSL proxy above.
+  config.force_ssl = ENV.fetch("PAPER_EXCHANGE_FORCE_SSL", "true") == "true"
 
-  # Skip http-to-https redirect for the default health check endpoint.
-  # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
+  # Skip http-to-https redirect for the default health check endpoints so
+  # load balancer probes don't get bounced to a host that isn't there yet.
+  config.ssl_options = { redirect: { exclude: ->(request) { request.path.in?(%w[/up /health]) } } }
 
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
@@ -57,12 +65,13 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # Prod-hardening (NEW-4): DNS-rebinding / Host-header protection. Defaults
+  # to permissive (no hosts configured = allow all) so a first deploy to any
+  # hostname is not 403-blocked. Operators SHOULD set
+  # PAPER_EXCHANGE_ALLOWED_HOSTS=broker.example.com,api.example.com (comma-
+  # separated, supports leading-dot wildcard like .example.com) to lock the
+  # app to its real hostname. Health probes are always exempt.
+  allowed_hosts = ENV["PAPER_EXCHANGE_ALLOWED_HOSTS"]&.split(",")&.map(&:strip)&.reject(&:blank?)
+  config.hosts = allowed_hosts if allowed_hosts
+  config.host_authorization = { exclude: ->(request) { request.path.in?(%w[/up /health]) } }
 end

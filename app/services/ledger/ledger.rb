@@ -1,13 +1,28 @@
 module Ledger
   class Ledger
-    # Non-crypto cash flow (audit S5/T3.7): a sell's charges are netted
-    # against its proceeds instead of producing a negative credit — when
-    # charges exceed proceeds (a cheap option close), the remainder is
-    # posted as a debit. A negative credit used to violate the ledger's
-    # non-negative invariants and 422 the whole fill.
-    def self.record_trade(account_id:, trade:)
+    # Records one fill's cash flow as an immutable TRADE ledger entry AND
+    # posts the wallet movements (fees, realized PnL) that actually move
+    # Account.available_balance. For crypto perps the trade entry itself
+    # carries no debit/credit — the wallet movements happen via the separate
+    # MarginLedger calls below. For non-crypto instruments the TRADE entry
+    # is also an audit record only (P0-1 fix): the purchase cost is already
+    # captured in locked_margin via MarginEngine.sync_position!, so adding
+    # it again as a debit against available_balance would double-count.
+    # Realized PnL on a closing trade is posted via credit_realized_pnl! /
+    # deduct_fee! so the wallet reflects the actual cash movement.
+    #
+    # Audit S5/T3.7: a sell's charges are netted against its proceeds
+    # instead of producing a negative credit — when charges exceed proceeds
+    # (a cheap option close), the remainder is posted as a debit.
+    def self.record_trade(account_id:, trade:, realized_pnl: nil)
       is_crypto_perp = trade.paper_order.respond_to?(:instrument_type) && trade.paper_order.instrument_type == "CRYPTO_PERPETUAL"
       charges = trade.respond_to?(:total_charges) ? trade.total_charges.to_f : 0.0
+
+      # The TRADE entry is the immutable audit record of the fill. Its
+      # debit/credit fields capture the gross cash flow direction for
+      # reconciliation; the actual wallet movements happen via MarginLedger
+      # so available_balance/locked_margin stay consistent with the
+      # position's initial_margin (P0-1).
       debit = 0.0
       credit = 0.0
 
@@ -21,8 +36,6 @@ module Ledger
 
       entry = LedgerEntry.create!(
         account_id: account_id,
-        # SCREAMING_SNAKE_CASE like every other event type (audit N2) —
-        # LedgerEntry validates the format.
         event_type: "TRADE",
         payload: {
           trade_id: trade.id,
@@ -39,16 +52,46 @@ module Ledger
         occurred_at: trade.traded_at
       )
 
-      # Note: position quantity/avg_price are already updated by
-      # Exchange::PositionManager.apply! before this is called (see
-      # Exchange::PaperExchange#submit_order) — this entry is the immutable
-      # record of the fill, not a second place that mutates the position.
+      # Post the wallet movements for non-crypto trades (crypto perps
+      # already had their fees and realized PnL posted in submit_order).
+      # For non-crypto: realized PnL on a closing fill is posted via
+      # MarginLedger so available_balance reflects the actual cash gain/loss
+      # and locked_margin releases the position's cost correctly (P0-1).
+      unless is_crypto_perp
+        # P0-1: realized PnL on a closing fill is posted via MarginLedger so
+        # available_balance reflects the actual cash gain/loss. Read from
+        # the explicit param first (caller has the in-memory instance), then
+        # fall back to the trade's position association.
+        pnl = realized_pnl
+        if pnl.nil?
+          position = trade.is_a?(PaperExchange::PaperTrade) ? trade.paper_position : nil
+          pnl = position&.last_realized_pnl
+        end
+
+        if pnl && !pnl.zero?
+          MarginLedger.credit_realized_pnl!(
+            account_id: account_id,
+            amount: pnl,
+            event_type: "REALIZED_PNL",
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: trade.paper_order&.symbol, reason: "trade_realized_pnl" }
+          )
+        end
+
+        if charges > 0
+          MarginLedger.deduct_fee!(
+            account_id: account_id,
+            amount: charges,
+            event_type: "FEE",
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: trade.paper_order&.symbol, reason: "trade_fee" }
+          )
+        end
+      end
 
       # Refresh the account's cached equity snapshot now that a real cash
       # event has happened. This is a low-frequency event (a fill), not a
-      # price tick — it must never be driven from a mark price push (see
-      # MarketData::MarkPriceStore / Api::MarkPricesController), which only
-      # updates Redis and triggers in-memory liquidation checks.
+      # price tick — it must never be driven from a mark price push.
       refresh_cached_equity!(account_id)
 
       entry
@@ -66,32 +109,28 @@ module Ledger
       )
     end
 
-    # Wallet-based so trade fees (deducted from available_balance) and
-    # funding are included; margin + gross PnL overstated equity by the fees.
-    # Non-crypto trades never move the wallet (their cash flow is only the
-    # trade ledger entry), so that PnL is added on top; it is 0 for crypto
-    # perps, whose trade entries carry no debit/credit.
+    # Equity = available cash + locked margin (which includes the full
+    # notional of all open positions, P0-1) + unrealized PnL.
+    #
+    # The old formula added `trade_cash_pnl` (the net of TRADE debits/credits)
+    # on top, which double-counted the purchase cost: available_balance was
+    # not reduced by the purchase (the lock-then-release dance netted to
+    # zero for the order's own margin), AND the TRADE debit subtracted the
+    # cost again. With the P0-1 fix, the purchase cost stays in locked_margin
+    # via MarginEngine.sync_position!, so trade_cash_pnl is no longer needed
+    # in the equity formula — it was the source of the 80% phantom drawdown.
     def self.compute_equity(account, unrealized)
-      account.available_balance.to_f + account.locked_margin.to_f + unrealized.to_f +
-        compute_trade_cash_pnl(account.account_id)
+      account.available_balance.to_f + account.locked_margin.to_f + unrealized.to_f
     end
 
-    def self.compute_trade_cash_pnl(account_id)
-      trade_entries = LedgerEntry.where(account_id: account_id, event_type: "TRADE")
-      (trade_entries.sum(:credit) - trade_entries.sum(:debit)).to_f
-    end
-
-    # Audit S4/T3.6: no silent zero. The old bare `rescue; 0.0` masked real
-    # failures (DB errors, corrupted sums) as "no realized PnL" and the
-    # wrong value got cached into the account row — a money-path query that
-    # fails must raise (rules.md §1), not fabricate a number.
+    # Realized PnL comes from the REALIZED_PNL ledger stream — posted by
+    # MarginLedger.credit_realized_pnl! on every closing fill (both crypto
+    # and non-crypto, P0-1). The TRADE stream's debits/credits are no longer
+    # part of this calculation because they would double-count the position
+    # cost that is already in locked_margin.
     def self.compute_realized_pnl(account_id)
-      equity_pnl = compute_trade_cash_pnl(account_id)
-
       pnl_entries = LedgerEntry.where(account_id: account_id, event_type: "REALIZED_PNL")
-      crypto_pnl = (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f
-
-      (equity_pnl + crypto_pnl).round(8)
+      (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f.round(8)
     end
 
     # `mark_price` defaults to the live price from MarketData::MarkPriceStore

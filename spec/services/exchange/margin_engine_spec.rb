@@ -65,7 +65,11 @@ RSpec.describe Exchange::MarginEngine, type: :service do
       expect(account.available_balance).to eq(100_000.0)
     end
 
-    it 'leaves initial_margin at zero for unleveraged positions' do
+    # P0-1 fix: unleveraged positions now lock FULL NOTIONAL as initial_margin
+    # (the purchase cost) so available_balance reflects free cash and equity =
+    # available + locked + unrealized is internally consistent. Previously
+    # initial_margin was 0, which caused the 80% phantom drawdown bug.
+    it 'locks full notional as initial_margin for unleveraged positions' do
       position = create(:paper_position,
         account_id: account.account_id,
         symbol: 'RELIANCE',
@@ -77,9 +81,12 @@ RSpec.describe Exchange::MarginEngine, type: :service do
 
       described_class.sync_position!(position, account_id: account.account_id)
       position.reload
+      account.reload
 
-      expect(position.initial_margin).to eq(0.0)
-      expect(position.liquidation_price).to be_nil
+      expect(position.initial_margin).to eq(25_000.0) # 2500 * 10 = full notional
+      expect(position.liquidation_price).to be_nil # no liquidation for leverage 1
+      expect(account.locked_margin).to eq(25_000.0)
+      expect(account.available_balance).to eq(75_000.0) # 100k - 25k
     end
   end
 end

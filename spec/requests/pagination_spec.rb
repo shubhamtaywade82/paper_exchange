@@ -47,6 +47,7 @@ RSpec.describe 'Cursor pagination (audit N6)', type: :request do
 
     it 'never leaks another account''s entries' do
       create(:ledger_entry, account_id: account_id, occurred_at: 1.hour.ago)
+      create(:account, account_id: 'ACC-OTHER') # FK requires the account to exist
       create(:ledger_entry, account_id: 'ACC-OTHER', occurred_at: 2.hours.ago)
 
       expect(drain('/api/ledger').size).to eq(1)

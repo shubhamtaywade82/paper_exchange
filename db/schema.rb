@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -23,10 +23,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.decimal "locked_margin", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "margin", precision: 36, scale: 18, default: "0.0", null: false
     t.string "name", null: false
+    # P1-1: persisted equity high-water mark for the drawdown risk gate.
+    t.decimal "max_equity_achieved", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "realized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "unrealized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_accounts_on_account_id", unique: true
+  end
+
+  create_table "position_protections", force: :cascade do |t|
+    t.bigint "paper_position_id", null: false
+    t.string "account_id", null: false
+    t.string "venue", null: false, default: "paper"
+    t.string "instrument_id", null: false
+    t.string "protection_type", null: false
+    t.decimal "trigger_price", precision: 36, scale: 18
+    t.decimal "trailing_distance", precision: 36, scale: 18
+    t.decimal "quantity", precision: 36, scale: 18, null: false
+    t.string "status", null: false, default: "active"
+    t.string "oco_group_id"
+    t.decimal "high_water_mark", precision: 36, scale: 18
+    t.decimal "low_water_mark", precision: 36, scale: 18
+    t.datetime "triggered_at"
+    t.datetime "cancelled_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "status"], name: "index_position_protections_on_account_status"
+    t.index ["oco_group_id"], name: "index_position_protections_on_oco_group_id", where: "(oco_group_id IS NOT NULL)"
+    t.index ["paper_position_id"], name: "index_position_protections_on_paper_position_id"
+    t.index ["venue", "instrument_id", "status"], name: "index_position_protections_on_venue_instrument_status"
   end
 
   create_table "funding_payments", force: :cascade do |t|
@@ -137,12 +162,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.decimal "trigger_price", precision: 36, scale: 18
     t.datetime "updated_at", null: false
     t.datetime "expired_at"
+    # Architecture alignment: venue identifies the exchange that sourced this
+    # order (e.g. binance_usdm, coindcx_futures, or paper for local sims).
+    t.string "venue", default: "paper", null: false
     t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
     t.index ["account_id", "placed_at", "id"], name: "index_paper_orders_on_account_placed_id"
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_orders_instrument"
     t.index ["status"], name: "index_paper_exchange_orders_on_status"
     t.index ["symbol"], name: "index_paper_exchange_orders_on_symbol"
+    t.index ["venue", "status"], name: "index_paper_orders_on_venue_and_status"
   end
 
   create_table "paper_exchange_positions", force: :cascade do |t|
@@ -161,9 +190,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
     t.integer "side", null: false
     t.decimal "strike_price", precision: 36, scale: 18
     t.string "symbol", null: false
+    # Architecture alignment: venue identifies the exchange that sourced this
+    # position, so a BTCUSDT long on Binance is distinct from one on CoinDCX.
+    t.string "venue", default: "paper", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id", "symbol", "instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_positions_uniqueness", unique: true
     t.index ["account_id", "symbol", "instrument_type"], name: "index_paper_positions_contract_strict", unique: true, where: "((option_type IS NULL) AND (strike_price IS NULL) AND (expiry_date IS NULL))"
+    t.index ["venue", "account_id", "symbol"], name: "index_paper_positions_on_venue_account_symbol"
   end
 
   create_table "paper_exchange_trades", force: :cascade do |t|
@@ -197,4 +230,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_130000) do
   add_foreign_key "funding_payments", "paper_exchange_positions", column: "paper_position_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_orders", column: "paper_order_id"
   add_foreign_key "paper_exchange_trades", "paper_exchange_positions", column: "paper_position_id"
+  # Prod-hardening (NEW-30): structural integrity from every money table back
+  # to accounts(account_id). Previously app-layer only; a stray write for a
+  # non-existent account would corrupt the Reconciler's wallet derivation.
+  # primary_key: :account_id because accounts uses a string business key, not
+  # the bigint id PK — without this Postgres raises DatatypeMismatch.
+  add_foreign_key "funding_payments", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "ledger_entries", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "paper_exchange_orders", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "paper_exchange_positions", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "risk_events", "accounts", column: "account_id", primary_key: "account_id"
 end

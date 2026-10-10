@@ -1,6 +1,6 @@
 # Memory — Project Memory & Context for paper_exchange
 
-> **Primary reader:** AI developer. This is the **long-lived context file**. Last updated: 2026-09-25.
+> **Primary reader:** AI developer. This is the **long-lived context file**. Last updated: 2026-10-10.
 > **Update protocol (mandatory):**
 > 1. Completed a task in `tasks.md` → flip its status, then append a one-line entry to §4 (Decisions) or §6 (Learnings) if non-obvious.
 > 2. Fixed a bug → add a row to §5 (Bugs fixed) with root cause and regression-spec name.
@@ -9,13 +9,17 @@
 
 ---
 
-## 1. Current state (snapshot 2026-09-26, evening)
+## 1. Current state (snapshot 2026-10-10)
 
-- **Phase:** Phase 0–5 core polish + v1.1 wiring complete (main @ `v1.0.0-audit-clean`): all 7 MUST closed; Phase 3 done; T5.1/T5.2/T5.4 (ledger immutability, event_type convention, cursor pagination) and T4.1b (market events + market structure + strategy signals endpoints) done on `feat/phase5-polish-wiring`. **Remaining:** T4.3/T4.4 housekeeping, T5.3 test gates, T5.5 spec migration, T5.6 N4/N10.
-- **Auth:** `X-API-Key` = `PAPER_EXCHANGE_API_KEY` (401 otherwise; production fails boot without it). Credentials rotated — the old leaked master key can no longer decrypt `credentials.yml.enc`.
-- **Test suite:** ~65 spec files / 310 examples — added in the last sprint: ledger immutability + event-type specs, pagination request spec, tick-processor stream specs (fake Redis), market-events/market-structure/strategy-signals request specs, auth spec now covers all 11 route groups.
-- **Deployment story:** Docker Compose (dev) + Kamal 2. Redis required for mark prices AND the market-events tick stream. Reconciler runs at boot, skipped in test.
-- **If you're reading this later, trust `tasks.md` statuses over this paragraph, and update this snapshot.**
+- **Phase:** Autonomous exchange architecture complete on `prod-ready/e2e-review-fixes`. All P0/P1/P2 findings from the end-to-end code review are fixed. The 3-process topology (web/jobs/market_data) is wired. The trading bot is now an optional command client — market data, matching, protections, liquidation, funding, and option expiry all run autonomously.
+- **Accounting model (P0-1):** unified margin-wallet. All positions (leverage-1 included) lock full notional as `initial_margin`. Equity = `available + locked + unrealized`. Realized PnL sourced from `REALIZED_PNL` ledger stream (posted per closing fill). The 80% phantom drawdown is eliminated.
+- **Drawdown gate (P1-1):** uses `account.max_equity_achieved` (persisted HWM) + live equity (not cached). A real drawdown from peak is now detected.
+- **Autonomous services:** `MatchingWorker` (2s), `ProtectionMonitorJob` (3s), `OptionExpiryJob` (daily 15:30). All scheduled via `config/recurring.yml`.
+- **Venue-aware QuoteStore:** `MarketData::QuoteStore` holds bid/ask/mark/funding per (venue, instrument). `MarkPriceStore` retains a 2s TTL local cache (P2-3) and mirrors to QuoteStore.
+- **Provider adapters:** `MarketData::Providers::BinanceUsdm` + `CoindcxFutures` wrap the SDKs' public market-data methods. Enabled via `PAPER_EXCHANGE_ENABLE_BINANCE` / `PAPER_EXCHANGE_ENABLE_COINDCX`.
+- **Position protections:** `PositionProtection` model (SL/TP/trailing/OCO) + `POST/GET/DELETE /api/positions/:id/protections`. Durable in PostgreSQL.
+- **Test suite:** ~75 spec files. New specs: equity_accounting, drawdown_from_peak, funding_atomicity, cancel_and_notional, currency_validator, position_protection, matching_worker, quote_store, protection_monitor_job, vix_gate_validator, health_controller.
+- **Docs updated:** README, architecture.md, design.md all reflect the autonomous exchange model.
 
 ## 2. Critical context — read before touching code
 
@@ -66,6 +70,18 @@
 | 2026-09-26 | T5.4 executed: list endpoints paginate via keyset `(sort_column, id) DESC`, envelope `{data, next_cursor}`; `placed_at` made NOT NULL (backfilled) so the keyset order is total; tampered cursor = 400, not 500 | N6 — silent caps truncated history; the envelope is the only sanctioned wrapper (design.md §1 updated) | `api/cursor_pagination.rb`, migration 20260926130000 |
 | 2026-09-26 | T4.1b executed: market events → capped Redis stream (`TickProcessor` rebuilt class-level, MarkPriceStore-style resilience; Redis down = loud 503); market structure → DB-backed engine (the in-memory hash never survived a request); strategy signals → `StrategyEngine#assess`, read-only run of the same RiskManager gate (decide-only per M5), `Signal` gained `leverage` (default 1 = conservative full-notional) | wire the roadmap modules the audit kept as scaffolding; assessment never mutates state — submission stays `POST /api/orders` | `market_events_controller.rb`, `market_structure_controller.rb`, `strategy_controller.rb` |
 | 2026-09-26 | Pagination envelope accepted as the ONE list-endpoint wrapper (breaking change from bare arrays); in-repo consumers checked before switching (smoke tests only POST orders; HTML sim doesn't parse lists) | agent-facing honesty (no silent truncation) beats the bare-array habit | `design.md` §1/§2 |
+| 2026-10-10 | P0-1: unified margin-wallet accounting — all positions lock full notional (leverage-1 included) as `initial_margin`; `record_trade` posts realized PnL + fees via MarginLedger; equity drops `trade_cash_pnl` (was double-counting). The 80% phantom drawdown eliminated. | end-to-end review found non-crypto wallet accounting was internally inconsistent — buying equity didn't consume available balance | `margin_engine.rb`, `ledger.rb`, `portfolio_projection.rb` |
+| 2026-10-10 | P0-2: FundingJob wraps `FundingPayment.create + ledger movement in ONE transaction` (was committed-first, posted-after — crash window). `leverage > 1` filter replaced with `instrument_type = CRYPTO_PERPETUAL` (1x positions settle funding too). | end-to-end review found funding settlement was not atomic with its idempotency record | `funding_job.rb` |
+| 2026-10-10 | P1-1: MaxDrawdownValidator uses `account.max_equity_achieved` (persisted HWM migration) + live equity (not cached `current_equity`). `PortfolioProjection.summary` lazily updates HWM. | old formula compared against initial margin — a drawdown from a real peak went undetected | `max_drawdown_validator.rb`, migration `20261010130000` |
+| 2026-10-10 | P1-2: `submit_order` builds ONE `reference_price` (execution_price \|\| price \|\| ltp) used by BOTH the risk gate and the margin lock — old code passed ltp to the signal but used execution_price for the lock, bypassing `MAX_POSITION_VALUE` for market orders. | end-to-end review found the notional-value limit could be bypassed | `paper_exchange.rb` |
+| 2026-10-10 | P1-3: STT rates updated to NSE FY2026-27 schedule (options sell 0.15%, futures sell 0.05%; was 0.05% / 0.01% — 3x and 5x understated). Env-overridable via `PAPER_EXCHANGE_STT_OPTIONS_SELL` / `PAPER_EXCHANGE_STT_FUTURES_SELL`. | end-to-end review found outdated regulatory rates that systematically overstated net profitability | `brokerage_calculator.rb` |
+| 2026-10-10 | P1-4: `PerformanceMetrics.closed_trades_with_pnl` reads from the `REALIZED_PNL` ledger stream grouped by `trade_id` (not mutable `position.avg_price`). Sharpe annualized with `sqrt(252)` instead of `sqrt(N)`. | old code treated opening trades as closed, and full-close zeroing avg_price broke historical attribution | `performance_metrics.rb` |
+| 2026-10-10 | P1-5: `cancel_order`/`expire_order` wrap lock + state + transition + margin release in ONE transaction scoped by `account_id`. `OrdersController#destroy` renders the committed order. | old code had a fill-vs-cancel race and a stale-response bug | `paper_exchange.rb`, `orders_controller.rb` |
+| 2026-10-10 | P1-6: New `Risk::CurrencyValidator` rejects cross-currency orders (INR account + crypto perpetual = `CURRENCY_MISMATCH_REJECTED`). USD/USDT treated as compatible. | end-to-end review found mixed currencies had no consistent account-level valuation contract | `currency_validator.rb`, `risk_manager.rb` |
+| 2026-10-10 | P2-1: `MatchingEngine` bounded orders fill at best available book price clamped to limit (price improvement). Stop-loss documented as stop-market. | old code filled at the limit price even when the book offered a better price | `matching_engine.rb` |
+| 2026-10-10 | P2-2: `wallet.locked` = `order_locked + position_locked` (was `order_locked` only). | end-to-end review found nested wallet margin inconsistent with account margin | `accounts_controller.rb` |
+| 2026-10-10 | P2-3: `MarkPriceStore` local cache has 2s TTL (`[value, timestamp]` tuples); re-fetches from Redis on expiry. | old cache never expired — cross-process stale reads in the liquidation hot path | `mark_price_store.rb` |
+| 2026-10-10 | Architecture: PaperExchange is now an autonomous exchange. New `MatchingWorker` (2s recurring) consumes the Redis tick stream and fills open orders. New `PositionProtection` model + `ProtectionMonitorJob` (3s) for durable SL/TP/trailing/OCO. New `OptionExpiryJob` (daily) for cash settlement. 3-process docker-compose topology (web/jobs/market_data). Venue column on orders/positions. `QuoteStore` (venue-aware). Provider adapters (`BinanceUsdm`, `CoindcxFutures`). `ConnectionSupervisor`. `GET /api/exchange/status`. `GET /health` deep probe. | target architecture review: make the bot optional — existing-trade management must survive bot disconnection | `architecture.md`, `README.md`, multiple new files |
 
 ## 5. Bugs fixed (historical — from in-code comment trails + regression specs)
 
