@@ -63,7 +63,7 @@ module Api
     def active_providers
       @active_providers ||= begin
         providers = []
-        providers << MarketData::Providers::BinanceUsdm.new if ENV["PAPER_EXCHANGE_ENABLE_BINANCE"] == "true"
+        providers << MarketData::Providers::BinanceUSDM.new if ENV["PAPER_EXCHANGE_ENABLE_BINANCE"] == "true"
         providers << MarketData::Providers::CoindcxFutures.new if ENV["PAPER_EXCHANGE_ENABLE_COINDCX"] == "true"
         providers
       end

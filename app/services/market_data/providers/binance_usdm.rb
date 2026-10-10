@@ -19,7 +19,7 @@ module MarketData
     # This adapter wraps the SDK's connect in a supervisor loop with capped
     # exponential backoff + jitter, so a dropped connection is retried
     # indefinitely (with a ceiling) rather than dying after 5 attempts.
-    class BinanceUsdm < Base
+    class BinanceUSDM < Base
       VENUE = "binance_usdm"
 
       def initialize(client: nil)
