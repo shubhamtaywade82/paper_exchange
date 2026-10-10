@@ -47,9 +47,10 @@
 - **Style:** `rubocop-rails-omakase` (`bin/rubocop`) is the arbiter. Run it before claiming done.
 - **Frozen string literals** and Ruby 3.x syntax; keyword args for service entry points (`submit_order(attrs, internal: false, reduce_only: false)` style).
 - **Naming:**
-  - Models namespaced `PaperExchange::*` (tables `paper_exchange_*`) — keep new trading models in that namespace to avoid collisions.
-  - Service suffixes mean things: `*Validator` (pure, raises), `*Engine` (stateful domain logic), `*Manager` (orchestrator over models), `*Job` (Solid Queue), `*Projection` / `*Calculator` (read-side, pure).
+  - Models namespaced `PaperExchange::*` (tables `paper_exchange_*`) — keep new trading models in that namespace to avoid collisions. `PositionProtection` is top-level (table `position_protections`) because it's not a trading entity.
+  - Service suffixes mean things: `*Validator` (pure, raises), `*Engine` (stateful domain logic), `*Manager` (orchestrator over models), `*Worker` (autonomous consumer), `*Job` (Solid Queue), `*Projection` / `*Calculator` (read-side, pure), `*Supervisor` (long-lived process).
   - Env vars: `PAPER_EXCHANGE_` prefix. **The name in code must equal the name in `.env.example` and README** (S9 drift: `MAX_DRAWDOWN` vs `MAX_DD`).
+  - **`venue`** is part of the composite key for quotes, orders, and positions: `binance_usdm` · `coindcx_futures` · `paper` (default). Never assume a symbol is unique across venues.
 - **Zeitwerk:** no explicit `require` of autoloaded files; inflections go in `config/initializers/inflections.rb` (not `after_initialize`); no loader unregistering; no self-aliases (all S10).
 - **JSON keys are snake_case**; enums are lowercase symbols/strings (`order_kind`, `status`); `LedgerEntry.event_type` and `RiskEvent.event_type` are UPPERCASE event names (⚠ `trade` currently lowercase — N2 will normalize; don't add new lowercase ones).
 - **Comments that explain *why*** (the B1–B6/H1 trail in `exchange/` is the house style) — keep them when refactoring; they are the bug-history record.

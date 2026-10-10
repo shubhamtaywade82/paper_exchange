@@ -1,12 +1,12 @@
 # Tasks — Development Plan for paper_exchange
 
-> **Primary reader:** AI developer. Last updated: 2026-09-26.
-> **Source of truth for the backlog:** the 2026-09-25 full audit (`REVIEW.md`) — 7 MUST (M1–M7), 15 SHOULD (S1–S15), 10 NICE (N1–N10) findings, each with file:line evidence and fix sketches. This file sequences them into executable tasks.
+> **Primary reader:** AI developer. Last updated: 2026-10-10.
+> **Source of truth for the backlog:** the 2026-09-25 full audit (`REVIEW.md`) — 7 MUST (M1–M7), 15 SHOULD (S1–S15), 10 NICE (N1–N10) findings; the 2026-10-10 end-to-end code review (P0/P1/P2); and the 2026-10-10 target architecture (autonomous exchange). This file sequences them into executable tasks.
 > **Update protocol:** when you start a task set status `In Progress`; when done set `Done`, check off acceptance criteria, and append any decision/learning to `memory.md`. Add new tasks at the bottom of their phase — never reorder closed items.
 
 **Status:** `TODO` · `In Progress` · `Done` · `Blocked` (state blocker in Notes)
 **Priority:** `P0` = security/data-integrity emergency · `P1` = broken contract or race on money path · `P2` = correctness debt · `P3` = hygiene/polish
-**Current phase: Phase 5 polish + v1.1 wiring complete (2026-09-26).** Remaining open work: T4.3/T4.4 housekeeping + T5.3/T5.5/T5.6 leftovers.
+**Current phase: Autonomous exchange architecture complete (2026-10-10).** All P0/P1/P2 findings from the end-to-end review are fixed. The 3-process topology is wired. Remaining: T4.3/T4.4 housekeeping, T5.3 test gates, and the Phase 6 roadmap items (depth-consuming partial fills, live broker adapters, indicator/candle/greeks wiring).
 
 ---
 
@@ -89,3 +89,67 @@ Orders with two-layer idempotency · margin wallet under row locks · contract-s
 
 Exit bar (from `prd.md` §7): T0.x–T2.x all Done (M1–M7 closed with regression specs) ✓ · Phase 3 ≥ 80% ✓ (9/9) · T4.1 decision recorded ✓ · CI includes secret scanning ✓.
 **Status: MET on branch `feat/audit-clean-v1` (2026-09-26). Tag `v1.0.0-audit-clean` after it merges to main.**
+
+---
+
+## Phase 6 — End-to-end review + autonomous exchange architecture (2026-10-10)
+
+### Phase 6a — Financial invariants (P0/P1 from the end-to-end review)
+
+- [x] **T6.1 · P0 · Done — Non-crypto wallet/equity accounting model (P0-1)** — `MarginEngine.sync_position!` now locks full notional for leverage-1 positions; `record_trade` posts realized PnL + fees via MarginLedger; `compute_equity` drops `trade_cash_pnl`. The 80% phantom drawdown eliminated. Spec: `equity_accounting_spec.rb`.
+- [x] **T6.2 · P0 · Done — Funding settlement atomicity (P0-2)** — `FundingJob` wraps payment + ledger in one transaction; `leverage > 1` filter replaced with `instrument_type = CRYPTO_PERPETUAL`. Spec: `funding_atomicity_spec.rb`.
+- [x] **T6.3 · P1 · Done — Max-drawdown from equity high-water mark (P1-1)** — New `max_equity_achieved` column; `MaxDrawdownValidator` uses live equity + persisted HWM. Spec: `drawdown_from_peak_spec.rb`.
+- [x] **T6.4 · P1 · Done — Notional-value limit bypass (P1-2)** — One `reference_price` feeds both the risk gate and the margin lock. Spec: `cancel_and_notional_spec.rb`.
+- [x] **T6.5 · P1 · Done — NSE FY2026-27 STT schedule (P1-3)** — Options sell 0.15%, futures sell 0.05% (was 0.05% / 0.01%). Env-overridable. Spec: `cancel_and_notional_spec.rb`.
+- [x] **T6.6 · P1 · Done — Performance metrics from REALIZED_PNL stream (P1-4)** — `closed_trades_with_pnl` reads from ledger stream grouped by `trade_id`; Sharpe uses `sqrt(252)`. Spec: `performance_metrics_spec.rb` updated.
+- [x] **T6.7 · P1 · Done — Cancellation atomicity (P1-5)** — Lock + state + margin release in one transaction; DELETE returns committed state. Spec: `cancel_and_notional_spec.rb`.
+
+### Phase 6b — Trading behavior & data consistency (P1/P2)
+
+- [x] **T6.8 · P1 · Done — Currency consistency gate (P1-6)** — New `Risk::CurrencyValidator` rejects cross-currency orders. Spec: `currency_validator_spec.rb`.
+- [x] **T6.9 · P2 · Done — Limit order price improvement (P2-1)** — Bounded orders fill at best available book price clamped to limit. Stop-loss documented as stop-market.
+- [x] **T6.10 · P2 · Done — Wallet.locked includes position margin (P2-2)** — `wallet.locked = order_locked + position_locked`.
+- [x] **T6.11 · P2 · Done — MarkPriceStore TTL (P2-3)** — Local cache has 2s TTL, re-fetches from Redis.
+
+### Phase 6c — Autonomous exchange architecture (target architecture)
+
+- [x] **T6.12 · Done — SDK dependency alignment** — Gemfile pins `coindcx-client ~> 1.0` (was 0.1.0) and adds `binance-client ~> 0.1`.
+- [x] **T6.13 · Done — Provider adapter framework** — `MarketData::Providers::Base` + `BinanceUsdm` + `CoindcxFutures`. Uniform contract: `fetch_instruments`, `fetch_snapshot`, `connect`, `health`, `disconnect`.
+- [x] **T6.14 · Done — Venue-aware QuoteStore** — `MarketData::QuoteStore` holds bid/ask/mark/funding per (venue, instrument). `stale?` check for rejecting old quotes.
+- [x] **T6.15 · Done — Venue column on orders and positions** — Migration `20261010140000`. BTCUSDT on Binance is distinct from BTCUSDT on CoinDCX.
+- [x] **T6.16 · Done — PositionProtection model + migration** — Durable SL/TP/trailing_stop/OCO policies. `breached?`, `update_water_mark!`, `trigger!`, OCO sibling cancellation. Spec: `position_protection_spec.rb`.
+- [x] **T6.17 · Done — MatchingWorker** — Event-driven matching: consumes Redis tick stream, fills open orders at live book price. `PaperExchange#match_and_fill`. `MatchingWorkerJob` scheduled every 2s. Spec: `matching_worker_spec.rb`.
+- [x] **T6.18 · Done — ProtectionMonitorJob** — Scans active protections every 3s, triggers force-close on breach. Spec: `protection_monitor_job_spec.rb`.
+- [x] **T6.19 · Done — OptionExpiryJob** — Daily cash settlement for expiring options (15:30).
+- [x] **T6.20 · Done — Exchange status endpoint** — `GET /api/exchange/status`: provider connectivity, quote freshness, matching worker liveness.
+- [x] **T6.21 · Done — Position protections API** — `POST/GET/DELETE /api/positions/:id/protections`.
+- [x] **T6.22 · Done — ConnectionSupervisor** — Long-lived market-data process skeleton. `bin/market_data` entrypoint.
+- [x] **T6.23 · Done — 3-process docker-compose topology** — `web` + `jobs` + `market_data` (behind `--profile market_data`).
+- [x] **T6.24 · Done — Recurring job schedule** — `config/recurring.yml`: MatchingWorker (2s), ProtectionMonitor (3s), OptionExpiry (daily), ExpireOrders (5m).
+- [x] **T6.25 · Done — Docs updated** — README, architecture.md, design.md, memory.md all reflect the autonomous exchange model.
+
+### Phase 6d — Production hardening (from the prior hardening pass)
+
+- [x] **T6.26 · Done — Global JSON error envelope** — `rescue_from StandardError/RecordNotFound/ParameterMissing` in `Api::BaseController`.
+- [x] **T6.27 · Done — Boot Reconciler fatal in production** — Re-raises instead of swallowing.
+- [x] **T6.28 · Done — Redis re-enabled in CI** — `.github/workflows/ci.yml` uncomments Redis service.
+- [x] **T6.29 · Done — Non-root production container** — Dockerfile `USER 1001:1001`.
+- [x] **T6.30 · Done — SSL + DNS-rebinding defaults** — `force_ssl` + `config.hosts` in production.rb.
+- [x] **T6.31 · Done — Deep health check** — `GET /health` probes Postgres + Redis + Solid Queue.
+- [x] **T6.32 · Done — Foreign keys from money tables to accounts** — Migration `20261010120000`.
+- [x] **T6.33 · Done — Funding idempotency regression spec** — `funding_atomicity_spec.rb`.
+- [x] **T6.34 · Done — VixGateValidator spec** — `vix_gate_validator_spec.rb`.
+- [x] **T6.35 · Done — .env.example expanded** — All ~20 env vars documented.
+
+### Phase 6e — Remaining (roadmap)
+
+- [ ] **T6.36 · TODO — Depth-consuming partial fills** — The matching engine fills the entire remaining quantity without consuming recorded order-book depth. Implement depth consumption for execution-quality analysis.
+- [ ] **T6.37 · TODO — Rate limiting (rack-attack)** — Add `rack-attack` to Gemfile; throttle `/api/*` by IP+key; lockbox `POST /api/account/reset` to 5/min/IP. Needs `bundle install` to update lockfile.
+- [ ] **T6.38 · TODO — Prometheus metrics** — Add `prometheus_exporter`; expose `/metrics` with counters for order submit/fail, liquidation enqueue/failed, Redis outage count, reconcile drift, queue depth.
+- [ ] **T6.39 · TODO — Structured (JSON) logging** — Add `lograge` + `lograge_json` for one-line-per-request machine-parseable logs.
+- [ ] **T6.40 · TODO — Audit trail with request.uuid** — Stamp `request.uuid` into `RiskEvent.details` and `LedgerEntry.payload` for forensic correlation.
+- [ ] **T6.41 · TODO — Zeitwerk normalization (S10)** — Move inflections to `config/initializers/inflections.rb`; delete loader unregister + self-alias.
+- [ ] **T6.42 · TODO — Order-book lifetime (S15)** — Extract stateless engines from `PaperExchange` or make the book a process-level singleton.
+- [ ] **T6.43 · TODO — SimpleCov threshold (N8)** — `SimpleCov.minimum_coverage`; CI eager-load check.
+- [ ] **T6.44 · TODO — Indicator/candle/greeks wiring** — `IndicatorEngine` compute, `CandleBuilder`, `GreeksService`, `OptionChainService`, `OptionSelector` exist but have no runtime callers.
+- [ ] **T6.45 · TODO — Live broker adapters (order routing)** — Currently paper-only; the provider adapters consume public market data only.

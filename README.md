@@ -83,6 +83,7 @@ It is designed as an **exchange-first** system: strategies call `PaperExchange.s
 - PostgreSQL
 - Redis (for market data pipeline and background jobs)
 - Bundler
+- Docker + Docker Compose (for the 3-process deployment topology)
 
 ### Installation
 
@@ -132,55 +133,53 @@ non-browser clients are unaffected by CORS.
 
 ### Environment Variables
 
+See `.env.example` for the complete list with defaults and one-line descriptions. Key variables:
+
 | Variable | Purpose |
 |----------|---------|
-| `PAPER_EXCHANGE_API_KEY` | Shared operator API key required by every `/api` request via the `X-API-Key` header (audit M2). No default — production refuses to boot without it |
+| `PAPER_EXCHANGE_API_KEY` | Shared operator API key required by every `/api` request via the `X-API-Key` header. No default; production refuses to boot without it |
 | `REDIS_URL` | Redis connection URL (default `redis://localhost:6379/0`) |
+| `DATABASE_URL` | PostgreSQL connection URL |
 | `PAPER_EXCHANGE_MARGIN` | Default paper margin for new/reset accounts (default `10000`) |
-| `PAPER_EXCHANGE_MAX_DRAWDOWN` | Max portfolio drawdown before rejection (default `0.20`) |
+| `PAPER_EXCHANGE_MAX_DRAWDOWN` | Max drawdown from the equity **high-water mark** before rejection (default `0.20`). P1-1: compares against the persisted peak, not initial margin |
 | `PAPER_EXCHANGE_MAX_POSITIONS` | Max open positions per account (default `10`) |
-| `PAPER_EXCHANGE_MAX_POSITION_VALUE` | Max position value before margin rejection (default `500000`) |
-| `PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE` | Maintenance margin rate used to derive liquidation prices for leveraged futures positions (default `0.004`) |
-| `PAPER_EXCHANGE_ORDER_TTL_MINUTES` | Open orders older than this are expired by the recurring sweep, releasing their locked margin (default `60`) |
-| `DHAN_CLIENT_ID` | DhanHQ client ID (required for data APIs) |
-| `DHAN_ACCESS_TOKEN` | DhanHQ access token |
+| `PAPER_EXCHANGE_MAX_POSITION_VALUE` | Max position notional (default `500000`). P1-2: uses the same reference price for the risk gate and the margin lock |
+| `PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE` | Maintenance margin rate for liquidation prices (default `0.004`) |
+| `PAPER_EXCHANGE_ORDER_TTL_MINUTES` | Open orders older than this are expired by the recurring sweep (default `60`) |
+| `PAPER_EXCHANGE_STT_OPTIONS_SELL` | NSE STT on options sell-side (default `0.15` = 0.15%, P1-3; was 0.05%) |
+| `PAPER_EXCHANGE_STT_FUTURES_SELL` | NSE STT on futures sell-side (default `0.05` = 0.05%, P1-3; was 0.01%) |
+| `PAPER_EXCHANGE_MARK_PRICE_CACHE_TTL` | TTL in seconds for the in-process mark price cache (default `2`, P2-3) |
+| `PAPER_EXCHANGE_FORCE_SSL` | Force HTTPS in production (default `true`, hardening NEW-3) |
+| `PAPER_EXCHANGE_ALLOWED_HOSTS` | Comma-separated allowed hostnames for DNS-rebinding protection (default permissive, hardening NEW-4) |
+| `PAPER_EXCHANGE_ENABLE_BINANCE` | Enable the Binance USD-M provider adapter for autonomous market data (default `false`) |
+| `PAPER_EXCHANGE_ENABLE_COINDCX` | Enable the CoinDCX futures provider adapter (default `false`) |
+| `DHAN_CLIENT_ID` / `DHAN_ACCESS_TOKEN` | DhanHQ credentials (required for Indian instrument catalogs) |
 
-### Crypto market data ownership
+### Market data: two modes
 
-This broker does **not** open its own connection to Binance (or any exchange)
-for live prices. All market data ownership lives in the trading agent that
-drives it — the agent already needs the live feed for its own strategy, and
-keeping it out of the broker means the broker stays a simple, deterministic,
-restart-safe request/response server with no WebSocket reconnection logic to
-babysit.
+PaperExchange supports **two market-data modes**:
 
-The agent feeds the broker two things:
+**1. Autonomous mode (provider adapters, target architecture):**
+Enable `PAPER_EXCHANGE_ENABLE_BINANCE=true` and/or `PAPER_EXCHANGE_ENABLE_COINDCX=true`,
+then start the `market_data` process (`bin/market_data` or `docker compose --profile market_data up`).
+The `ConnectionSupervisor` maintains WebSocket connections to the venue's public
+feed, normalizes events into the venue-aware `QuoteStore` + the Redis tick stream,
+and drives autonomous matching, protection monitoring, and liquidation. The
+trading bot is **optional** in this mode — open orders, stop-losses, take-profits,
+and liquidations continue to function when the bot is offline.
 
-1. **`execution_price`** on `POST /api/orders` — pins the exact fill price
-   for the order (no slippage is applied when it is given; orders without
-   it fill through the deterministic slippage model off the order-book
-   snapshot). Required in practice for crypto symbols, since the broker has
-   no other price source for them.
-2. **`POST /api/mark_prices`** — a periodic bulk push of `{symbol: price}`
-   for every open position's symbol. This is what drives
-   `Risk::LiquidationEngine` — a leveraged position's liquidation price is
-   only checked when a price for its symbol arrives here, so push at least
-   as often as you need liquidation to react (every few seconds for
-   anything highly leveraged). Known blind window (audit N9, by design and
-   bounded by your push cadence): a leveraged position opened *after* the
-   last push for its symbol is unmonitored until the next push for that
-   symbol arrives.
+**2. Agent-driven mode (legacy, default):**
+When no provider adapter is enabled, the broker does **not** open its own
+connection to any exchange. The trading agent pushes market data:
+- `execution_price` on `POST /api/orders` pins the fill price.
+- `POST /api/mark_prices` drives `Risk::LiquidationEngine`.
+- `POST /api/market_events` feeds the tick stream for strategy context.
+- `POST /api/funding_events` settles perpetual funding.
 
-Tick-level history (as opposed to the latest mark price) has its own
-channel: push what your feed sees to `POST /api/market_events` and read it
-back with `GET /api/market_events` (capped Redis stream — see the API
-reference). Use mark prices for liquidation/wallet math, market events for
-strategy context and analysis.
-
-Perpetual futures funding is likewise agent-driven: call
-`POST /api/funding_events` when your feed reports a funding settlement, and
-the broker posts the funding fee against every open leveraged position on
-that symbol (see `FundingJob`).
+Known blind window (agent-driven mode): a leveraged position opened *after*
+the last mark-price push for its symbol is unmonitored until the next push
+for that symbol arrives. Autonomous mode eliminates this gap — the
+provider adapter pushes continuously.
 
 ---
 
@@ -334,6 +333,38 @@ the per-check outcomes, `rejections` (the `*_REJECTED` vocabulary
 `/api/risk_events` uses), and the symbol's latest market-structure snapshot
 for context. Submit the trade itself via `POST /api/orders`.
 
+### Exchange Status
+```
+GET /api/exchange/status
+```
+Returns provider connectivity, quote freshness, and matching worker
+liveness. 200 when all providers are connected and no quotes are stale;
+503 when degraded. Useful for load balancers and operators to detect when
+the exchange's own market-data feeds are down before stale quotes cause
+bad fills.
+
+### Position Protections
+```
+POST   /api/positions/:position_id/protections
+GET    /api/positions/:position_id/protections
+DELETE /api/positions/:position_id/protections/:id
+```
+Attach durable stop-loss, take-profit, or trailing-stop policies to an open
+position. These survive process restarts — the `ProtectionMonitorJob`
+(every 3 seconds) checks each active protection against the latest mark
+price and triggers a force-close order when the breach condition is met.
+Supports OCO (one-cancels-other) via a shared `oco_group_id`.
+
+```json
+{
+  "protection": {
+    "protection_type": "stop_loss",
+    "trigger_price": 54000,
+    "quantity": 0.1
+  }
+}
+```
+
 ---
 
 ## Project Structure
@@ -341,20 +372,30 @@ for context. Submit the trade itself via `POST /api/orders`.
 ```
 app/
   controllers/
-    api/                      # REST endpoints
+    api/                      # REST endpoints (orders, positions, protections, exchange status, ...)
   models/
-    paper_exchange/           # persisted entities (orders, positions, ledger, snapshots)
+    paper_exchange/           # persisted trading entities (orders, positions, trades)
+    position_protection.rb   # durable SL/TP/trailing-stop/OCO policies
+    account.rb · ledger_entry.rb · risk_event.rb · funding_payment.rb
   services/
-    exchange/                 # core trading workflow
-    risk/                     # validators and risk manager
-    ledger/                   # immutable event logging
-    market_data/              # feed, candles, greeks, option chain
-    projections/              # derived read models (PnL, portfolio)
+    exchange/                 # core trading workflow (PaperExchange, MatchingWorker, engines)
+    risk/                     # validators + liquidation engine (incl. CurrencyValidator)
+    ledger/                   # immutable event logging + reconciler
+    market_data/              # QuoteStore, TickProcessor, MarkPriceStore, ConnectionSupervisor
+      providers/              # BinanceUsdm, CoindcxFutures adapters
+    projections/              # derived read models (PnL, portfolio, performance)
     strategy/                 # signal generation and orchestration
+  jobs/
+    liquidation_job.rb · funding_job.rb · expire_orders_job.rb
+    matching_worker_job.rb    # autonomous matching (every 2s)
+    protection_monitor_job.rb # autonomous SL/TP monitoring (every 3s)
+    option_expiry_job.rb      # daily option expiry settlement
 config/
-  routes.rb                   # conventional Rails API namespace
+  routes.rb                   # /api and /api/v1; positions have nested protections
 db/
-  migrate/                    # schema migrations
+  migrate/                    # schema migrations (incl. venue, max_equity_achieved, position_protections)
+bin/
+  market_data                 # standalone market-data supervisor entrypoint
 ```
 
 ---
@@ -432,41 +473,49 @@ python3 -m http.server 8080
 
 ## Status
 
-> **Scope honesty (audit S7/T4.1, decided 2026-09-26; wiring shipped
-> same day):** the modules marked **Roadmap** exist in `app/services/`
-> but have **no runtime callers** — no routes, jobs, or services invoke
-> them. They are kept as scaffolding for planned capabilities, not as
-> working features; wire or remove them in a future sprint. Decision
-> recorded in `memory.md`.
-
 | Area | Status |
 |------|--------|
 | Exchange simulator core | Production-grade |
+| Non-crypto wallet/equity accounting (P0-1: full-notional margin lock, realized PnL per fill) | Done |
+| Funding settlement atomicity (P0-2: payment + ledger in one transaction; 1x leverage eligible) | Done |
+| Max-drawdown gate from equity high-water mark (P1-1: live equity, persisted HWM) | Done |
+| Notional-value limit using one authoritative reference price (P1-2) | Done |
+| NSE FY2026-27 STT schedule (P1-3: 0.15% options, 0.05% futures) | Done |
+| Performance metrics from REALIZED_PNL ledger stream (P1-4) | Done |
+| Cancellation atomicity — lock + state + margin release in one transaction (P1-5) | Done |
+| Currency consistency gate (P1-6: INR/USD/USDT isolation) | Done |
+| Limit order price improvement + stop-market semantics (P2-1) | Done |
+| Wallet.locked includes position + order margin (P2-2) | Done |
+| MarkPriceStore local cache TTL (P2-3: 2s, prevents stale cross-process reads) | Done |
 | Dhan instrument catalog | Integrated via DhanHQ gem |
-| Binance USD-M catalog | Integrated via public API |
-| CoinDCX futures catalog | Integrated via coindcx-client gem |
-| Risk & brokerage engine | Done |
-| Crypto futures precision (decimal quantities/prices) | Done |
+| Binance USD-M catalog + provider adapter | Integrated (`PAPER_EXCHANGE_ENABLE_BINANCE`) |
+| CoinDCX futures catalog + provider adapter | Integrated (`PAPER_EXCHANGE_ENABLE_COINDCX`) |
+| Venue-aware QuoteStore (bid/ask/mark/funding per venue+instrument) | Done |
+| Venue identity on orders and positions | Done |
+| Autonomous matching worker (event-driven, fills open orders from live quotes) | Done |
+| Durable position protections (SL/TP/trailing/OCO, survives restarts) | Done |
+| Option expiry settlement (daily cash settlement) | Done |
+| 3-process deployment topology (web / jobs / market_data) | Done |
+| Deep health check (`GET /health`: Postgres + Redis + Solid Queue) | Done |
+| Global JSON error envelope on all API endpoints | Done |
+| Non-root production container | Done |
+| SSL + DNS-rebinding protection in production | Done |
+| Redis in CI (exercises the real Redis path, not degraded mode) | Done |
 | Margin wallet (available/locked balance, atomic lock/unlock) | Done |
 | Leverage, margin type, liquidation price on positions | Done |
 | Liquidation engine (in-memory checks, async force-close) | Done |
-| Perpetual funding settlement (agent-pushed via `POST /api/funding_events`) | Done |
-| Mark price hot state (agent-pushed via `POST /api/mark_prices`) | Done |
+| Perpetual funding settlement | Done |
 | Order idempotency (`client_order_id`) | Done |
-| Ledger reconciliation on boot | Done |
-| Ledger immutability (readonly guard + UPDATE-blocking trigger, audit N3) | Done |
-| Keyset pagination on list endpoints (audit N6) | Done |
+| Ledger reconciliation on boot (fatal in production) | Done |
+| Ledger immutability (readonly guard + UPDATE-blocking trigger) | Done |
+| Keyset pagination on list endpoints | Done |
 | REST API (authenticated via `X-API-Key`) | Done |
-| Market event ingestion (`POST/GET /api/market_events` → capped Redis tick stream) | Done — wired 2026-09-26 |
-| Market-structure snapshots (`POST/GET /api/market_structure`, DB-backed) | Done — wired 2026-09-26 |
-| Strategy signals (`POST /api/strategy/signals` — read-only pre-trade risk assessment) | Done — wired 2026-09-26 |
-| Indicator engine (`indicator_engine` — SMA-20 from the tick stream) | Roadmap — compute side not wired to a route/job yet |
-| Candle building (`candle_builder`) | Roadmap — not wired |
-| Greeks & option chain services (`greeks_service`, `option_chain_service`) | Roadmap — not wired |
-| Option selector (`option_selector` — queries `option_snapshots`) | Roadmap — no snapshot producer wired yet |
-| VIX gate data source (`vix_gate` — the validator runs, but nothing feeds it VIX) | Roadmap — pass `context: {vix: ...}` on orders or signals to activate |
+| Market event ingestion (`POST/GET /api/market_events`) | Done |
+| Market-structure snapshots (`POST/GET /api/market_structure`) | Done |
+| Strategy signals (`POST /api/strategy/signals`) | Done |
+| Indicator engine compute / candle builder / greeks / option chain | Roadmap — not wired |
 | Backtesting runner | Next |
-| Live broker adapters | Next |
+| Live broker adapters (order routing) | Next |
 
 ---
 
