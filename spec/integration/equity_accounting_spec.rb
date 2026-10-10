@@ -92,7 +92,7 @@ RSpec.describe 'P0-1: Non-crypto wallet accounting', type: :integration do
     # original spec assumed 100 shares at 100→110 = 1000 profit, not 10000).
     # The REALIZED_PNL ledger entry captures the actual close PnL.
     expect(account.realized_pnl.to_f).to be > 500.0
-    expect(account.realized_pnl.to_f).to be < 1_000.0
+    expect(account.realized_pnl.to_f).to be <= 1_000.0
 
     # Equity = starting margin + realized PnL (no open positions)
     expect(account.current_equity.to_f).to be > 100_500.0
