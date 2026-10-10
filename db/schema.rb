@@ -233,9 +233,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
   # Prod-hardening (NEW-30): structural integrity from every money table back
   # to accounts(account_id). Previously app-layer only; a stray write for a
   # non-existent account would corrupt the Reconciler's wallet derivation.
-  add_foreign_key "funding_payments", "accounts", column: "account_id"
-  add_foreign_key "ledger_entries", "accounts", column: "account_id"
-  add_foreign_key "paper_exchange_orders", "accounts", column: "account_id"
-  add_foreign_key "paper_exchange_positions", "accounts", column: "account_id"
-  add_foreign_key "risk_events", "accounts", column: "account_id"
+  # primary_key: :account_id because accounts uses a string business key, not
+  # the bigint id PK — without this Postgres raises DatatypeMismatch.
+  add_foreign_key "funding_payments", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "ledger_entries", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "paper_exchange_orders", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "paper_exchange_positions", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "risk_events", "accounts", column: "account_id", primary_key: "account_id"
 end

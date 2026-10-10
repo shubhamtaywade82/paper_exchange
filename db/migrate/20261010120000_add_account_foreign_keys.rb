@@ -12,16 +12,21 @@
 # so NO ACTION (the default) is safe: an account can never be deleted while it
 # still has money rows, and orphan writes fail at the DB rather than later.
 #
+# IMPORTANT: the `accounts` table uses a string `account_id` column (not the
+# bigint `id` PK) as the business key. The FK must reference `account_id` on
+# BOTH sides via `primary_key: :account_id` — otherwise Postgres raises a
+# DatatypeMismatch (varchar vs bigint).
+#
 # Run on a clean DB, or backfill/repair orphan rows first:
 #   SELECT account_id FROM ledger_entries
 #   WHERE account_id NOT IN (SELECT account_id FROM accounts);
 class AddAccountForeignKeys < ActiveRecord::Migration[8.1]
   def up
-    add_foreign_key :ledger_entries, :accounts, column: :account_id
-    add_foreign_key :paper_exchange_orders, :accounts, column: :account_id
-    add_foreign_key :paper_exchange_positions, :accounts, column: :account_id
-    add_foreign_key :risk_events, :accounts, column: :account_id
-    add_foreign_key :funding_payments, :accounts, column: :account_id
+    add_foreign_key :ledger_entries, :accounts, column: :account_id, primary_key: :account_id
+    add_foreign_key :paper_exchange_orders, :accounts, column: :account_id, primary_key: :account_id
+    add_foreign_key :paper_exchange_positions, :accounts, column: :account_id, primary_key: :account_id
+    add_foreign_key :risk_events, :accounts, column: :account_id, primary_key: :account_id
+    add_foreign_key :funding_payments, :accounts, column: :account_id, primary_key: :account_id
   end
 
   def down
