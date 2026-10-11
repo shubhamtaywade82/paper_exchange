@@ -41,7 +41,11 @@ RSpec.describe MarketData::MarkPriceStore, type: :service do
       expect(described_class.get('btcusdt')).to eq(100.0)
     end
 
-    it 'falls back to Redis when the in-process cache is empty' do
+    # P2-3: the local cache now stores [value, timestamp] tuples and expires
+    # entries after LOCAL_CACHE_TTL seconds so cross-process writes are
+    # visible. This test sets a value, clears the local cache (simulating a
+    # different process), and confirms Redis is the fallback.
+    it 'falls back to Redis when the in-process cache is cleared' do
       described_class.set('ETHUSDT', 3000.0)
       described_class.instance_variable_set(:@local_cache, nil) # simulate a different process
       expect(described_class.get('ETHUSDT')).to eq(3000.0)

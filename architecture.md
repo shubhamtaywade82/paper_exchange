@@ -1,7 +1,7 @@
 # Architecture — paper_exchange
 
-> **Primary reader:** AI developer. Last updated: 2026-09-25. Verified against the codebase (Rails 8.1.3).
-> Companion files: `prd.md` (what/why) · `rules.md` (coding constraints) · `memory.md` (decisions & known issues). Full defect list with file:line evidence: `REVIEW.md`.
+> **Primary reader:** AI developer. Last updated: 2026-10-10. Verified against the codebase (Rails 8.1.3 + autonomous exchange architecture).
+> Companion files: `prd.md` (what/why) · `rules.md` (coding constraints) · `memory.md` (decisions & known issues) · `PRODUCTION_READINESS.md` (hardening report).
 
 ---
 
@@ -10,19 +10,18 @@
 | Layer | Choice | Notes |
 |-------|--------|-------|
 | Language | Ruby (≥ 3.2, Rails 8.1.3) | API-only mode (`ActionController::API`) |
-| Web | Puma 6.4 + Thruster | `config/puma.rb` |
+| Web | Puma 8.0 + Thruster | `config/puma.rb` |
 | DB | PostgreSQL | money columns are `decimal(36,18)` |
-| Cache / prices | Redis | `MarketData::MarkPriceStore` (Redis + process-local cache) |
-| Jobs | Solid Queue (DB-backed) | `config/queue.yml`, `config/recurring.yml`; queues incl. `:risk` |
+| Cache / prices | Redis | `MarketData::QuoteStore` (venue-aware) + `MarkPriceStore` (legacy, with 2s TTL) |
+| Jobs | Solid Queue (DB-backed) | `config/queue.yml`, `config/recurring.yml`; queues incl. `:risk`, `:default` |
 | App cache | Solid Cache (DB-backed) | Rails 8.1 default stack |
 | JSON | Oj | |
 | Validation | dry-validation | `Exchange::OrderValidator` |
-| HTTP clients | Faraday + faraday-retry | used by instrument catalogs (timeouts pending — S12) |
-| Exchange gems | DhanHQ 3.4, coindcx-client 0.1.0 | **instrument catalogs only** — never order routing |
-| ⚠ Present but unused | sidekiq | adapter is Solid Queue everywhere; removal tracked (T4.2) |
+| HTTP clients | Faraday + faraday-retry | used by instrument catalogs (timeouts: open=2s, read=5s) |
+| Exchange gems | DhanHQ 3.4, coindcx-client 1.0, binance-client 0.1 | provider adapters wrap public market-data methods — never order routing |
 | Test | RSpec, FactoryBot, VCR/WebMock, shoulda-matchers, SimpleCov, bullet, rack-mini-profiler | |
-| Static analysis | Brakeman, bundler-audit, RuboCop (rails-omakase) | `bin/ci` runs the local CI suite (`config/ci.rb`) |
-| Deploy | Docker + Kamal 2 (`config/deploy.yml`), dotenv-rails | |
+| Static analysis | Brakeman, bundler-audit, RuboCop (rails-omakase) | `bin/ci` runs the local CI suite |
+| Deploy | Docker (3-process topology) + Kamal 2 (`config/deploy.yml`), dotenv-rails | web / jobs / market_data |
 | Cross-language tests | TypeScript smoke suites (`smoke-test.ts`, `smoke-test-simulation.ts`) | run against Docker; executable invariants table |
 
 ## 2. Folder structure (annotated)
@@ -32,102 +31,136 @@ paper_exchange/
 ├── app/
 │   ├── controllers/
 │   │   ├── application_controller.rb        # ActionController::API base
+│   │   ├── health_controller.rb             # GET /health — deep probe (Postgres+Redis+SolidQueue)
 │   │   └── api/                             # ALL HTTP endpoints
-│   │       ├── base_controller.rb           # set_account (X-Account-Id header), render_error
-│   │       ├── accounts_controller.rb       # GET account · POST account/reset  (⚠ inherits ApplicationController — S8)
+│   │       ├── base_controller.rb           # auth (X-API-Key), set_account, global rescue_from
+│   │       ├── accounts_controller.rb       # GET account · POST account/reset
 │   │       ├── orders_controller.rb         # orders CRUD (create = the money path entry)
-│   │       ├── positions_controller.rb      # index OK · show ⚠ always 404 (M7)
-│   │       ├── ledger_controller.rb         # GET ledger (cap 500)
-│   │       ├── risk_events_controller.rb    # GET risk_events (cap 200)
+│   │       ├── positions_controller.rb      # index · show
+│   │       ├── protections_controller.rb    # POST/GET/DELETE positions/:id/protections (SL/TP/trailing/OCO)
+│   │       ├── ledger_controller.rb         # GET ledger (keyset paginated)
+│   │       ├── risk_events_controller.rb    # GET risk_events (keyset paginated)
 │   │       ├── performance_controller.rb    # GET performance
-│   │       ├── mark_prices_controller.rb    # POST mark_prices — bulk push (⚠ unvalidated — M3)
-│   │       └── funding_events_controller.rb # POST funding_events (⚠ unvalidated — M3)
+│   │       ├── exchange_controller.rb       # GET exchange/status — provider health + quote freshness
+│   │       ├── mark_prices_controller.rb    # POST mark_prices — bulk push (validated, 503 on Redis outage)
+│   │       ├── funding_events_controller.rb # POST funding_events (validated)
+│   │       ├── market_events_controller.rb  # POST/GET market_events — Redis tick stream
+│   │       ├── market_structure_controller.rb
+│   │       └── strategy_controller.rb       # POST strategy/signals — pre-trade risk assessment
 │   ├── jobs/                                # Solid Queue
-│   │   ├── liquidation_job.rb               # queue :risk — force-close underwater positions
-│   │   └── funding_job.rb                   # per-position funding settlement (idempotent)
+│   │   ├── application_job.rb               # retry_on Deadlocked · discard_on DeserializationError
+│   │   ├── liquidation_job.rb              # queue :risk — force-close underwater positions
+│   │   ├── funding_job.rb                  # per-position funding settlement (atomic + idempotent)
+│   │   ├── expire_orders_job.rb             # sweep open orders older than TTL
+│   │   ├── matching_worker_job.rb           # autonomous matching (every 2s)
+│   │   ├── protection_monitor_job.rb        # autonomous SL/TP monitoring (every 3s)
+│   │   └── option_expiry_job.rb             # daily option expiry settlement (15:30)
 │   ├── models/
-│   │   ├── account.rb                       # wallet: balance, locked_margin, cached equity/PnL
-│   │   ├── ledger_entry.rb                  # append-only ledger row (credit/debit/event_type/payload)
+│   │   ├── account.rb                       # wallet: balance, locked_margin, cached equity/PnL, max_equity_achieved
+│   │   ├── ledger_entry.rb                  # append-only ledger row (immutable: readonly? + DB trigger)
 │   │   ├── risk_event.rb                    # risk & liquidation audit trail
 │   │   ├── funding_payment.rb               # funding settlements; dedup (position, funding_time)
+│   │   ├── position_protection.rb          # durable SL/TP/trailing_stop/OCO policies
 │   │   ├── option_snapshot.rb · market_structure_snapshot.rb
 │   │   └── paper_exchange/                  # namespaced trading models (tables paper_exchange_*)
-│   │       ├── paper_order.rb               # enum status machine (⚠ unguarded — S1)
-│   │       ├── paper_position.rb            # contract-scoped position, liquidated?(price)
+│   │       ├── paper_order.rb               # enum status machine (guarded transitions, venue column)
+│   │       ├── paper_position.rb            # contract-scoped position, venue column, liquidated?(price)
 │   │       └── paper_trade.rb               # fills (charges, PnL)
 │   └── services/
 │       ├── exchange/                        # THE ENGINE
-│       │   ├── paper_exchange.rb            # ★ facade — submit_order is the money path (read first)
+│       │   ├── paper_exchange.rb            # ★ facade — submit_order + match_and_fill (autonomous)
+│       │   ├── matching_worker.rb           # ★ event-driven matching (consumes Redis tick stream)
 │       │   ├── order_validator.rb           # dry-validation schema → OrderValidationError (422)
-│       │   ├── matching_engine.rb           # order → [:filled|:unfilled|:rejected, qty, price]
+│       │   ├── matching_engine.rb           # order → fill (limit price improvement, stop-market)
 │       │   ├── fill_engine.rb               # fill execution; exact_price bypasses slippage
-│       │   ├── position_manager.rb          # position upsert (⚠ lost-update race — M4)
-│       │   ├── margin_engine.rb             # position-level margin sync (⚠ same race — S6)
-│       │   ├── order_book.rb                # in-memory book w/ Redis (MarkPriceStore) fallback
+│       │   ├── position_manager.rb          # position upsert (row lock + savepoint + retry)
+│       │   ├── margin_engine.rb              # position-level margin sync (full notional for leverage-1)
+│       │   ├── order_book.rb                # in-memory book w/ Redis fallback
 │       │   ├── slippage_engine.rb · latency_engine.rb   # simulation knobs
 │       │   ├── liquidation_calculator.rb    # liquidation-price math
-│       │   ├── brokerage_calculator.rb      # Indian F&O charges (STT/GST/SEBI/stamp)
+│       │   ├── brokerage_calculator.rb      # Indian F&O charges (NSE FY2026-27 STT schedule)
 │       │   └── *_instrument_catalog.rb      # Dhan / coindcx / Binance USDM / crypto catalogs
 │       ├── ledger/
 │       │   ├── margin_ledger.rb             # ALL wallet movements, under Account row lock
-│       │   ├── ledger.rb                    # entries, realized PnL, cached equity refresh
-│       │   └── reconciler.rb                # boot-time wallet rebuild from ledger + cache re-arm
+│       │   ├── ledger.rb                    # entries, realized PnL (from REALIZED_PNL stream), equity
+│       │   └── reconciler.rb                # boot-time wallet rebuild (fatal in production)
 │       ├── risk/
-│       │   ├── risk_manager.rb              # runs validators (⚠ fail-open — M5)
-│       │   ├── margin_validator.rb · max_drawdown_validator.rb
-│       │   ├── position_limit_validator.rb · vix_gate_validator.rb
-│       │   ├── liquidation_engine.rb        # in-memory cache; enqueues LiquidationJob
-│       │   └── vix_gate.rb                  # ⚠ superseded by vix_gate_validator — unwired
+│       │   ├── risk_manager.rb              # runs validators (fails closed)
+│       │   ├── margin_validator.rb          # notional + available balance check (one reference price)
+│       │   ├── max_drawdown_validator.rb    # drawdown from equity HWM (live, not cached)
+│       │   ├── position_limit_validator.rb · vix_gate_validator.rb · currency_validator.rb
+│       │   └── liquidation_engine.rb        # in-memory cache; enqueues LiquidationJob
 │       ├── market_data/
-│       │   ├── mark_price_store.rb          # Redis write-through + process-local cache
-│       │   └── (tick_processor, candle_builder, greeks_service,
-│       │       option_chain_service, market_event, trade_event)   # ⚠ UNWIRED (S7)
-│       ├── projections/                     # read-side: position_portfolio_performance
-│       └── strategy/                        # ⚠ ENTIRE NAMESPACE UNWIRED (S7) — do not depend on it
+│       │   ├── quote_store.rb               # ★ venue-aware shared quote store (Redis, bid/ask/mark/funding)
+│       │   ├── mark_price_store.rb          # legacy mark price store (2s TTL, mirrors to QuoteStore)
+│       │   ├── tick_processor.rb            # capped Redis tick stream (~100k entries)
+│       │   ├── connection_supervisor.rb     # ★ long-lived market-data process skeleton
+│       │   ├── market_event.rb · trade_event.rb
+│       │   ├── candle_builder.rb · greeks_service.rb · option_chain_service.rb  # Roadmap — not wired
+│       │   └── providers/                   # ★ provider adapter framework
+│       │       ├── base.rb                  # common contract (fetch_instruments, connect, health, disconnect)
+│       │       ├── binance_usdm.rb          # Binance USD-M REST + WebSocket adapter
+│       │       └── coindcx_futures.rb        # CoinDCX futures adapter
+│       ├── projections/                     # read-side: position/portfolio/performance
+│       └── strategy/                        # strategy engine, indicators, market structure, option selector
 ├── config/
-│   ├── routes.rb                            # /api and /api/v1 (both), snake+kebab path aliases
-│   ├── queue.yml · recurring.yml · cache.yml# Solid Queue / Cache
+│   ├── routes.rb                            # /api and /api/v1; positions have nested protections
+│   ├── queue.yml · recurring.yml · cache.yml# Solid Queue / Cache; recurring jobs scheduled
 │   ├── deploy.yml                           # Kamal
 │   ├── ci.rb                                # local CI entry (bin/ci)
+│   ├── environments/production.rb           # force_ssl, config.hosts, assume_ssl
 │   └── initializers/
-│       ├── reconciler.rb                    # runs Reconciler at boot (skipped in test)
-│       ├── cors.rb                          # ⚠ origins "*" (N5)
-│       └── exchange_catalogs_loader.rb      # ⚠ explicit requires + loader unregister (S10)
-├── db/                                      # schema.rb + 18 migrations (2025-06 → 2026-09)
-├── spec/                                    # 53 spec files, ~213 examples (see REVIEW.md §Testing)
+│       ├── reconciler.rb                    # runs Reconciler at boot (fatal in production)
+│       ├── api_authentication.rb            # boot-fail if PAPER_EXCHANGE_API_KEY missing
+│       ├── cors.rb                          # loopback-only origins
+│       └── exchange_catalogs_loader.rb      # Zeitwerk inflections (S10 pending)
+├── db/                                      # schema.rb + migrations (2025-06 → 2026-10)
+├── bin/
+│   ├── market_data                          # ★ standalone market-data supervisor entrypoint
+│   ├── jobs · ci · rails · setup
+│   └── docker-entrypoint
+├── spec/                                    # ~75 spec files (models, services, integration, jobs)
 ├── smoke-test.ts · smoke-test-simulation.ts # TS invariant suites (Docker target, not in CI)
 ├── Dockerfile · docker-compose.yml · .env.example
-└── prd.md · architecture.md · rules.md · design.md · tasks.md · memory.md · REVIEW.md
+└── prd.md · architecture.md · rules.md · design.md · tasks.md · memory.md · REVIEW.md · PRODUCTION_READINESS.md
 ```
 
-## 3. Runtime topology
+## 3. Runtime topology (3-process)
+
+PaperExchange runs as **three independently supervised processes** sharing PostgreSQL + Redis:
 
 ```mermaid
 flowchart LR
-    AG["Trading Agent<br/>(owns market data)"]
-    subgraph PX["paper_exchange (Rails 8.1 API-only)"]
-        API["API controllers<br/>/api · /api/v1"]
-        SVC["Services<br/>Exchange · Risk · Ledger · MarketData · Projections"]
-        JOBS["Solid Queue jobs<br/>LiquidationJob · FundingJob"]
-        RECON["Reconciler<br/>(boot only)"]
+    AG["Trading Agent<br/>(optional client)"]
+    subgraph PX["paper_exchange (3 processes)"]
+        WEB["web (Puma)<br/>API requests"]
+        JOBS["jobs (Solid Queue)<br/>matching · protection · liquidation<br/>funding · expiry · order-sweep"]
+        MD["market_data (ConnectionSupervisor)<br/>Binance/CoinDCX WebSocket<br/>→ QuoteStore + tick stream"]
     end
-    PG[("PostgreSQL<br/>orders · positions · trades<br/>ledger_entries · accounts · risk_events")]
-    RD[("Redis<br/>MarkPriceStore")]
+    PG[("PostgreSQL<br/>orders · positions · trades<br/>ledger · accounts · protections")]
+    RD[("Redis<br/>QuoteStore · MarkPriceStore<br/>tick stream")]
 
-    AG -->|"POST orders / mark_prices / funding_events"| API
-    API --> SVC
-    API --> JOBS
-    JOBS --> SVC
-    SVC --> PG
-    SVC --> RD
-    RECON --> PG
+    AG -->|"POST orders / protections"| WEB
+    WEB --> PG
+    WEB --> RD
+    MD --> RD
+    MD -->|"REST snapshots"| PG
+    JOBS --> PG
+    JOBS -->|"consume tick stream"| RD
+    JOBS -->|"read quotes"| RD
 ```
 
-**Key boundary fact:** there is no auth between agent and API (audit M2). The agent is trusted; the deployment boundary (loopback / private network) is the current security boundary. See `prd.md` §3 and `tasks.md` T1.2.
+| Process | Responsibility | Restarts independently? |
+|---------|----------------|--------------------------|
+| `web` | API requests (Puma) | Yes |
+| `jobs` | Solid Queue workers: MatchingWorker (2s), ProtectionMonitor (3s), LiquidationJob, FundingJob, ExpireOrdersJob (5m), OptionExpiryJob (daily) | Yes |
+| `market_data` | ConnectionSupervisor: Binance/CoinDCX WebSocket, REST bootstrap, event normalization → QuoteStore + tick stream | Yes (behind `--profile market_data`) |
+
+**Key design rule (target architecture):** the trading bot is an **optional command client**. When it goes offline, market data continues arriving, working orders continue to be evaluated, SL/TP protections continue to trigger, liquidation and funding workers continue to operate, and the account/fills/ledger remain queryable when the bot reconnects.
 
 ## 4. Order lifecycle — the money path
 
-`POST /api/orders` → `OrdersController#create` → `Exchange::PaperExchange#submit_order` (`app/services/exchange/paper_exchange.rb`). **This method is the heart of the system — read it before touching anything in `exchange/`.**
+`POST /api/orders` → `OrdersController#create` → `Exchange::PaperExchange#submit_order`. **This method is the heart of the system — read it before touching anything in `exchange/`.**
 
 ```mermaid
 sequenceDiagram
@@ -145,77 +178,111 @@ sequenceDiagram
     C->>X: submit_order(attrs)
     X->>DB: idempotency pre-check on (account_id, client_order_id)
     X->>V: validate → typed attrs (raises OrderValidationError → 422)
+    X->>X: P1-2: build one authoritative reference_price (execution_price || price || ltp)
     X->>DB: order.save! (rescue RecordNotUnique → replay idempotent twin)
     rect rgb(235, 235, 245)
         note over X,DB: H1 — one transaction: lock + risk + fill are atomic;<br/>any raise rolls back the margin lock too
         X->>DB: order.open!
         X->>L: lock_margin! (Account row FOR UPDATE) → order.locked_margin
-        X->>R: evaluate(account, signal)
-        R-->>X: [passed, rejected symbols]
-        alt rejected (*_REJECTED) — ⚠ M5: events rolled back today
+        X->>R: evaluate(account, signal) — uses reference_price for notional check
+        R-->>X: [passed, rejected symbols] (fails closed on error)
+        alt rejected (*_REJECTED) — events persisted post-rollback (M5 fixed)
             X->>DB: raise → ROLLBACK
+            X->>DB: RiskEvent.create! (*_REJECTED) — post-rollback rescue
         else passed
-            X->>M: execute(order) → [fill_qty, fill_price]
-            X->>P: PositionManager.apply! (position upsert — ⚠ M4 race)
-            X->>L: record_trade + fees + realized PnL (crypto perps)
+            X->>M: execute(order) → [fill_qty, fill_price] (limit price improvement P2-1)
+            X->>P: PositionManager.apply! (position upsert under row lock — M4 fixed)
             X->>L: release_order_margin! (superseded by position margin)
+            X->>P: MarginEngine.sync_position! (full notional for leverage-1 — P0-1)
+            X->>L: record_trade (posts REALIZED_PNL + FEE via MarginLedger — P0-1)
             X->>DB: COMMIT → order.filled!
         end
     end
     C-->>A: 201 + order JSON
 ```
 
-**Gates bypass rule (intentional, do not "fix"):** `internal: true` and `reduce_only: true` orders skip the margin lock and risk gate. This is the B3 fix — a liquidation force-close on an underwater account would otherwise always fail its own margin check and deadlock forever. See `memory.md` §Decisions.
-
-**Reduce-only two-phase clamp:** advisory pre-check (`clamp_to_position`, no lock, cheap 422) then authoritative re-read under row lock inside the transaction (`clamp_order_to_locked_position!`). A reduce-only order can never grow or flip a position.
+**Autonomous matching path (target architecture):** when a market event arrives (via the `market_data` process or `POST /api/market_events`), the `MatchingWorker` consumes it from the Redis tick stream, updates `QuoteStore`, scans open orders, and calls `PaperExchange#match_and_fill` to fill marketable orders at the live book price. This path bypasses the risk gate (margin was already locked at submit time) but runs the same fill + position + ledger sequence under a row lock.
 
 ## 5. Liquidation pipeline
 
 ```mermaid
 flowchart TD
-    A["Agent: POST /api/mark_prices"] --> B{"price valid? ⚠ M3 — not yet validated"}
-    B -- "garbage → 0.0" --> B1["mass false liquidation (known bug)"]
-    B -- ok --> C["MarkPriceStore.set — Redis + local cache"]
+    A["Mark price push<br/>(provider adapter or POST /api/mark_prices)"] --> B{"price valid?"}
+    B -- "garbage/0/negative → 422" --> B1["nothing applied (M3 fixed)"]
+    B -- ok --> C["QuoteStore.set + MarkPriceStore.set (2s TTL)"]
     C --> D["LiquidationEngine.check_symbol!<br/>(in-memory cache per symbol)"]
-    D --> E{"position underwater?<br/>price ≤ liquidation_price (long)"}
+    D --> E{"position underwater?"}
     E -- yes --> F["de-arm cache · enqueue LiquidationJob(:risk)"]
     F --> G["LiquidationJob#perform<br/>re-check position.liquidated?(price) against DB"]
     G -- "not underwater anymore" --> I["done — price recovered"]
     G -- underwater --> J["submit_order(internal: true, reduce_only: true)<br/>force-close at mark price"]
-    J --> K{"close order filled? ⚠ M6 — outcome not asserted"}
+    J --> K{"close order filled? (M6 fixed)"}
     K -- yes --> L["RiskEvent POSITION_LIQUIDATED"]
-    K -- "no (rejected/unfilled)" --> M["⚠ today still emits POSITION_LIQUIDATED<br/>and position is de-armed (bug)"]
+    K -- "no (rejected/unfilled)" --> M["LIQUIDATION_FAILED · cancel orphan · re-arm cache"]
 ```
 
-Cache lifecycle caveat: the liquidation cache is rebuilt only on mark-price pushes and at boot (Reconciler re-arms it). A leveraged position opened *after* the last push for its symbol is unmonitored until the next push (documented trade-off, N9).
+## 6. Position protection pipeline (autonomous)
 
-## 6. Ledger & reconciliation (the trust primitive)
+```mermaid
+flowchart TD
+    P["PositionProtection (durable in PostgreSQL)"] --> PM["ProtectionMonitorJob (every 3s)"]
+    PM --> Q["fetch mark price from QuoteStore"]
+    Q --> T{"protection type?"}
+    T -- "trailing_stop" --> WM["update_water_mark!(price)"]
+    T -- "stop_loss / take_profit" --> BR{"breached?(price)"}
+    WM --> BR
+    BR -- yes --> FC["submit_order(internal, reduce_only)<br/>force-close at mark price"]
+    FC --> TG["protection.trigger!"]
+    TG --> OCO["cancel OCO siblings if oco_group_id"]
+    TG --> RE["RiskEvent PROTECTION_TRIGGERED"]
+    BR -- no --> SKIP["skip — still active"]
+```
+
+## 7. Ledger & reconciliation (the trust primitive)
 
 - **All wallet movements** go through `Ledger::MarginLedger` (`lock_margin!`, `unlock_margin!`, `deduct_fee!`, `credit_realized_pnl!`) — each takes `Account.lock` (`SELECT … FOR UPDATE`), raises `InsufficientMarginError` on shortfall, clamps unlocks to the currently locked amount, and writes a paired **append-only `LedgerEntry`**.
-- **`Ledger::Reconciler`** runs at boot (`config/initializers/reconciler.rb`, skipped in test): rebuilds wallet state from the ledger, corrects drift with visible `ADJUSTMENT` entries, re-arms the liquidation cache.
-- **Idempotency everywhere money moves:** `client_order_id` unique index + rescue-replay (orders); `(paper_position_id, funding_time)` partial unique index (funding).
+- **P0-1 accounting model:** equity = `available_balance + locked_margin + unrealized_pnl`. Locked margin includes the full notional of all open positions (leverage-1 included). Realized PnL is posted via `credit_realized_pnl!` on every closing fill (both crypto and non-crypto) and sourced from the `REALIZED_PNL` ledger stream — not from a re-derivation against mutable position state.
+- **`Ledger::Reconciler`** runs at boot (fatal in production — a failed reconcile means the wallet invariant is broken and the deploy should fail). Rebuilds wallet state from the ledger, corrects drift with visible `ADJUSTMENT` entries, re-arms the liquidation cache.
+- **Idempotency everywhere money moves:** `client_order_id` unique index + rescue-replay (orders); `(paper_position_id, funding_time)` partial unique index (funding); `(position, funding_time)` transactional in `FundingJob` (P0-2 — payment + ledger are atomic).
 - Invariant to preserve at all times: **wallet balance == Σ ledger entries**.
 
-## 7. Key modules & ownership
+## 8. Key modules & ownership
 
 | Module | Responsibility | Entry point |
 |--------|----------------|-------------|
-| `Api::*Controllers` | HTTP ⇄ service translation, error mapping (400/402/404/422/500), account resolution from headers | `orders_controller.rb` |
-| `Exchange::PaperExchange` | Facade & money-path orchestrator: idempotency, gates, transaction boundary | `submit_order` |
+| `Api::*Controllers` | HTTP ⇄ service translation, error mapping, account resolution | `orders_controller.rb` |
+| `Exchange::PaperExchange` | Facade: idempotency, gates, transaction boundary, `match_and_fill` | `submit_order`, `match_and_fill` |
+| `Exchange::MatchingWorker` | Autonomous matching: consumes tick stream, fills open orders | `process_tick` |
 | `Exchange::OrderValidator` | dry-validation of ALL external order input | `.call` |
-| `Exchange::Matching/Fill/Slippage/Latency` | Fill decision & simulation | `matching_engine.rb`, `fill_engine.rb` |
-| `Exchange::PositionManager` | Contract-scoped position upsert (avg price, side flip) | `.apply!` |
-| `Exchange::MarginEngine` | Position-level initial-margin sync after fills | `.sync_position!` |
-| `Ledger::*` | Wallet + entries + boot reconciliation | `margin_ledger.rb`, `reconciler.rb` |
-| `Risk::*` | Pre-trade validators + liquidation engine/cache | `risk_manager.rb`, `liquidation_engine.rb` |
-| `MarketData::MarkPriceStore` | Redis-backed mark prices (+process-local cache) | `.set/.get` |
-| `Projections::*` | Read-side projections for positions/portfolio/performance | `portfolio_projection.rb` |
-| `Strategy::*` + parts of `MarketData::*` | ⚠ **Unwired scaffolding** — no runtime callers (audit S7). Do not add dependencies on them. | — |
+| `Exchange::Matching/Fill/Slippage/Latency` | Fill decision & simulation (limit price improvement P2-1) | `matching_engine.rb` |
+| `Exchange::PositionManager` | Contract-scoped position upsert (row lock + retry) | `.apply!` |
+| `Exchange::MarginEngine` | Position-level margin sync (full notional for leverage-1, P0-1) | `.sync_position!` |
+| `Ledger::*` | Wallet + entries + boot reconciliation (fatal in production) | `margin_ledger.rb`, `reconciler.rb` |
+| `Risk::*` | Pre-trade validators (incl. CurrencyValidator P1-6) + liquidation | `risk_manager.rb` |
+| `Risk::MaxDrawdownValidator` | Drawdown from equity high-water mark (live, P1-1) | `max_drawdown_validator.rb` |
+| `MarketData::QuoteStore` | Venue-aware shared quote store (Redis, bid/ask/mark/funding) | `.set/.get` |
+| `MarketData::MarkPriceStore` | Legacy mark price store (2s TTL P2-3, mirrors to QuoteStore) | `.set/.get` |
+| `MarketData::ConnectionSupervisor` | Long-lived market-data process (WebSocket, REST bootstrap) | `start` |
+| `MarketData::Providers::*` | Binance/CoinDCX adapter framework | `base.rb` |
+| `PositionProtection` | Durable SL/TP/trailing/OCO policies | model |
+| `ProtectionMonitorJob` | Autonomous protection monitoring (every 3s) | `perform` |
+| `OptionExpiryJob` | Daily option expiry settlement (cash settlement) | `perform` |
+| `Projections::*` | Read-side: position/portfolio/performance (REALIZED_PNL stream, P1-4) | `portfolio_projection.rb` |
+| `Strategy::*` | Pre-trade assessment (`POST /api/strategy/signals`); indicator compute still Roadmap | `strategy_engine.rb` |
 
-## 8. Known architectural debt (summary — full detail in REVIEW.md)
+## 9. Accounting model (P0-1 fix)
 
-1. **M-class (must-fix):** committed master key (M1) · no auth (M2) · unvalidated price/funding input (M3) · position race + NULL-unsafe unique index (M4) · fail-open risk gate + rolled-back rejection events (M5) · false liquidation success (M6) · broken `positions#show` (M7).
-2. **Structural:** ~⅓ of `app/services` is unreachable from runtime (S7) · per-request `PaperExchange` instances make the in-memory book/mutex request-scoped (S15) · Zeitwerk fought with explicit requires & late inflections (S10).
-3. **Config drift:** documented env var `PAPER_EXCHANGE_MAX_DRAWDOWN` does nothing (code reads `PAPER_EXCHANGE_MAX_DD` — S9) · `database.yml` uses non-existent `max_connections` key (S13).
+The system uses a **unified margin-wallet model** for both cash instruments and leveraged crypto perps:
 
-**Rule of thumb for the AI:** before changing anything on the money path (`submit_order`, `PositionManager`, `MarginLedger`, `MarginEngine`), read `rules.md` §Money & §Concurrency — several "obvious simplifications" there are load-bearing race fixes.
+- **Purchase (buy):** `lock_margin!` locks the full notional (leverage-1) or notional/leverage (leveraged) against `available_balance`. `available_balance` decreases; `locked_margin` increases.
+- **Sale (sell to close):** `sync_position!` releases the position's `initial_margin` back to `available_balance`. Realized PnL is posted via `credit_realized_pnl!` (gain) or `deduct_fee!` (loss).
+- **Equity formula:** `available_balance + locked_margin + unrealized_pnl`. This is correct for both models because the capital tied up in holdings is always in `locked_margin`.
+- **Realized PnL:** sourced from the `REALIZED_PNL` ledger stream, posted at fill time by `Ledger::Ledger.record_trade`. The `TRADE` ledger entries are audit records only — they do not affect the equity calculation (P0-1: the old `trade_cash_pnl` term double-counted the purchase cost).
+
+## 10. Known architectural debt
+
+1. **Zeitwerk normalization (S10):** inflections still in `config/application.rb` `after_initialize` instead of `config/initializers/inflections.rb`; self-alias on `BinanceUsdmFuturesCatalog` still present.
+2. **Per-request `PaperExchange` instances (S15):** `@books`/`@mutex` are per-instance; the autonomous `MatchingWorker` creates its own instance per tick. A singleton or stateless extraction would be cleaner.
+3. **Indicator/candle/greeks roadmap:** `IndicatorEngine` compute, `CandleBuilder`, `GreeksService`, `OptionChainService`, `OptionSelector` exist but have no runtime callers.
+4. **Rate limiting / metrics / structured logging:** documented in `PRODUCTION_READINESS.md` — needs a gem/lockfile change to verify.
+5. **Depth-consuming partial fills:** the matching engine fills the entire remaining quantity without consuming recorded order-book depth.

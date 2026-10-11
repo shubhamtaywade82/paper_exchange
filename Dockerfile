@@ -58,8 +58,20 @@ COPY --from=build /usr/local/bundle /usr/local/bundle
 
 COPY . .
 
+# Prod-hardening (NEW-2): the production image previously ran Puma as root,
+# which means any RCE vulnerability executed with full container privileges.
+# Create a dedicated non-root user and chown only the paths it must write to
+# (tmp/, log/, storage/) so the app boots without owning the source tree.
 RUN chmod +x bin/docker-entrypoint && \
-    SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile || true
+    SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile && \
+    groupadd --system --gid 1001 app && \
+    useradd  --system --uid 1001 --gid app --home /rails --shell /usr/sbin/nologin app && \
+    mkdir -p /rails/tmp/pids /rails/log /rails/storage && \
+    chown -R app:app /rails/tmp /rails/log /rails/storage
+
+USER 1001:1001
+
+EXPOSE 3000
 
 ENTRYPOINT ["bin/docker-entrypoint"]
 CMD ["./bin/rails", "server", "-b", "0.0.0.0"]

@@ -38,9 +38,12 @@ module Api
     end
 
     def destroy
-      exchange = Exchange::PaperExchange.new(account_id: @account_id)
-      exchange.cancel_order(@order.id)
-      render json: order_json(@order)
+      # P1-5 fix: the service returns the committed, reloaded order instance
+      # from inside the transaction — render THAT, not the stale @order
+      # loaded by set_order before the cancel. Previously the response could
+      # show status "open" while the order was actually "cancelled" in the DB.
+      cancelled_order = exchange.cancel_order(@order.id)
+      render json: order_json(cancelled_order)
     rescue ::PaperExchange::PaperOrder::StateError => e
       # Double-cancel or cancelling a terminal order — the current state
       # conflicts with the requested transition (audit S1).

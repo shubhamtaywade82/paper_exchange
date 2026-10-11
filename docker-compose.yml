@@ -59,6 +59,62 @@ services:
       - bundle_cache:/usr/local/bundle
       - node_modules:/rails/node_modules
 
+  # Architecture alignment (target architecture §7): separate jobs process
+  # for Solid Queue workers (matching, protection, liquidation, funding,
+  # expiry). Runs independently of the web process so job throughput is
+  # not affected by API request load.
+  jobs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    command: ["./bin/rails", "solid_queue:start"]
+    env_file:
+      - .env
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://paper_user:paper_password@db:5432/paper_exchange_development
+      REDIS_URL: redis://redis:6379/0
+      RAILS_MASTER_KEY: "${RAILS_MASTER_KEY:?RAILS_MASTER_KEY must be set in .env}"
+      PAPER_EXCHANGE_API_KEY: "${PAPER_EXCHANGE_API_KEY:?PAPER_EXCHANGE_API_KEY must be set in .env}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/rails
+      - bundle_cache:/usr/local/bundle
+
+  # Architecture alignment (target architecture §7): market-data supervisor
+  # process. Maintains WebSocket connections to Binance/CoinDCX, normalizes
+  # events into QuoteStore + the Redis tick stream. Disabled by default —
+  # enable with PAPER_EXCHANGE_ENABLE_BINANCE=true in .env. Only ONE
+  # active market_data process should own subscriptions per provider/shard.
+  market_data:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    command: ["./bin/market_data"]
+    env_file:
+      - .env
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://paper_user:paper_password@db:5432/paper_exchange_development
+      REDIS_URL: redis://redis:6379/0
+      RAILS_MASTER_KEY: "${RAILS_MASTER_KEY:?RAILS_MASTER_KEY must be set in .env}"
+      PAPER_EXCHANGE_API_KEY: "${PAPER_EXCHANGE_API_KEY:?PAPER_EXCHANGE_API_KEY must be set in .env}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["market_data"]
+    volumes:
+      - .:/rails
+      - bundle_cache:/usr/local/bundle
+
 volumes:
   postgres_data:
   redis_data:

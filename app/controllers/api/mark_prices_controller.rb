@@ -30,6 +30,20 @@ module Api
         )
       end
 
+      # Prod-hardening (NEW-12): if Redis is unreachable, the local_cache write
+      # in MarkPriceStore.set still "succeeds" for THIS process — but every
+      # OTHER process (other Puma workers, Solid Queue jobs) keeps the stale
+      # price, so cross-process liquidation checks run on wrong data. In
+      # production we refuse to accept the push and return 503 so the agent
+      # knows to retry, rather than silently degrading. Test/dev keeps the
+      # historical graceful-degradation path so specs run without Redis.
+      if Rails.env.production? && !MarketData::MarkPriceStore.redis_healthy?
+        return render_error(
+          :service_unavailable,
+          "mark price store (Redis) unavailable — prices were NOT applied; retry shortly"
+        )
+      end
+
       Risk::LiquidationEngine.refresh_cache!
 
       updated = parsed.map do |symbol, value|

@@ -70,6 +70,24 @@ module Exchange
       attrs = clamp_to_position(attrs) if attrs[:reduce_only]
       skip_gates = internal || attrs[:reduce_only]
 
+      # P1-2 fix: build ONE authoritative reference price before risk
+      # evaluation. The margin validator and the margin lock must see the
+      # same notional — previously the signal carried :ltp but not
+      # :execution_price, so a market order with only execution_price had
+      # zero notional in the risk gate (bypassing MAX_POSITION_VALUE) while
+      # the actual margin lock used the real execution_price.
+      # Try execution_price → explicit price → ltp → order book snapshot.
+      reference_price = (attrs[:execution_price] || attrs[:price] || attrs[:ltp]).to_f
+      if reference_price <= 0
+        # Fall back to the order book snapshot (set via market_event or a
+        # prior fill) rather than raising — many test paths submit orders
+        # without execution_price and expect the stub book to provide the
+        # price. A truly missing price (no book either) will still surface
+        # as a 0-notional order that the matching engine rejects.
+        book = @order_book.snapshot(attrs[:symbol])
+        reference_price = book&.dig(:ltp).to_f if reference_price <= 0 && book
+      end
+
       signal = Strategy::Signal.new(
         account_id: account_id,
         symbol: attrs[:symbol],
@@ -80,7 +98,7 @@ module Exchange
         option_type: attrs[:option_type],
         strike_price: attrs[:strike_price],
         expiry_date: attrs[:expiry_date],
-        ltp: attrs[:ltp],
+        ltp: reference_price,
         context: attrs.fetch(:context, {})
       )
 
@@ -112,7 +130,12 @@ module Exchange
         end
 
         unless skip_gates
-          reference_price = (order.price || attrs[:execution_price] || attrs[:ltp]).to_f
+          # P1-2: use the same reference_price the risk gate saw, not a
+          # separately-computed value that could disagree. The old code
+          # read (order.price || attrs[:execution_price] || attrs[:ltp])
+          # here while the signal used attrs[:ltp] — a market order with
+          # only execution_price passed the risk gate with zero notional
+          # but locked the real margin here, creating an inconsistency.
           required_margin = order.required_margin(reference_price)
           Ledger::MarginLedger.lock_margin!(
             account_id: account_id,
@@ -158,7 +181,9 @@ module Exchange
             trade.update!(paper_position: position)
             release_order_margin!(order) unless skip_gates
             MarginEngine.sync_position!(position, account_id: account_id)
-            Ledger::Ledger.record_trade(account_id: account_id, trade: trade)
+            # P0-1: pass realized_pnl explicitly so record_trade doesn't
+            # depend on the position association being reloaded from DB.
+            Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
             if order.instrument_type == "CRYPTO_PERPETUAL"
               if trade.total_charges.to_f > 0
@@ -207,19 +232,99 @@ module Exchange
       raise
     end
 
-    # Locks the row so a double-cancel racing a fill cannot interleave; the
-    # state guard in cancel! makes an already-terminal order a loud
-    # StateError instead of a silent second transition (audit S1).
+    # P1-5 fix: the lock, state validation, status transition, and margin
+    # release are all inside ONE transaction with consistent lock ordering.
+    # Previously cancel_order did a locked read, then cancel! opened its own
+    # transaction, and release_order_margin! was a third — a fill could race
+    # between the locked read and the cancel transaction, and a failure in
+    # margin release after the cancel committed left the account with locked
+    # funds on a cancelled order. Now the order row is locked for the
+    # duration of the entire operation.
     def cancel_order(order_id)
-      order = ::PaperExchange::PaperOrder.lock.find(order_id)
-      order.cancel!
-      release_order_margin!(order)
+      ::PaperExchange::PaperOrder.transaction do
+        order = ::PaperExchange::PaperOrder.lock.find_by!(id: order_id, account_id: account_id)
+        order.cancel!
+        release_order_margin!(order)
+        order
+      end
     end
 
     def expire_order(order_id)
-      order = ::PaperExchange::PaperOrder.lock.find(order_id)
-      order.expired!
+      ::PaperExchange::PaperOrder.transaction do
+        order = ::PaperExchange::PaperOrder.lock.find_by!(id: order_id, account_id: account_id)
+        order.expired!
+        release_order_margin!(order)
+        order
+      end
+    end
+
+    # Architecture alignment (target architecture §4): autonomous matching.
+    # Called by the MatchingWorker when a market event makes an open order
+    # executable. Fills the order at the given live fill_price (derived from
+    # the QuoteStore's best bid/ask), bypassing the risk gate (margin was
+    # already locked at submit time) and the matching engine's slippage
+    # model (the fill price is the actual executable book price).
+    #
+    # The caller (MatchingWorker) holds the order row lock; this method
+    # runs the fill-engine + position-manager + ledger sequence inside the
+    # caller's transaction. Idempotent via the order's status guard — a
+    # double fill attempt raises StateError (caught by the caller).
+    def match_and_fill(order, fill_price)
+      raise ::PaperExchange::PaperOrder::StateError, "order is not open" unless order.status == "open"
+
+      @order_book.apply_snapshot(order.symbol, bid: fill_price, ask: fill_price, ltp: fill_price)
+
+      fill_qty, actual_fill_price, trade = @fill_engine.fill(
+        order,
+        market_snapshot: @order_book.snapshot(order.symbol),
+        instrument_type: order.instrument_type,
+        quantity: order.remaining_quantity,
+        price: fill_price
+      )
+
+      return nil unless trade
+
+      position = PositionManager.apply!(
+        account_id: account_id,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: fill_qty,
+        avg_price: actual_fill_price,
+        leverage: order.leverage,
+        margin_type: order.margin_type,
+        instrument_type: order.instrument_type,
+        option_type: order.option_type,
+        strike_price: order.strike_price,
+        expiry_date: order.expiry_date
+      )
+      trade.update!(paper_position: position)
       release_order_margin!(order)
+      MarginEngine.sync_position!(position, account_id: account_id)
+      Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
+
+      if order.instrument_type == "CRYPTO_PERPETUAL"
+        if trade.total_charges.to_f > 0
+          Ledger::MarginLedger.deduct_fee!(
+            account_id: account_id,
+            amount: trade.total_charges,
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: order.symbol, reason: "trade_fee" }
+          )
+        end
+        if position.last_realized_pnl && !position.last_realized_pnl.zero?
+          Ledger::MarginLedger.credit_realized_pnl!(
+            account_id: account_id,
+            amount: position.last_realized_pnl,
+            reference_id: trade.id.to_s,
+            payload: { trade_id: trade.id, symbol: order.symbol, reason: "realized_pnl" }
+          )
+        end
+        Ledger::Ledger.refresh_cached_equity!(account_id)
+      end
+      MarketData::MarkPriceStore.set(order.symbol, actual_fill_price)
+
+      order.filled!
+      order
     end
 
     def market_event(event)

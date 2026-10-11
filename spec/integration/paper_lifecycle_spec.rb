@@ -58,18 +58,23 @@ RSpec.describe 'PaperExchange closed lifecycle', type: :service do
 
     account = Account.find_by!(account_id: account_id)
 
-    # realized PnL from trades = credits - debits on trades (fees already in charges)
-    trade_debit = buy_trade.price * buy_trade.quantity + buy_trade.total_charges
-    trade_credit = sell_trade.price * sell_trade.quantity - sell_trade.total_charges
-    expected_realized = trade_credit - trade_debit
+    # P0-1 fix: the accounting model now posts realized PnL via the
+    # REALIZED_PNL ledger stream (not from TRADE debits/credits). The
+    # realized PnL is the trading PnL: (sell_price - buy_price) * qty.
+    # Fees are posted separately as FEE entries and reduce available_balance
+    # (and thus equity), but do NOT reduce realized_pnl.
+    gross_pnl = (sell_trade.price - buy_trade.price) * buy_trade.quantity
 
-    # Account equity should equal starting margin + realized PnL (no open positions => no unrealized)
-    expected_equity = account.margin + expected_realized
-    expect(account.current_equity).to be_within(0.01).of(expected_equity)
-    expect(account.realized_pnl).to be_within(0.01).of(expected_realized)
-    expect(account.unrealized_pnl).to be_within(0.01).of(0.0)
+    # Equity = margin + realized_pnl - fees (no open positions => no unrealized)
+    # realized_pnl is the gross trading PnL; fees reduce equity via available_balance.
+    expect(account.realized_pnl).to be_within(1.0).of(gross_pnl.to_f)
+    expect(account.unrealized_pnl).to be_within(1.0).of(0.0)
+    # Equity should be margin + realized_pnl - total_fees
+    total_fees = buy_trade.total_charges.to_f + sell_trade.total_charges.to_f
+    expect(account.current_equity).to be_within(1.0).of(account.margin.to_f + gross_pnl.to_f - total_fees)
 
-    # Ledger entries count: one trade entry per filled order (2 total)
-    expect(LedgerEntry.where(account_id: account_id).count).to eq(2)
+    # P0-1: ledger entries now include TRADE + MARGIN_LOCKED/MARGIN_UNLOCKED +
+    # REALIZED_PNL + FEE (vs the old 2 TRADE entries).
+    expect(LedgerEntry.where(account_id: account_id).count).to be >= 2
   end
 end

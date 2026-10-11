@@ -34,6 +34,7 @@ module Risk
 
     VALIDATORS = {
       vix_gate: VixGateValidator,
+      currency: CurrencyValidator,
       margin: MarginValidator,
       max_drawdown: MaxDrawdownValidator,
       position_limit: PositionLimitValidator

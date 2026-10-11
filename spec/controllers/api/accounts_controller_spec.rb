@@ -27,7 +27,7 @@ RSpec.describe Api::AccountsController, type: :controller do
 
       it 'reports fee-inclusive equity for an open leveraged position' do
         account = Account.find_by!(account_id: account_id)
-        account.update!(margin: 10_000.0, available_balance: 10_000.0, current_equity: 10_000.0)
+        account.update!(margin: 10_000.0, available_balance: 10_000.0, current_equity: 10_000.0, currency: 'USD', max_equity_achieved: 10_000.0)
         Exchange::PaperExchange.new(account_id: account_id).submit_order(
           account_id: account_id, symbol: 'BTCUSDT', side: 'buy', quantity: 0.1, order_kind: 'market', instrument_type: 'CRYPTO_PERPETUAL',
           leverage: 5, margin_type: 'isolated', execution_price: 65_000.0

@@ -1,6 +1,7 @@
 FactoryBot.define do
   factory :paper_position, class: 'PaperExchange::PaperPosition' do
-    account_id { "ACC-TEST" }
+    # FK constraint (migration 20261010120000) requires the account to exist.
+    account_id { create(:account).account_id }
     symbol { "NIFTY" }
     side { :long }
     quantity { 50 }

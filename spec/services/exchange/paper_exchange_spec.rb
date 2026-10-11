@@ -71,6 +71,8 @@ RSpec.describe Exchange::PaperExchange, type: :service do
   end
 
   describe '#submit_order with a crypto perpetual (no live feed of its own)' do
+    before { Account.find_by!(account_id: account_id).update!(currency: 'USD') }
+
     let(:crypto_attrs) do
       {
         account_id: account_id,
@@ -125,6 +127,8 @@ RSpec.describe Exchange::PaperExchange, type: :service do
   end
 
   describe '#submit_order with reduce_only' do
+    before { Account.find_by!(account_id: account_id).update!(currency: 'USD') }
+
     let(:open_attrs) do
       {
         account_id: account_id, symbol: 'BTCUSDT', side: 'buy', quantity: 0.1, order_kind: 'market',

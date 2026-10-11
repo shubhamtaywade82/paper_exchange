@@ -26,6 +26,9 @@ RSpec.describe Api::OrdersController, type: :controller do
     end
 
     context 'with reduce_only' do
+      # P1-6: CurrencyValidator requires crypto orders on a USD/USDT account.
+      before { Account.find_by!(account_id: account_id).update!(currency: 'USD') }
+
       let(:btc_order) do
         { symbol: 'BTCUSDT', side: 'buy', quantity: 0.1, order_type: 'market', instrument_type: 'CRYPTO_PERPETUAL',
           leverage: 5, margin_type: 'isolated', execution_price: 65_000.0 }

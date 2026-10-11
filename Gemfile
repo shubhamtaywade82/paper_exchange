@@ -56,7 +56,19 @@ gem "dotenv-rails"
 # Exchange Clients
 # ─────────────────────────────────────────────────────────────────────────────
 gem "DhanHQ", "~> 3.4", require: "dhan_hq"
+# NOTE: coindcx-client is pinned to ~> 0.1.0 to match the existing Gemfile.lock.
+# The target architecture calls for ~> 1.0 once the SDK is verified; updating
+# the constraint requires running `bundle install` on a machine with Ruby to
+# regenerate the lockfile. The provider adapter under
+# MarketData::Providers::CoindcxFutures wraps the SDK's public futures
+# market-data methods and is gated behind PAPER_EXCHANGE_ENABLE_COINDCX.
 gem "coindcx-client", "~> 0.1.0", require: "coindcx"
+# NOTE: binance-client (~> 0.1) is the target SDK for the BinanceUsdm
+# provider adapter. It is NOT yet in the Gemfile because adding it requires
+# `bundle install` to update Gemfile.lock, which needs a Ruby runtime. The
+# adapter is gated behind PAPER_EXCHANGE_ENABLE_BINANCE and will raise a
+# NameError at runtime (not at boot) if the gem is absent — enable it only
+# after running `bundle add binance-client` on a Ruby machine.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Backtest / real-time ingest

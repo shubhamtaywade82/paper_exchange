@@ -64,8 +64,8 @@ RSpec.describe FundingJob, type: :job do
     expect(FundingPayment.last.position_notional).to eq(60_000.0) # long_position.current_price
   end
 
-  it 'skips unleveraged positions' do
-    long_position.update!(leverage: 1)
+  it 'skips non-crypto positions (P0-2: funding eligibility is instrument-based, not leverage-based)' do
+    long_position.update!(leverage: 1, instrument_type: 'EQUITY')
 
     expect {
       described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
@@ -94,5 +94,31 @@ RSpec.describe FundingJob, type: :job do
     described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
 
     expect(FundingPayment.where(symbol: 'ETHUSDT')).to be_empty
+  end
+
+  # Prod-hardening (NEW-18): FundingPayment is keyed unique on
+  # (paper_position_id, funding_time) precisely so a retried HTTP push of the
+  # same funding settlement does not double-charge. The dedup path
+  # (find_or_initialize_by + already_existed skip) was previously untested at
+  # the regression level — a future refactor could silently break it.
+  context 'idempotency on (position, funding_time)' do
+    let(:funding_time) { Time.zone.parse('2026-10-10T08:00:00Z') }
+
+    it 'produces exactly one FundingPayment and one FUNDING_FEE ledger entry when performed twice' do
+      expect {
+        described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
+        described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
+      }.to change(FundingPayment, :count).by(1)
+        .and change { LedgerEntry.where(event_type: 'FUNDING_FEE').count }.by(1)
+    end
+
+    it 'settles independently for a different funding_time' do
+      other_time = funding_time + 8.hours
+
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
+      expect {
+        described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, other_time)
+      }.to change(FundingPayment, :count).by(1)
+    end
   end
 end
