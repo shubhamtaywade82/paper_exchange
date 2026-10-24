@@ -55,7 +55,7 @@ gem "dotenv-rails"
 # ─────────────────────────────────────────────────────────────────────────────
 # Exchange Clients
 # ─────────────────────────────────────────────────────────────────────────────
-gem "DhanHQ", "~> 3.4", require: "dhan_hq"
+gem "DhanHQ", "~> 4.1", require: "dhan_hq"
 # NOTE: coindcx-client is pinned to ~> 0.1.0 to match the existing Gemfile.lock.
 # The target architecture calls for ~> 1.0 once the SDK is verified; updating
 # the constraint requires running `bundle install` on a machine with Ruby to
