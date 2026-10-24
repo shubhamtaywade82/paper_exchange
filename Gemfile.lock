@@ -1,18 +1,18 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    DhanHQ (3.4.0)
-      activesupport
-      base64
-      bindata
-      concurrent-ruby
-      csv
-      dry-validation (~> 1.11)
-      eventmachine
+    DhanHQ (4.1.1)
+      activesupport (>= 8.0)
+      base64 (>= 0.1)
+      bindata (>= 2.4)
+      concurrent-ruby (>= 1.3)
+      csv (>= 3.0)
+      dry-validation (~> 1.0)
+      eventmachine (>= 1.2)
       faraday (~> 2.14)
-      faye-websocket
-      rotp
-      zeitwerk
+      faye-websocket (>= 0.11)
+      rotp (>= 6.0)
+      zeitwerk (>= 2.6)
     action_text-trix (2.1.19)
       railties
     actioncable (8.1.4)
@@ -95,7 +95,7 @@ GEM
     bcrypt_pbkdf (1.1.2-arm64-darwin)
     bcrypt_pbkdf (1.1.2-x86_64-darwin)
     bigdecimal (4.1.3)
-    bindata (2.5.1)
+    bindata (3.0.1)
     bootsnap (1.26.0)
       msgpack (~> 1.5)
     brakeman (8.1.0)
@@ -116,7 +116,7 @@ GEM
       bigdecimal
       rexml
     crass (1.0.7)
-    csv (3.3.5)
+    csv (3.3.6)
     date (3.5.1)
     debug (1.11.1)
       irb (~> 1.10)
@@ -475,7 +475,7 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  DhanHQ (~> 3.4)
+  DhanHQ (~> 4.1)
   bootsnap
   brakeman
   bullet
@@ -507,7 +507,7 @@ DEPENDENCIES
   webmock
 
 CHECKSUMS
-  DhanHQ (3.4.0) sha256=94191705d31e75443bb36726c4919cd9fa3afebbd4dfd2aa00021e1d569ec06e
+  DhanHQ (4.1.1) sha256=c47738d615c818f3c892f179255d7914cf43505d9c0e2512d8aa5865bb36b6a5
   action_text-trix (2.1.19) sha256=7012f59421009cf284aa651294896414d653a61a2417c9b8714c8476d2f74009
   actioncable (8.1.4) sha256=cfcd72f8c861e01ccdc96d772ad8c5ad6ed0ea7c571aef81a794b6027eaa7f11
   actionmailbox (8.1.4) sha256=9c4525e577ebb671ce558f3ea78b8a634f64e56a0e6e8d105b28b873793a06eb
@@ -527,7 +527,7 @@ CHECKSUMS
   bcrypt_pbkdf (1.1.2-arm64-darwin) sha256=afdd6feb6ed5a97b8e44caacb3f2d641b98af78e6a516d4a3520b69af5cf9fea
   bcrypt_pbkdf (1.1.2-x86_64-darwin) sha256=35f5639d0058e6c2cc2f856f9c0b14080543268d3047abe6bc81c513093caa0e
   bigdecimal (4.1.3) sha256=61ebe1e5e559bdc3cc6f2c0ee7f427321fc838f59611c294356eb04d6e21cf66
-  bindata (2.5.1) sha256=53186a1ec2da943d4cb413583d680644eb810aacbf8902497aac8f191fad9e58
+  bindata (3.0.1) sha256=e97a826a12f6e7c5847e983e5826f277d61035317d352ec339b079537f2fa466
   bootsnap (1.26.0) sha256=ca96237015e6cd74a02963d5821cf00ac5ea134653b323e8cd6d702a7718bf1b
   brakeman (8.1.0) sha256=cfa9e5214e4925842f4bc849a64f8a7e6c5d0425fe98eac8d7b7bc60fdc17e07
   builder (3.3.0) sha256=497918d2f9dca528fdca4b88d84e4ef4387256d984b8154e9d5d3fe5a9c8835f
@@ -538,7 +538,7 @@ CHECKSUMS
   connection_pool (3.0.2) sha256=33fff5ba71a12d2aa26cb72b1db8bba2a1a01823559fb01d29eb74c286e62e0a
   crack (1.0.1) sha256=ff4a10390cd31d66440b7524eb1841874db86201d5b70032028553130b6d4c7e
   crass (1.0.7) sha256=94868719948664c89ddcaf0a37c65048413dfcb1c869470a5f7a7ceb5390b295
-  csv (3.3.5) sha256=6e5134ac3383ef728b7f02725d9872934f523cb40b961479f69cf3afa6c8e73f
+  csv (3.3.6) sha256=aba61e7e507a66f03d45cb1f3c4b6359861c3504038b422962875dce099e4456
   date (3.5.1) sha256=750d06384d7b9c15d562c76291407d89e368dda4d4fff957eb94962d325a0dc0
   debug (1.11.1) sha256=2e0b0ac6119f2207a6f8ac7d4a73ca8eb4e440f64da0a3136c30343146e952b6
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
