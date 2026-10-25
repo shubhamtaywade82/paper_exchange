@@ -36,7 +36,38 @@ module Exchange
         raise OrderValidationError, "Indices must be traded via F&O derivatives only (FUTIDX/OPTIDX). Got: #{symbolized[:instrument_type]}"
       end
 
-      result.to_h
+      validated = result.to_h
+      validate_crypto_option!(validated) if validated[:instrument_type] == CryptoInstrumentCatalog::OPTION
+      validated
+    end
+
+    # Long-premium-only crypto options. The contract fields must agree with
+    # the symbol (the position's contract identity is built from them, so a
+    # mismatch would book the fill against the wrong contract), leverage is
+    # meaningless for a fully paid premium, and a sell is only ever a close:
+    # writing an option would expose the account to unbounded loss.
+    def self.validate_crypto_option!(attrs)
+      parsed = CryptoInstrumentCatalog.parse_option_symbol(attrs[:symbol])
+      raise OrderValidationError, "CRYPTO_OPTION symbol must look like BTC-261030-81000-C, got #{attrs[:symbol]}" unless parsed
+
+      if attrs[:option_type] != parsed.option_type
+        raise OrderValidationError, "CRYPTO_OPTION option_type #{attrs[:option_type].inspect} does not match #{attrs[:symbol]} (#{parsed.option_type})"
+      end
+      if attrs[:strike_price].nil? || BigDecimal(attrs[:strike_price].to_s) != parsed.strike
+        raise OrderValidationError, "CRYPTO_OPTION strike_price #{attrs[:strike_price].inspect} does not match #{attrs[:symbol]} (#{parsed.strike.to_s('F')})"
+      end
+      if attrs[:expiry_date] != parsed.expiry_date
+        raise OrderValidationError, "CRYPTO_OPTION expiry_date #{attrs[:expiry_date].inspect} does not match #{attrs[:symbol]} (#{parsed.expiry_date})"
+      end
+      if attrs[:leverage] && attrs[:leverage] != 1
+        raise OrderValidationError, "CRYPTO_OPTION premium is paid in full: leverage must be 1, got #{attrs[:leverage]}"
+      end
+      if attrs[:side] == "sell" && !attrs[:reduce_only]
+        raise OrderValidationError, "CRYPTO_OPTION sell must be reduce_only: option writing (sell to open) is not supported"
+      end
+      if attrs[:side] == "buy" && Time.now.utc >= CryptoInstrumentCatalog.option_expires_at(parsed.expiry_date)
+        raise OrderValidationError, "CRYPTO_OPTION #{attrs[:symbol]} has expired; it cannot be bought"
+      end
     end
   end
 end

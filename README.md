@@ -148,6 +148,8 @@ See `.env.example` for the complete list with defaults and one-line descriptions
 | `PAPER_EXCHANGE_ORDER_TTL_MINUTES` | Open orders older than this are expired by the recurring sweep (default `60`) |
 | `PAPER_EXCHANGE_STT_OPTIONS_SELL` | NSE STT on options sell-side (default `0.15` = 0.15%, P1-3; was 0.05%) |
 | `PAPER_EXCHANGE_STT_FUTURES_SELL` | NSE STT on futures sell-side (default `0.05` = 0.05%, P1-3; was 0.01%) |
+| `PAPER_EXCHANGE_CRYPTO_OPTION_FEE_RATE` | `CRYPTO_OPTION` fee rate on the underlying's notional (default `0.0003`; pin to your account's `GET /eapi/v1/commission`) |
+| `PAPER_EXCHANGE_CRYPTO_OPTION_FEE_CAP` | `CRYPTO_OPTION` fee cap as a fraction of premium (default `0.10`) |
 | `PAPER_EXCHANGE_MARK_PRICE_CACHE_TTL` | TTL in seconds for the in-process mark price cache (default `2`, P2-3) |
 | `PAPER_EXCHANGE_FORCE_SSL` | Force HTTPS in production (default `true`, hardening NEW-3) |
 | `PAPER_EXCHANGE_ALLOWED_HOSTS` | Comma-separated allowed hostnames for DNS-rebinding protection (default permissive, hardening NEW-4) |
@@ -226,6 +228,39 @@ Create order payload (crypto perpetual futures — `client_order_id` and
   "client_order_id": "agent-uuid-123"
 }
 ```
+
+Create order payload (crypto options, long premium only):
+```json
+{
+  "account_id": "ACC-001",
+  "symbol": "BTC-261030-81000-C",
+  "side": "buy",
+  "quantity": 0.5,
+  "order_type": "market",
+  "instrument_type": "CRYPTO_OPTION",
+  "option_type": "CE",
+  "strike_price": 81000,
+  "expiry_date": "2026-10-30",
+  "leverage": 1,
+  "execution_price": 1250.0,
+  "client_order_id": "agent-uuid-456"
+}
+```
+`CRYPTO_OPTION` rules:
+- Settles in USDT, so the account currency must be USDT or USD.
+- `option_type`, `strike_price` and `expiry_date` must match the symbol (`<BASE>-<YYMMDD>-<STRIKE>-<C|P>`, where `C` is `CE` and `P` is `PE`).
+- `leverage` must be 1 (or omitted). The full premium is locked as position margin.
+- A `sell` is accepted only with `reduce_only: true`. Writing an option (selling to open) is refused.
+- Buying a contract is refused from 08:00 UTC on its expiry date.
+- Fee: `min(FEE_RATE x underlying mark x qty, FEE_CAP x premium x qty)`. The underlying mark is the
+  last price pushed for `BASEUSDT` (for example `BTCUSDT`) through `POST /api/mark_prices`. With no
+  pushed price, the cap is charged.
+- Push option marks (premiums) and underlying marks through `POST /api/mark_prices`. Unrealized PnL
+  reads the option symbol's mark.
+- `OptionExpiryJob` (every 15 minutes) settles an open contract from 08:00 UTC on its expiry date at
+  intrinsic value against the underlying mark. An out-of-the-money contract closes at 0 and loses exactly
+  its premium. When no underlying mark has been pushed, settlement is deferred and an
+  `OPTION_SETTLEMENT_DEFERRED` risk event is written. The job never settles against the option's own premium.
 
 ### Account
 ```
@@ -494,7 +529,8 @@ python3 -m http.server 8080
 | Venue identity on orders and positions | Done |
 | Autonomous matching worker (event-driven, fills open orders from live quotes) | Done |
 | Durable position protections (SL/TP/trailing/OCO, survives restarts) | Done |
-| Option expiry settlement (daily cash settlement) | Done |
+| Option expiry settlement (daily cash settlement; crypto options at 08:00 UTC against the underlying) | Done |
+| Crypto options (`CRYPTO_OPTION`, long premium only, Binance fee model) | Done |
 | 3-process deployment topology (web / jobs / market_data) | Done |
 | Deep health check (`GET /health`: Postgres + Redis + Solid Queue) | Done |
 | Global JSON error envelope on all API endpoints | Done |

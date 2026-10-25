@@ -20,11 +20,19 @@ module Exchange
       @sebi_fee = ENV.fetch("PAPER_EXCHANGE_SEBI_FEE", "0.0001").to_f
       @stamp_duty = ENV.fetch("PAPER_EXCHANGE_STAMP_DUTY", "0.003").to_f / 100
       @exchange_txn = ENV.fetch("PAPER_EXCHANGE_EXCHANGE_TXN", "0.00145").to_f / 100
+      # Crypto options (Binance Options schedule): the fee is a rate on the
+      # underlying's notional, capped at a fraction of the premium. Defaults
+      # are the published taker tier; an account's own tier is what
+      # GET /eapi/v1/commission returns, so pin these to that.
+      @crypto_option_fee_rate = ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_RATE", "0.0003").to_f
+      @crypto_option_fee_cap = ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_CAP", "0.10").to_f
     end
 
     def calculate(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
       segment_class = segment_class_for(instrument_type)
       turnover = trade_price * quantity
+
+      return crypto_option_charges(trade_price, quantity, symbol) if segment_class == "crypto_option"
 
       if instrument_type == "CRYPTO_PERPETUAL" || segment_class == "crypto_perpetual"
         fee = (turnover * 0.0004).round(8)
@@ -81,8 +89,31 @@ module Exchange
       when "FUTIDX", "FUTSTK", "FUTCUR", "FUTCOM", "OPTFUT" then "future"
       when "OPTIDX", "OPTSTK", "OPTCUR" then "option"
       when "CRYPTO_PERPETUAL" then "crypto_perpetual"
+      when "CRYPTO_OPTION" then "crypto_option"
       else "other"
       end
+    end
+
+    # min(rate x underlying index x qty, cap x premium x qty). Without a
+    # pushed underlying price the cap alone is charged: it is the upper bound
+    # of the formula, so a missing price can only overstate the cost.
+    def crypto_option_charges(premium, quantity, symbol)
+      premium_turnover = premium.to_f * quantity.to_f
+      cap = premium_turnover * @crypto_option_fee_cap
+      underlying = CryptoInstrumentCatalog.option_underlying(symbol)
+      index_price = underlying && MarketData::MarkPriceStore.get(underlying)
+      fee = index_price.to_f.positive? ? [ @crypto_option_fee_rate * index_price.to_f * quantity.to_f, cap ].min : cap
+      fee = fee.round(8)
+      {
+        brokerage: fee,
+        stt: 0.0,
+        gst: 0.0,
+        sebi: 0.0,
+        stamp_duty: 0.0,
+        exchange_txn: 0.0,
+        total: fee,
+        notional: premium_turnover.round(8)
+      }
     end
 
     # P1-3: NSE FY2026-27 STT schedule for derivatives sell-side.

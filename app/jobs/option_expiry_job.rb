@@ -15,24 +15,47 @@
 # realized PnL is the difference between the entry price and the settlement
 # price (for the option premium, not the underlying).
 #
-# Run daily (e.g. at market close) via config/recurring.yml.
+# Crypto options (CRYPTO_OPTION) differ in two ways: they are due at 08:00
+# UTC on their expiry date (Binance Options), not the day after, and the
+# settlement price is ONLY the underlying's mark (BTCUSDT for
+# BTC-261030-81000-C). The option's own mark/current_price is a premium, and
+# settling against it would book a meaningless intrinsic value, so a missing
+# underlying price defers the settlement (OPTION_SETTLEMENT_DEFERRED) to the
+# next run instead.
+#
+# Run daily (e.g. at market close) via config/recurring.yml; crypto expiries
+# run on their own, more frequent schedule there.
 class OptionExpiryJob < ApplicationJob
   queue_as :default
 
-  def perform
+  def perform(now: Time.now.utc)
     ::PaperExchange::PaperPosition
       .where.not(option_type: nil)
       .where.not(quantity: 0)
-      .where("expiry_date < ?", Date.today)
-      .find_each { |position| settle!(position) }
+      .where("expiry_date <= ?", [ now.to_date, Date.today ].max)
+      .find_each { |position| settle!(position) if due?(position, now) }
   end
 
   private
+
+  def due?(position, now)
+    return now >= Exchange::CryptoInstrumentCatalog.option_expires_at(position.expiry_date) if crypto_option?(position)
+
+    position.expiry_date < Date.today
+  end
+
+  def crypto_option?(position)
+    position.instrument_type == Exchange::CryptoInstrumentCatalog::OPTION
+  end
 
   def settle!(position)
     return unless position.option_type.present? && position.expiry_date
 
     underlying_price = fetch_underlying_price(position)
+    if crypto_option?(position) && !underlying_price.to_f.positive?
+      defer!(position)
+      return
+    end
     settlement_price = settlement_value(position, underlying_price)
 
     exchange = Exchange::PaperExchange.new(account_id: position.account_id)
@@ -56,6 +79,7 @@ class OptionExpiryJob < ApplicationJob
       margin_type: position.margin_type,
       context: { reason: "OPTION_EXPIRY", underlying_price: underlying_price.to_s },
       internal: true,
+      settlement_price: settlement_price,
       reduce_only: true,
       client_order_id: "expiry-#{position.id}"
     )
@@ -81,7 +105,25 @@ class OptionExpiryJob < ApplicationJob
     nil
   end
 
+  def defer!(position)
+    RiskEvent.create!(
+      account_id: position.account_id,
+      event_type: "OPTION_SETTLEMENT_DEFERRED",
+      details: {
+        position_id: position.id,
+        symbol: position.symbol,
+        underlying: Exchange::CryptoInstrumentCatalog.option_underlying(position.symbol),
+        reason: "no underlying mark price; push it via POST /api/mark_prices"
+      }
+    )
+  end
+
   def fetch_underlying_price(position)
+    if crypto_option?(position)
+      underlying = Exchange::CryptoInstrumentCatalog.option_underlying(position.symbol)
+      return underlying && MarketData::MarkPriceStore.get(underlying)
+    end
+
     MarketData::MarkPriceStore.get(position.symbol) ||
       MarketData::MarkPriceStore.get(underlying_symbol(position.symbol)) ||
       position.current_price.to_f

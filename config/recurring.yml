@@ -45,6 +45,13 @@ production:
     class: OptionExpiryJob
     schedule: every day at 15:30
 
+  # Crypto options expire at 08:00 UTC every day of the week; this pass
+  # settles them shortly after. Indian expiries are idempotent here (their
+  # settlement order carries a fixed client_order_id).
+  settle_crypto_option_expiries:
+    class: OptionExpiryJob
+    schedule: every 15 minutes
+
   # Funding settlement is event-driven, not scheduled here — the provider
   # adapters (or the agent pushing POST /api/funding_events) enqueue
   # FundingJob directly when a funding settlement occurs.
