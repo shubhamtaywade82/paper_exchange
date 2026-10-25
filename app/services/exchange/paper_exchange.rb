@@ -52,13 +52,26 @@ module Exchange
     # The lock-then-unlock dance in the normal path is a no-op for closing
     # orders anyway (MarginEngine.sync_position! releases the position's own
     # initial_margin once it goes flat).
-    def submit_order(order_attrs = nil, internal: false, **extra_attrs)
+    #
+    # `settlement_price:` is internal-only (OptionExpiryJob): the exact price a
+    # forced close books at, which may be 0 for an option that expires out of
+    # the money. execution_price cannot carry it — a client-facing field that
+    # must stay > 0 — and without it the close would fill at whatever premium
+    # the book last saw instead of the option's intrinsic value.
+    def submit_order(order_attrs = nil, internal: false, settlement_price: nil, **extra_attrs)
       attrs_in = if order_attrs.is_a?(Hash)
         order_attrs.merge(extra_attrs)
       else
         extra_attrs
       end
       internal = attrs_in.delete(:internal) if attrs_in.key?(:internal)
+      settlement_price = attrs_in.delete(:settlement_price) if attrs_in.key?(:settlement_price)
+      if settlement_price && !internal
+        raise ArgumentError, "settlement_price is only accepted on internal orders"
+      end
+      if settlement_price && (!settlement_price.to_f.finite? || settlement_price.to_f.negative?)
+        raise ArgumentError, "settlement_price must be a finite number >= 0, got #{settlement_price.inspect}"
+      end
 
       client_order_id = attrs_in[:client_order_id].presence
       if client_order_id
@@ -123,7 +136,10 @@ module Exchange
         order.open!
         clamp_order_to_locked_position!(order) if attrs[:reduce_only]
 
-        if attrs[:execution_price].present?
+        if settlement_price
+          pinned = settlement_price.to_f
+          @order_book.apply_snapshot(order.symbol, bid: pinned, ask: pinned, ltp: pinned)
+        elsif attrs[:execution_price].present?
           execution_price = attrs[:execution_price].to_f
           @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
           MarketData::MarkPriceStore.set(order.symbol, execution_price)
@@ -156,7 +172,7 @@ module Exchange
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
         if fill_qty && fill_qty.positive?
-          exact_price = (attrs[:execution_price].presence || order.price)&.to_f
+          exact_price = settlement_price ? settlement_price.to_f : (attrs[:execution_price].presence || order.price)&.to_f
           fill_qty, fill_price, trade = @fill_engine.fill(
             order,
             market_snapshot: @order_book.snapshot(order.symbol),

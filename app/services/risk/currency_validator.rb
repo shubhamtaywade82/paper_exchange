@@ -10,7 +10,7 @@ module Risk
   # does not match the account's currency, so each account is currency-pure.
   # The mapping is:
   #   EQUITY, FUTIDX, OPTIDX, FUTSTK, OPTSTK, FUTCUR, OPTCUR, FUTCOM, OPTFUT → INR
-  #   CRYPTO_PERPETUAL → USDT (or USD, depending on the account's setup)
+  #   CRYPTO_PERPETUAL, CRYPTO_OPTION → USDT (or USD, depending on the account's setup)
   class CurrencyValidator
     INSTRUMENT_CURRENCY = {
       "EQUITY" => "INR",
@@ -18,7 +18,8 @@ module Risk
       "FUTSTK" => "INR", "OPTSTK" => "INR",
       "FUTCUR" => "INR", "OPTCUR" => "INR",
       "FUTCOM" => "INR", "OPTFUT" => "INR",
-      "CRYPTO_PERPETUAL" => "USDT"
+      "CRYPTO_PERPETUAL" => "USDT",
+      "CRYPTO_OPTION" => "USDT"
     }.freeze
 
     def evaluate(account_id, signal)

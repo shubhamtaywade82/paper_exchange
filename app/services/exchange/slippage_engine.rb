@@ -23,7 +23,7 @@ module Exchange
 
     def impact_factor_for(instrument_type)
       case instrument_type
-      when "OPTIDX", "OPTSTK", "OPTCUR" then @option_impact_factor
+      when "OPTIDX", "OPTSTK", "OPTCUR", "CRYPTO_OPTION" then @option_impact_factor
       else @equity_impact_factor
       end
     end
