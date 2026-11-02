@@ -51,6 +51,15 @@
 | GET | `/api/backtest_runs/:id/orders` | Run account's paper orders | keyset paginated (`placed_at`) |
 | GET | `/api/backtest_runs/:id/positions` | Run account's position rows | |
 | GET | `/api/backtest_runs/:id/equity` | Mark-to-market equity per bar | `{data: [{at, equity, in_market}]}` |
+| POST | `/api/backtest_runs/:id/advance` | External runs: process the next bar | 200 `{bar, bars_processed, equity, in_market, position, submitted, fills, finished, verdict}`; 409 when no bar is left or the run is finished or engine-driven |
+| POST | `/api/backtest_runs/:id/finish` | End the replay now and store results | 200 run; 409 when already finished |
+| GET | `/api/backtest_runs/:id/history` | Bars processed so far, oldest first (`?limit=`, max 2000) | never includes a bar after `replay_at` |
+| GET | `/api/backtest_runs/:id/intents` | Every order request of the run, with status, reason and note | keyset paginated (`created_at`) |
+| POST | `/api/orders` (replay account) | Queue an order for the next bar's open | 202 `{id, status: "queued", client_order_id, …}`; 422 on `execution_price`, a missing `stop_loss` on an entry, a foreign symbol, or an invalid quantity |
+| POST | `/api/orders` (live account) | unchanged; `stop_loss` / `take_profit` → 422 | use `/api/positions/:id/protections` |
+| POST | `/api/mark_prices`, `/funding_events`, `/market_events`, `/market_structure` (replay account) | Refused: a replay account moves its own prices | 422 |
+
+Replay accounts (`X-Account-Id` of a backtest run) run every request inside the run's simulation session: the account's clock is the last processed bar, and its mark is that bar's close.
 | POST | `/api/strategy/signals` | Read-only pre-trade risk assessment | same gate as orders, decide-only (M5); `decision: allow\|reject` + `rejections` + market-structure context |
 | GET | `/api/exchange/status` | Provider connectivity + quote freshness | 200 when healthy, 503 when degraded; includes per-provider health + per-position quote staleness |
 | POST | `/api/positions/:id/protections` | Attach SL/TP/trailing-stop policy | durable in PostgreSQL; `ProtectionMonitorJob` (every 3s) triggers force-close on breach; supports OCO via `oco_group_id` |

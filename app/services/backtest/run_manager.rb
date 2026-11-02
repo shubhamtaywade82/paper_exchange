@@ -1,22 +1,33 @@
 module Backtest
-  # Lifecycle operations on runs and their paper accounts: claim, fail, reset,
-  # destroy.
+  # Lifecycle operations on runs and their paper accounts: create, claim, fail,
+  # reset, destroy.
   #
   # A run owns exactly the rows that carry its account_id (orders, trades,
   # positions, ledger entries, risk events, funding payments, protections),
-  # plus its Backtest::Trade rows. Reset and destroy delete only those. The
-  # ledger trigger blocks UPDATE but allows DELETE, which is the documented
-  # reset path (see Ledger::Immutability).
+  # plus its own intents, equity points and trades. Reset and destroy delete
+  # only those. The ledger trigger blocks UPDATE but allows DELETE, which is the
+  # documented reset path (see Ledger::Immutability).
   module RunManager
     class Conflict < StandardError; end
 
     module_function
 
-    # Atomically moves a pending run to running. Returns false when another
-    # worker already claimed it, so a duplicate job is a no-op.
+    # Creates a run and prepares its paper account in one transaction, so the
+    # account can be read (GET /api/account) before the first bar.
+    def create!(attrs)
+      Run.transaction do
+        run = Run.create!(attrs)
+        clear!(run)
+        run
+      end
+    end
+
+    # Atomically moves a pending engine run to running. Returns false when another
+    # worker already claimed it, so a duplicate job is a no-op. External runs are
+    # driven over the API and are never claimed.
     def claim!(run)
       run.with_lock do
-        next false unless run.status == "pending"
+        next false unless run.status == "pending" && run.mode == "engine"
 
         run.update!(status: "running", started_at: Time.current, completed_at: nil, failure_reason: nil)
         true
@@ -31,19 +42,20 @@ module Backtest
       )
     end
 
-    # Wipes the run's trades and paper account, and resets its balance to the
-    # initial capital. The run definition is kept, so it can be executed again.
+    # Clears the run's results and paper account, and returns it to pending
+    # with its initial balance. The definition is kept. An engine run that is
+    # executing cannot be reset; an external run can be reset at any point.
     def reset!(run)
-      raise Conflict, "run #{run.id} is running; it cannot be reset until it finishes" if run.running?
+      raise Conflict, "run #{run.id} is executing; it cannot be reset until it finishes" if run.mode == "engine" && run.running?
 
       Run.transaction do
-        clear_account!(run)
-        run.trades.delete_all
+        clear!(run)
         run.update!(
           status: "pending",
           bars_processed: 0,
+          replay_at: nil,
           metrics: {},
-          equity_curve: [],
+          verdict: {},
           diagnostics: {},
           failure_reason: nil,
           started_at: nil,
@@ -54,7 +66,7 @@ module Backtest
     end
 
     def destroy!(run)
-      raise Conflict, "run #{run.id} is running; it cannot be deleted until it finishes" if run.running?
+      raise Conflict, "run #{run.id} is executing; it cannot be deleted until it finishes" if run.mode == "engine" && run.running?
 
       Run.transaction do
         purge_account_data!(run.account_id)
@@ -63,12 +75,14 @@ module Backtest
       end
     end
 
-    # Makes the run's account pristine: all rows removed, and the balance set
-    # to the initial capital. Called at reset and at the start of every
-    # execution, so a re-run after a failure starts clean.
-    def clear_account!(run)
+    # Makes the run pristine: no account rows, no intents, no equity points, no
+    # trades, and the balance at the initial capital.
+    def clear!(run)
       Account.transaction do
         purge_account_data!(run.account_id)
+        run.trades.delete_all
+        run.intents.delete_all
+        run.equity_points.delete_all
         upsert_account!(run)
       end
     end

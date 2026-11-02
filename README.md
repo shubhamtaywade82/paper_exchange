@@ -405,7 +405,51 @@ Supports OCO (one-cancels-other) via a shared `oco_group_id`.
 
 ### Backtesting
 
-Replays OHLC bars through the same accounting core as live trading: margin lock, risk gate, position netting, brokerage and ledger. Each run owns a paper account, so its orders, positions and ledger are isolated and reconcilable. Runs execute asynchronously in `BacktestRunJob` (Solid Queue). A finished run keeps its trades, equity curve and metrics until it is reset or deleted.
+Replays OHLC bars through the same accounting core as live trading: margin lock, risk gate, position netting, brokerage and ledger. Each run owns a paper account, so its orders, positions and ledger are isolated and reconcilable. A finished run keeps its trades, equity curve, metrics, manifest and verdict until it is reset or deleted.
+
+PaperExchange does not decide strategy. Two drivers run the same replay:
+
+- **`mode: "external"` (bot-driven).** Your bot decides. It calls `POST /advance` to receive the next bar, then places orders on the run's account with `POST /api/orders` and `X-Account-Id: <run account_id>`. Orders execute at the next bar's open, plus `slippage_bps`. The bot never supplies a fill price.
+- **`mode: "engine"` (built-in).** A built-in strategy (`sma_cross`, `signal_replay`) decides, and `POST /execute` runs it in the background.
+
+Bot-driven loop:
+
+```bash
+# 1. Upload the bars (CSV or JSON). The bot's history comes from its own data source.
+curl -X POST $BASE/api/backtest_datasets -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"name":"sol 5m","symbol":"SOLUSDT","instrument_type":"CRYPTO_PERPETUAL","timeframe":"5m","csv":"bar_at,open,high,low,close,volume\n..."}'
+
+# 2. Create the run: capital, what it must prove (benchmarks), and what was tested (manifest).
+curl -X POST $BASE/api/backtest_runs -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"dataset_id":1,"name":"sma 9/21","mode":"external","initial_capital":100000,
+       "benchmarks":{"min_trades":5,"min_profit_factor":1.2,"max_drawdown_pct":20,"beat_buy_and_hold":true},
+       "manifest":{"strategy":"sma_cross","version":"1.0.0","params":{"fast":9,"slow":21}}}'
+# -> { "id": 1, "account_id": "backtest-…", … }
+
+# 3. Each step: read a bar, decide, place an order for the next open.
+curl -X POST $BASE/api/backtest_runs/1/advance -H "X-API-Key: $KEY"      # bar, fills, position, equity, finished?
+curl -X POST $BASE/api/orders -H "X-API-Key: $KEY" -H "X-Account-Id: backtest-…" \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"SOLUSDT","side":"buy","quantity":10,"order_type":"market","instrument_type":"CRYPTO_PERPETUAL","stop_loss":148.2}'
+# -> 202 queued. It fills at the next advance's open.
+
+# 4. After the last bar the run finishes itself. Read the results.
+curl $BASE/api/backtest_runs/1 -H "X-API-Key: $KEY"        # metrics, verdict, diagnostics, manifest
+curl $BASE/api/backtest_runs/1/trades -H "X-API-Key: $KEY" # closed round trips, with exit_reason
+```
+
+Rules the replay enforces:
+
+- An order placed between bars is queued. It executes at the next bar's open, never at the close the bot has just seen. An `execution_price` on a replay account is refused with 422.
+- Every entry needs a `stop_loss`. A `take_profit` is optional. Protective legs are placed when the entry fills and cancelled when the position closes.
+- `GET /api/backtest_runs/:id/history` returns only the bars already processed, so the future cannot be read.
+- Market-data writes (`mark_prices`, `funding_events`, `market_events`, `market_structure`) are refused for a replay account. The replay alone sets its prices.
+- `POST /api/backtest_runs/:id/finish` ends the replay early. Resting orders and queued intents are withdrawn, and the results are stored.
+- `POST /api/backtest_runs/:id/reset` clears the run's trades, orders, ledger and equity, restores the starting balance, and keeps the definition.
+
+`script/backtest_driver.rb` is a complete reference bot: an SMA crossover that uses only this API.
+
+Runs execute asynchronously in `BacktestRunJob` (Solid Queue) in `mode: "engine"`.
 
 Backtest accounts are flagged `simulated`. Live recurring jobs (matching, order expiry, option settlement, funding, protections, liquidation cache, market-data subscriptions) act only on live accounts, so a simulated position is never filled, expired, settled or funded at live prices. The ledger reconciler still covers every account.
 
@@ -414,8 +458,12 @@ Backtest accounts are flagged `simulated`. Live recurring jobs (matching, order 
 | POST | `/api/backtest_datasets` | Upload one OHLC series: `bars` (objects or `[ts, o, h, l, c, v]` rows) or `csv` (header `bar_at,open,high,low,close,volume`). Any invalid bar → 422 with `details` |
 | GET | `/api/backtest_datasets` · `/:id` | List (cursor) · detail |
 | DELETE | `/api/backtest_datasets/:id` | Delete when no run uses it (409 otherwise) |
-| POST | `/api/backtest_runs` | Define a run: `dataset_id`, `name`, `strategy`, `sizing`, optional `initial_capital`, `slippage_bps`, `lot_size`, `leverage`, `risk_gate`. 201, status `pending` |
-| POST | `/api/backtest_runs/:id/execute` | Queue the run. 202. 409 unless `pending` |
+| POST | `/api/backtest_runs` | Define a run: `dataset_id`, `name`, `mode` (`external` or `engine`), `initial_capital`, `slippage_bps`, `lot_size`, `leverage`, `risk_gate`, `benchmarks`, `manifest`. Engine runs also need `strategy` and `sizing`. 201, status `pending`, and the `account_id` to trade on |
+| POST | `/api/backtest_runs/:id/advance` | External runs: process the next bar. Returns `bar`, `submitted` (queued orders that executed), `fills`, `position`, `equity`, `finished`, and `verdict` on the last bar. 409 when no bar is left |
+| POST | `/api/backtest_runs/:id/finish` | End the replay early and store the results |
+| POST | `/api/backtest_runs/:id/execute` | Engine runs: queue the run in the background. 202. 409 unless `pending`, and 409 for external runs |
+| GET | `/api/backtest_runs/:id/history` | Bars the replay has processed, oldest first (`?limit=`, max 2000). Never includes future bars |
+| GET | `/api/backtest_runs/:id/intents` | Every order request the run made, with status (`queued`, `submitted`, `rejected`, `cancelled`), reason and note |
 | POST | `/api/backtest_runs/:id/reset` | Clear trades, orders and ledger; restore the initial balance; keep the definition. 409 while running |
 | GET | `/api/backtest_runs` · `/:id` | List (cursor) · status, metrics, diagnostics, `failure_reason` |
 | GET | `/api/backtest_runs/:id/trades` | Closed round-trip trades (cursor) with exit reason |
@@ -440,7 +488,7 @@ Backtest accounts are flagged `simulated`. Live recurring jobs (matching, order 
 
 **Metrics** (`metrics` on the run): net and gross profit and loss, profit factor (capped at 999, flagged), percent profitable, average trade, average win and loss, win/loss ratio, largest win and loss, max drawdown (absolute, percent, and time) from the equity peak, buy & hold return, Sharpe and Sortino (annualised with the market calendar: NSE 252 days × 375 minutes; crypto 365 days × 24 hours), exposure time, average bars in trade, max consecutive wins and losses, total commission, and open P&L.
 
-**Not modelled (current limits):** perpetual funding payments; option expiry settlement; partial fills; multi-instrument portfolios; sub-bar price paths. Crypto-option brokerage uses its fee cap, because a run has no underlying price series (an overstatement, so conservative). Equity is marked at bar close. Throughput is roughly 4–6 ms per bar, so a 100k-bar run takes several minutes.
+**Not modelled (current limits):** perpetual funding payments; option expiry settlement; partial fills; multi-instrument portfolios; sub-bar price paths. Crypto-option brokerage uses its fee cap, because a run has no underlying price series (an overstatement, so conservative). Equity is marked at bar close. Throughput, measured: the in-process replay takes about 24 ms per bar, so a 100k-bar run takes about 40 minutes. A bot driving the same run through the development server took about 85 ms per bar, counting its own HTTP round trips. Batching the per-bar queries (T7.7) is the next speed-up.
 
 ## Project Structure
 

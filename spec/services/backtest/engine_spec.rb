@@ -59,8 +59,8 @@ RSpec.describe Backtest::Engine, type: :service do
     end
 
     it 'records the equity curve with one point per bar, starting at the initial capital' do
-      expect(run.equity_curve.size).to eq(ohlc.size)
-      expect(run.equity_curve.first[1]).to eq('10000.0')
+      expect(run.equity_points.count).to eq(ohlc.size)
+      expect(run.equity_points.order(:bar_at).first.equity).to eq(10_000)
       expect(run.metrics['net_profit']).to eq(run.trades.sole.net_pnl.to_f.round(8))
     end
   end
@@ -270,7 +270,7 @@ RSpec.describe Backtest::Engine, type: :service do
       run = create_run!(dataset, strategy: strategy, sizing: { type: 'percent_of_equity', percent: 50 })
       first = execute_run!(run)
       first_metrics = first.metrics.deep_dup
-      first_curve = first.equity_curve.deep_dup
+      first_curve = first.equity_points.order(:bar_at).pluck(:bar_at, :equity, :in_market)
       first_trade_count = first.trades.count
       first_exit_reasons = first.trades.pluck(:exit_reason)
 
@@ -278,7 +278,7 @@ RSpec.describe Backtest::Engine, type: :service do
       second = execute_run!(run)
 
       expect(second.metrics).to eq(first_metrics)
-      expect(second.equity_curve).to eq(first_curve)
+      expect(second.equity_points.order(:bar_at).pluck(:bar_at, :equity, :in_market)).to eq(first_curve)
       expect(first_trade_count).to be >= 1
       expect(first_exit_reasons).to all(be_in(%w[signal stop_loss take_profit]))
       expect_ledger_to_match_trades(second)
@@ -300,7 +300,7 @@ RSpec.describe Backtest::Engine, type: :service do
       run.reload
       expect(run.status).to eq('pending')
       expect(run.trades).to be_empty
-      expect(run.equity_curve).to eq([])
+      expect(run.equity_points).to be_empty
       expect(PaperExchange::PaperOrder.where(account_id: run.account_id)).to be_empty
       expect(LedgerEntry.where(account_id: run.account_id)).to be_empty
       account = Account.find_by!(account_id: run.account_id)

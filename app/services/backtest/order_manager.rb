@@ -1,43 +1,38 @@
 module Backtest
-  # Turns strategy intents into exchange orders and resolves resting orders
-  # against each bar.
+  # Executes a run's order intents against one bar, through PaperExchange.
   #
-  # Every fill goes through Exchange::PaperExchange: submit_order for orders
-  # that fill at the open, and match_and_fill for resting orders. Margin lock,
-  # risk gate, position netting, brokerage and ledger postings are therefore
-  # the live code path, not a simulation of it.
+  # State lives in Backtest::Intent rows, not in this object. A bot can place
+  # an order between two bars, and the next step loads the intent again. Every
+  # fill goes through Exchange::PaperExchange: submit_order for orders that
+  # fill at the open, and match_and_fill for resting orders. So margin lock,
+  # risk gate, position netting, brokerage and ledger are the live code path.
   #
   # Protective exits are owned here. When an entry fills, its stop-loss (and
-  # optional take-profit) are placed as reduce-only orders. When the position
-  # goes flat, any remaining exits are cancelled (OCO behaviour). A stop-loss
-  # that cannot be placed fails the run instead of being skipped, because an
-  # unprotected position is not an outcome the engine is allowed to report.
+  # optional take-profit) are placed as reduce-only legs. When the position
+  # goes flat, remaining exits are cancelled (OCO). A protective leg that cannot
+  # be placed fails the run, rather than leaving a position unprotected.
   class OrderManager
     class ExecutionError < StandardError; end
 
+    PROTECTIVE_ROLES = %w[stop take_profit liquidation].freeze
     REJECTION_SAMPLE_LIMIT = 50
     MAX_FILL_PASSES = 10_000
 
-    # order id => the exit reason, for every reduce-only fill. The trade
-    # journal reads it to label each closed trade.
-    attr_reader :exit_reasons
+    attr_reader :diagnostics
 
-    def initialize(run:, exchange:, contract:, session:)
+    # diagnostics is the run's diagnostics Hash (string keys), mutated in place.
+    def initialize(run:, exchange:, contract:, diagnostics:)
       @run = run
       @exchange = exchange
       @contract = contract
-      @session = session
       @account_id = run.account_id
       @slippage_bps = run.slippage_bps
       @lot_size = run.lot_size
-      @roles = {}
-      @exit_reasons = {}
-      @rejections = Hash.new(0)
-      @rejection_samples = []
-      @risk_rejections = 0
-      @cancelled_at_end = 0
-      @sequence = 0
+      @diagnostics = diagnostics
+      # Counters are read back from jsonb, which has no default for missing keys.
+      @diagnostics["rejected_intents"] = Hash.new(0).merge(@diagnostics["rejected_intents"] || {})
       @bar = nil
+      @fills_this_bar = 0
     end
 
     def begin_bar(bar)
@@ -49,15 +44,19 @@ module Backtest
     # True when at least one order filled during the current bar. A trade that
     # opens and closes inside one bar still counts as exposure for that bar.
     def traded_this_bar?
-      @fills_this_bar.to_i.positive?
+      @fills_this_bar.positive?
     end
 
-    def submit(intents)
-      intents.each { |raw| submit_intent(raw) }
+    # Executes every queued intent of the run, oldest first, at the current bar's
+    # open. Returns the intents, so the caller can report what happened.
+    def submit_queued
+      queued = Intent.where(backtest_run_id: @run.id, status: "queued").order(:id).to_a
+      queued.each { |intent| process_intent(intent) }
+      queued.map(&:reload)
     end
 
     # Resolves every open order against the current bar. Stops are considered
-    # before limits (adverse-first). A fill can place new exits, so passes repeat
+    # before limits (adverse-first). A fill can place new legs, so passes repeat
     # until nothing more fills.
     def fill_resting
       passes = 0
@@ -91,7 +90,8 @@ module Backtest
       fill_price = position.long? ? [ @bar.open, liquidation ].min : [ @bar.open, liquidation ].max
       submit_order(
         side: closing_side(position), kind: "market", quantity: position.quantity,
-        role: :liquidation, reason: "liquidation", reduce_only: true, fixed_price: fill_price
+        role: "liquidation", reason: "liquidation", reduce_only: true, fixed_price: fill_price,
+        source: "liquidation"
       )
     end
 
@@ -111,14 +111,21 @@ module Backtest
       return if current_position
 
       resting_orders.each do |order|
-        cancel(order, "position_flat") if meta_for(order)[:reduce_only]
+        intent = intent_for(order)
+        cancel(order, intent, "position_flat") if intent.reduce_only
       end
     end
 
+    # End of data: withdraw resting orders, and withdraw queued intents that
+    # have no next open to execute on.
     def finalize!
       resting_orders.each do |order|
-        cancel(order, "end_of_data")
-        @cancelled_at_end += 1
+        cancel(order, intent_for(order), "end_of_data")
+        @diagnostics["cancelled_at_end"] += 1
+      end
+      Intent.where(backtest_run_id: @run.id, status: "queued").find_each do |intent|
+        intent.update!(status: "cancelled", note: "no_next_open")
+        @diagnostics["unexecuted_intents"] += 1
       end
     end
 
@@ -129,57 +136,68 @@ module Backtest
         .first
     end
 
-    def diagnostics
-      {
-        rejected_intents: @rejections.sort.to_h,
-        rejected_intent_samples: @rejection_samples,
-        risk_rejections: @risk_rejections,
-        cancelled_at_end: @cancelled_at_end
-      }
+    # Exit reasons by paper order id, for the trade journal.
+    def exit_reasons
+      Intent.where(backtest_run_id: @run.id, reduce_only: true).where.not(paper_order_id: nil)
+        .pluck(:paper_order_id, :reason).to_h
     end
 
     private
 
-    def submit_intent(raw)
-      intent = IntentValidator.call(raw, contract: @contract, at: @bar.bar_at, lot_size: @lot_size)
-      intent[:action] == "close" ? submit_close : submit_entry(intent)
+    def process_intent(intent)
+      raw = {
+        action: intent.action, order_kind: intent.order_kind, price: intent.price,
+        trigger_price: intent.trigger_price, stop_loss: intent.stop_loss,
+        take_profit: intent.take_profit, quantity: intent.quantity, tag: intent.reason
+      }
+      normalized = IntentValidator.call(raw, contract: @contract, at: @bar.bar_at, lot_size: @lot_size)
+      if normalized[:action] == "close"
+        submit_close(intent, normalized)
+      else
+        submit_entry(intent, normalized)
+      end
     rescue IntentValidator::Invalid => e
-      reject(e.message)
+      reject_intent(intent, e.message)
     end
 
-    def submit_close
+    def submit_close(intent, normalized)
       position = current_position
-      return reject("no_position_to_close") unless position
+      return reject_intent(intent, "no_position_to_close") unless position
+      # A reduce-only order must close the position: a buy against a long would open a new one.
+      if intent.side.present? && intent.side != closing_side(position)
+        return reject_intent(intent, "reduce_only_wrong_side")
+      end
 
+      quantity = [ normalized[:quantity] || position.quantity, position.quantity ].min
       submit_order(
-        side: closing_side(position), kind: "market", quantity: position.quantity,
-        role: :exit, reason: "signal", reduce_only: true
+        record: intent, side: closing_side(position), kind: "market", quantity: quantity,
+        role: "exit", reason: intent.reason || "signal", reduce_only: true
       )
     end
 
-    def submit_entry(intent)
-      side = intent[:side]
+    def submit_entry(intent, normalized)
+      side = normalized[:side]
       position = current_position
       if position
         same_side = (side == "buy") == position.long?
-        return reject(same_side ? "pyramiding_disabled" : "opposite_position_open")
+        return reject_intent(intent, same_side ? "pyramiding_disabled" : "opposite_position_open")
       end
-      return reject("entry_already_pending") if pending_entry?
+      return reject_intent(intent, "entry_already_pending") if pending_entry?
 
-      reference = intent[:price] || intent[:trigger_price] || @bar.open
-      return reject("stop_loss_wrong_side") unless stop_on_protective_side?(side, intent[:stop_loss], reference)
-      if intent[:take_profit] && !target_on_profit_side?(side, intent[:take_profit], reference)
-        return reject("take_profit_wrong_side")
+      reference = normalized[:price] || normalized[:trigger_price] || @bar.open
+      return reject_intent(intent, "stop_loss_wrong_side") unless stop_on_protective_side?(side, normalized[:stop_loss], reference)
+      if normalized[:take_profit] && !target_on_profit_side?(side, normalized[:take_profit], reference)
+        return reject_intent(intent, "take_profit_wrong_side")
       end
 
-      quantity = intent[:quantity] || sizing_quantity(reference, intent[:stop_loss])
-      return reject("insufficient_quantity") unless quantity&.positive?
+      quantity = normalized[:quantity] || sizing_quantity(reference, normalized[:stop_loss])
+      return reject_intent(intent, "insufficient_quantity") unless quantity&.positive?
 
       submit_order(
-        side: side, kind: intent[:order_kind], quantity: quantity,
-        price: intent[:price], trigger_price: intent[:trigger_price],
-        role: :entry, reason: nil, reduce_only: false,
-        stop_loss: intent[:stop_loss], take_profit: intent[:take_profit]
+        record: intent, side: side, kind: normalized[:order_kind], quantity: quantity,
+        price: normalized[:price], trigger_price: normalized[:trigger_price],
+        role: "entry", reason: intent.reason, reduce_only: false,
+        stop_loss: normalized[:stop_loss], take_profit: normalized[:take_profit]
       )
     end
 
@@ -216,12 +234,20 @@ module Backtest
       (raw / @lot_size).floor * @lot_size
     end
 
-    # Places one order. An order that is already through its level at the open
-    # is submitted with an explicit execution_price, so it fills at the open and
-    # never relies on the book. Any other order is submitted as a resting order,
-    # and fill_resting resolves it against the bar.
-    def submit_order(side:, kind:, quantity:, role:, reason:, reduce_only:,
-      price: nil, trigger_price: nil, stop_loss: nil, take_profit: nil, fixed_price: nil)
+    # Places one order for an intent, or for a leg or liquidation created by the
+    # replay. An order already through its level at the open is submitted with
+    # an explicit execution_price, so it fills at the open and never relies on
+    # the book. Any other order rests, and fill_resting resolves it against the bar.
+    def submit_order(record: nil, side:, kind:, quantity:, role:, reason:, reduce_only:,
+      price: nil, trigger_price: nil, stop_loss: nil, take_profit: nil, fixed_price: nil,
+      source: nil, parent: nil)
+      record ||= Intent.create!(
+        run: @run, source: source || "engine", role: role, status: "queued",
+        action: reduce_only ? "close" : (side == "buy" ? "buy" : "sell"), side: side,
+        order_kind: kind, reduce_only: reduce_only, quantity: quantity, price: price,
+        trigger_price: trigger_price, stop_loss: stop_loss, take_profit: take_profit,
+        leverage: leverage_for_order, reason: reason, parent_intent: parent, queued_at: @bar.bar_at
+      )
       reset_book!
       immediate = fixed_price || FillCalculator.at_open(
         kind: kind, side: side, price: price, trigger_price: trigger_price,
@@ -235,57 +261,57 @@ module Backtest
         order_kind: kind,
         price: price,
         trigger_price: trigger_price,
-        leverage: (@run.leverage if @contract.leverage_allowed?),
-        client_order_id: next_client_order_id,
+        leverage: (record.leverage if @contract.leverage_allowed?),
+        client_order_id: record.client_order_id || "bt-#{@run.id}-#{record.id}",
         execution_price: immediate,
         reduce_only: (true if reduce_only)
       }.merge(@contract.order_attributes).compact
 
       order = @exchange.submit_order(attrs)
-      remember(order, role: role, reason: reason, reduce_only: reduce_only, stop_loss: stop_loss, take_profit: take_profit)
-
-      case order.status
-      when "filled" then on_filled(order)
-      when "rejected" then fail_or_reject(role, "exchange_rejected", order.rejection_reason)
+      if order.status == "rejected"
+        return fail_submission(record, "exchange_rejected", order.rejection_reason)
       end
+
+      record.update!(paper_order_id: order.id, status: "submitted", submitted_at: @bar.bar_at)
+      on_filled(order, record) if order.status == "filled"
       order
     rescue Exchange::PaperExchange::RiskCheckFailedError => e
-      @risk_rejections += 1
-      fail_or_reject(role, "risk_gate", e.rejections.join(", "))
-      nil
+      @diagnostics["risk_rejections"] += 1
+      fail_submission(record, "risk_gate", e.rejections.join(", "))
     rescue Ledger::InsufficientMarginError => e
-      fail_or_reject(role, "insufficient_margin", e.message)
-      nil
+      fail_submission(record, "insufficient_margin", e.message)
     rescue Exchange::OrderValidationError, ActiveRecord::RecordInvalid => e
-      fail_or_reject(role, "order_invalid", e.message)
-      nil
+      fail_submission(record, "order_invalid", e.message)
     end
 
-    def fail_or_reject(role, code, detail)
-      return reject(code, detail) if role == :entry
+    # A protective leg or a liquidation that cannot be placed fails the run. An
+    # entry or an exit request is rejected and recorded.
+    def fail_submission(record, code, detail)
+      if PROTECTIVE_ROLES.include?(record.role)
+        record.update!(status: "rejected", rejection_reason: "#{code}: #{detail}")
+        raise ExecutionError, "#{record.role} order could not be placed (#{code}): #{detail}"
+      end
 
-      raise ExecutionError, "#{role} order could not be placed (#{code}): #{detail}"
+      reject_intent(record, code, detail)
     end
 
-    def on_filled(order)
-      @fills_this_bar = @fills_this_bar.to_i + 1
-      meta = meta_for(order)
-      @exit_reasons[order.id] = meta[:reason] if meta[:reduce_only]
-      attach_brackets(order, meta) if meta[:role] == :entry
+    def on_filled(order, record)
+      @fills_this_bar += 1
+      attach_brackets(record, order) if record.role == "entry"
       reconcile_flat!
     end
 
     # Places the protective legs of a filled entry. If one leg is already
     # through the open, only that leg is placed: the position it protects is
     # already closed by the gap, and the other leg would be orphaned.
-    def attach_brackets(entry, meta)
-      exit_side = entry.side == "buy" ? "sell" : "buy"
+    def attach_brackets(entry, entry_order)
+      exit_side = entry_order.side == "buy" ? "sell" : "buy"
       legs = []
-      if meta[:stop_loss]
-        legs << { role: :stop, kind: "stop_loss", price: nil, trigger_price: meta[:stop_loss], reason: "stop_loss" }
+      if entry.stop_loss
+        legs << { role: "stop", kind: "stop_loss", price: nil, trigger_price: entry.stop_loss, reason: "stop_loss" }
       end
-      if meta[:take_profit]
-        legs << { role: :take_profit, kind: "bounded", price: meta[:take_profit], trigger_price: nil, reason: "take_profit" }
+      if entry.take_profit
+        legs << { role: "take_profit", kind: "bounded", price: entry.take_profit, trigger_price: nil, reason: "take_profit" }
       end
 
       through_open = legs.find do |leg|
@@ -295,19 +321,13 @@ module Backtest
         )
       end
 
-      if through_open
-        place_leg(through_open, exit_side, entry.quantity)
-      else
-        legs.each { |leg| place_leg(leg, exit_side, entry.quantity) }
+      (through_open ? [ through_open ] : legs).each do |leg|
+        submit_order(
+          source: "bracket", parent: entry, side: exit_side, kind: leg[:kind], quantity: entry_order.quantity,
+          price: leg[:price], trigger_price: leg[:trigger_price], role: leg[:role],
+          reason: leg[:reason], reduce_only: true
+        )
       end
-    end
-
-    def place_leg(leg, exit_side, quantity)
-      submit_order(
-        side: exit_side, kind: leg[:kind], quantity: quantity,
-        price: leg[:price], trigger_price: leg[:trigger_price],
-        role: leg[:role], reason: leg[:reason], reduce_only: true
-      )
     end
 
     def resting_orders
@@ -315,6 +335,11 @@ module Backtest
         .where(account_id: @account_id, status: "open")
         .order(order_kind: :desc, placed_at: :asc, id: :asc)
         .to_a
+    end
+
+    def intent_for(order)
+      Intent.find_by(paper_order_id: order.id) ||
+        raise(ExecutionError, "paper order #{order.id} is not tracked by run #{@run.id}")
     end
 
     def resting_fill_price(order)
@@ -329,11 +354,11 @@ module Backtest
     end
 
     def fill_resting_order(order, price)
-      meta = meta_for(order)
-      if meta[:reduce_only]
+      intent = intent_for(order)
+      if intent.reduce_only
         live = current_position&.quantity || 0
         if live.zero?
-          cancel(order, "position_flat")
+          cancel(order, intent, "position_flat")
           return
         end
         # A reduce-only order can never grow or flip the position.
@@ -341,30 +366,37 @@ module Backtest
       end
 
       filled = @exchange.match_and_fill(order, price)
-      on_filled(filled)
+      on_filled(filled, intent)
     end
 
     def pending_entry?
-      resting_orders.any? { |order| meta_for(order)[:role] == :entry }
+      resting_orders.any? { |order| intent_for(order).role == "entry" }
     end
 
     def cancel_exit_orders(reason)
-      resting_orders.each { |order| cancel(order, reason) if meta_for(order)[:reduce_only] }
+      resting_orders.each do |order|
+        intent = intent_for(order)
+        cancel(order, intent, reason) if intent.reduce_only
+      end
     end
 
-    def cancel(order, _reason)
+    def cancel(order, intent, note)
       @exchange.cancel_order(order.id)
+      intent.update!(status: "cancelled", note: note)
     end
 
-    def remember(order, role:, reason:, reduce_only:, stop_loss:, take_profit:)
-      @roles[order.id] = {
-        role: role, reason: reason, reduce_only: reduce_only,
-        stop_loss: stop_loss, take_profit: take_profit
-      }
+    def reject_intent(intent, code, detail = nil)
+      intent.update!(status: "rejected", rejection_reason: [ code, detail ].compact.join(": "))
+      @diagnostics["rejected_intents"][code] += 1
+      samples = @diagnostics["rejected_intent_samples"]
+      if samples.size < REJECTION_SAMPLE_LIMIT
+        samples << { "at" => @bar&.bar_at&.iso8601, "code" => code, "detail" => detail }.compact
+      end
+      nil
     end
 
-    def meta_for(order)
-      @roles.fetch(order.id) { raise ExecutionError, "order #{order.id} was not placed by this run" }
+    def leverage_for_order
+      @contract.leverage_allowed? ? @run.leverage : 1
     end
 
     def reset_book!
@@ -381,19 +413,6 @@ module Backtest
 
     def extreme_price(position)
       position.long? ? @bar.low : @bar.high
-    end
-
-    def next_client_order_id
-      @sequence += 1
-      "bt-#{@run.id}-#{@sequence}"
-    end
-
-    def reject(code, detail = nil)
-      @rejections[code] += 1
-      if @rejection_samples.size < REJECTION_SAMPLE_LIMIT
-        @rejection_samples << { at: @bar&.bar_at&.iso8601, code: code, detail: detail }.compact
-      end
-      nil
     end
   end
 end

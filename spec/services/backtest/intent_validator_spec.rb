@@ -71,6 +71,6 @@ RSpec.describe Backtest::IntentValidator do
   end
 
   it 'treats close as needing no stop-loss' do
-    expect(validate(action: 'close')).to eq(action: 'close', tag: nil)
+    expect(validate(action: 'close')).to include(action: 'close', quantity: nil, tag: nil)
   end
 end

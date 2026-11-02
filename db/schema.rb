@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -66,6 +66,48 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
     t.index ["fingerprint"], name: "index_backtest_datasets_on_fingerprint"
   end
 
+  create_table "backtest_equity_points", force: :cascade do |t|
+    t.bigint "backtest_run_id", null: false
+    t.datetime "bar_at", null: false
+    t.decimal "equity", precision: 36, scale: 18, null: false
+    t.boolean "in_market", default: false, null: false
+    t.datetime "created_at", null: false
+    t.index ["backtest_run_id", "bar_at"], name: "index_backtest_equity_points_on_backtest_run_id_and_bar_at", unique: true
+    t.index ["backtest_run_id"], name: "index_backtest_equity_points_on_backtest_run_id"
+  end
+
+  create_table "backtest_intents", force: :cascade do |t|
+    t.bigint "backtest_run_id", null: false
+    t.bigint "parent_intent_id"
+    t.string "source", null: false
+    t.string "role", null: false
+    t.string "status", default: "queued", null: false
+    t.string "action", null: false
+    t.string "side"
+    t.string "order_kind"
+    t.boolean "reduce_only", default: false, null: false
+    t.decimal "quantity", precision: 36, scale: 18
+    t.decimal "price", precision: 36, scale: 18
+    t.decimal "trigger_price", precision: 36, scale: 18
+    t.decimal "stop_loss", precision: 36, scale: 18
+    t.decimal "take_profit", precision: 36, scale: 18
+    t.integer "leverage", default: 1, null: false
+    t.string "reason"
+    t.string "client_order_id"
+    t.bigint "paper_order_id"
+    t.datetime "queued_at"
+    t.datetime "submitted_at"
+    t.text "rejection_reason"
+    t.text "note"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["backtest_run_id", "client_order_id"], name: "index_backtest_intents_on_run_and_client_order_id", unique: true, where: "(client_order_id IS NOT NULL)"
+    t.index ["backtest_run_id", "status"], name: "index_backtest_intents_on_backtest_run_id_and_status"
+    t.index ["backtest_run_id"], name: "index_backtest_intents_on_backtest_run_id"
+    t.index ["paper_order_id"], name: "index_backtest_intents_on_paper_order_id", unique: true, where: "(paper_order_id IS NOT NULL)"
+    t.index ["parent_intent_id"], name: "index_backtest_intents_on_parent_intent_id"
+  end
+
   create_table "backtest_runs", force: :cascade do |t|
     t.string "name", null: false
     t.bigint "backtest_dataset_id", null: false
@@ -80,7 +122,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
     t.boolean "risk_gate", default: true, null: false
     t.string "account_id", null: false
     t.jsonb "metrics", default: {}, null: false
-    t.jsonb "equity_curve", default: [], null: false
     t.jsonb "diagnostics", default: {}, null: false
     t.integer "bars_processed", default: 0, null: false
     t.text "failure_reason"
@@ -88,6 +129,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
     t.datetime "completed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "mode", default: "engine", null: false
+    t.jsonb "manifest", default: {}, null: false
+    t.jsonb "benchmarks", default: {}, null: false
+    t.jsonb "verdict", default: {}, null: false
+    t.datetime "replay_at"
     t.index ["account_id"], name: "index_backtest_runs_on_account_id", unique: true
     t.index ["backtest_dataset_id"], name: "index_backtest_runs_on_backtest_dataset_id"
     t.index ["created_at"], name: "index_backtest_runs_on_created_at"
@@ -122,6 +168,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
     t.index ["backtest_run_id", "sequence"], name: "index_backtest_trades_on_backtest_run_id_and_sequence", unique: true
     t.index ["backtest_run_id"], name: "index_backtest_trades_on_backtest_run_id"
   end
+
+
+
+
 
   create_table "position_protections", force: :cascade do |t|
     t.bigint "paper_position_id", null: false
@@ -333,6 +383,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
   add_foreign_key "paper_exchange_positions", "accounts", column: "account_id", primary_key: "account_id"
   add_foreign_key "risk_events", "accounts", column: "account_id", primary_key: "account_id"
   add_foreign_key "backtest_bars", "backtest_datasets"
+  add_foreign_key "backtest_equity_points", "backtest_runs"
+  add_foreign_key "backtest_intents", "backtest_intents", column: "parent_intent_id"
+  add_foreign_key "backtest_intents", "backtest_runs"
   add_foreign_key "backtest_runs", "backtest_datasets"
   add_foreign_key "backtest_trades", "backtest_runs"
 end

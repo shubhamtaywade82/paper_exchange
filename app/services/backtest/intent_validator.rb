@@ -25,7 +25,13 @@ module Backtest
       raise Invalid, "unknown_action" unless ACTIONS.include?(action)
 
       tag = h[:tag].to_s.presence
-      return { action: "close", tag: tag } if action == "close"
+      if action == "close"
+        # A close may name a quantity to reduce by; absent means the whole position.
+        close_quantity = Parse.positive_decimal(h[:quantity])
+        raise Invalid, "quantity_not_lot_multiple" if close_quantity && !lot_multiple?(close_quantity, lot_size)
+
+        return { action: "close", quantity: close_quantity, tag: tag }
+      end
 
       side = action == "buy" ? "buy" : "sell"
       raise Invalid, "options_buy_only" if contract.option? && side == "sell"

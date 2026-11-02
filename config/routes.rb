@@ -18,7 +18,11 @@ Rails.application.routes.draw do
     resources :backtest_runs, only: %i[index show create destroy] do
       member do
         post :execute
+        post :advance
+        post :finish
         post :reset
+        get :history
+        get :intents
         get :trades
         get :orders
         get :positions
