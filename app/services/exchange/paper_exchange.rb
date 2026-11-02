@@ -116,7 +116,7 @@ module Exchange
       )
 
       order = ::PaperExchange::PaperOrder.new(
-        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Time.current)
+        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Backtest::Session.now)
       )
       begin
         order.save!
@@ -152,7 +152,28 @@ module Exchange
           # here while the signal used attrs[:ltp] — a market order with
           # only execution_price passed the risk gate with zero notional
           # but locked the real margin here, creating an inconsistency.
+          # The risk gate runs BEFORE the margin lock. MarginValidator compares
+          # the order's margin with available_balance, and after lock_margin!
+          # that balance already excludes this order's own margin. The old
+          # order rejected any order needing more than half the free balance
+          # (MARGIN_REJECTED on a 6,000 buy with 10,000 free). Nothing is
+          # written before the gate, and the lock still sits inside the same
+          # transaction, so a rejection leaves no state behind.
           required_margin = order.required_margin(reference_price)
+          result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+          _passed, rejected = result
+          if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+            # A cash shortfall keeps its documented status: 402 via
+            # InsufficientMarginError (design.md §3), the same error the lock raises.
+            available = Account.find_by(account_id: account_id)&.available_balance
+            if Array(rejected).include?(:MARGIN_REJECTED) && available && available < required_margin
+              raise Ledger::InsufficientMarginError,
+                "account #{account_id} has #{available} available, needs #{required_margin}"
+            end
+
+            raise RiskCheckFailedError, Array(rejected)
+          end
+
           Ledger::MarginLedger.lock_margin!(
             account_id: account_id,
             amount: required_margin,
@@ -160,12 +181,6 @@ module Exchange
             payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_lock" }
           )
           order.update_column(:locked_margin, required_margin)
-
-          result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
-          _passed, rejected = result
-          if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
-            raise RiskCheckFailedError, Array(rejected)
-          end
         end
 
         result = @matching.execute(order)

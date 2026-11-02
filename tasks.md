@@ -153,3 +153,14 @@ Exit bar (from `prd.md` §7): T0.x–T2.x all Done (M1–M7 closed with regressi
 - [ ] **T6.43 · TODO — SimpleCov threshold (N8)** — `SimpleCov.minimum_coverage`; CI eager-load check.
 - [ ] **T6.44 · TODO — Indicator/candle/greeks wiring** — `IndicatorEngine` compute, `CandleBuilder`, `GreeksService`, `OptionChainService`, `OptionSelector` exist but have no runtime callers.
 - [ ] **T6.45 · TODO — Live broker adapters (order routing)** — Currently paper-only; the provider adapters consume public market data only.
+
+### Phase 7 — Backtesting engine
+
+- [x] **T7.1 · Done (2026-11-02) — Backtesting engine.** Datasets, runs, closed trades, equity curve and TradingView-style metrics, all stored. Reset and re-run. Built on the live accounting core via `Backtest::Session`. Evidence: `spec/services/backtest/*`, `spec/requests/backtest_*`.
+- [x] **T7.2 · Done (2026-11-02) — Resting limit and stop orders (live path).** `MatchingEngine` rejected every non-marketable limit/stop. Regression: `spec/services/exchange/resting_orders_spec.rb`.
+- [x] **T7.8 · Done (2026-11-02) — Backtest accounts isolated from live jobs.** Accounts carry `simulated`; the live recurring jobs scope to `live_accounts`. Evidence: `spec/services/backtest/live_isolation_spec.rb`.
+- [x] **T7.3 · Done (2026-11-02) — Margin double-count (live path).** Orders needing more than half the free balance were rejected by the risk gate. The gate now runs before the lock, and the 402 contract is kept. Regression: `spec/services/exchange/margin_gate_order_spec.rb`.
+- [ ] **T7.4 · TODO — Perpetual funding in backtests.** Needs a funding series on the dataset, applied through `FundingJob`'s accounting.
+- [ ] **T7.5 · TODO — Option expiry settlement in backtests.** Needs the underlying's settlement price on the dataset. Until then, a position open past expiry fails the run.
+- [ ] **T7.6 · TODO — Historical loaders.** DhanHQ historical OHLC for NSE contracts; Binance/CoinDCX klines. Both currently need a CSV or JSON upload.
+- [ ] **T7.7 · TODO — Batch the per-bar queries.** About 4–6 ms per bar today. Position and order reads can be cached per bar.

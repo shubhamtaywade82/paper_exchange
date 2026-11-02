@@ -37,6 +37,20 @@
 | GET | `/api/market_events` | Read ticks back newest-first | `?symbol=`, `?count=` (1–1000, default 100), `?before=` stream cursor |
 | POST | `/api/market_structure` | Append an SMC snapshot | trend allowlist, fvg counts ≥ 0, parseable `as_of` |
 | GET | `/api/market_structure` | Latest snapshot(s) | `?symbol=` (404 when none) or latest-per-symbol for `?timeframe=` (default 5m) |
+| POST | `/api/backtest_datasets` | Upload an OHLC dataset (`bars` or `csv`) | 201 + dataset; 422 `{error, details}` on any invalid bar (OHLC, timestamps, currency, option fields) |
+| GET | `/api/backtest_datasets` | Datasets, newest first | keyset paginated: `{data, next_cursor}` |
+| GET | `/api/backtest_datasets/:id` | Dataset metadata | 404 unknown |
+| DELETE | `/api/backtest_datasets/:id` | Delete a dataset | 204; 409 while a run uses it |
+| POST | `/api/backtest_runs` | Define a run (pending, own paper account) | 201; 422 `{error, details}` for an invalid dataset, strategy, sizing or leverage |
+| GET | `/api/backtest_runs` | Runs, newest first | keyset paginated |
+| GET | `/api/backtest_runs/:id` | Status, config, `metrics`, `diagnostics`, `failure_reason` | 404 unknown |
+| POST | `/api/backtest_runs/:id/execute` | Queue execution (`BacktestRunJob`) | 202; 409 unless `pending` |
+| POST | `/api/backtest_runs/:id/reset` | Clear trades, orders, ledger; restore balance; keep definition | 200 → `pending`; 409 while `running` |
+| DELETE | `/api/backtest_runs/:id` | Delete run, trades and its account | 204; 409 while `running` |
+| GET | `/api/backtest_runs/:id/trades` | Closed round trips with `exit_reason` | keyset paginated (`entry_at`) |
+| GET | `/api/backtest_runs/:id/orders` | Run account's paper orders | keyset paginated (`placed_at`) |
+| GET | `/api/backtest_runs/:id/positions` | Run account's position rows | |
+| GET | `/api/backtest_runs/:id/equity` | Mark-to-market equity per bar | `{data: [{at, equity, in_market}]}` |
 | POST | `/api/strategy/signals` | Read-only pre-trade risk assessment | same gate as orders, decide-only (M5); `decision: allow\|reject` + `rejections` + market-structure context |
 | GET | `/api/exchange/status` | Provider connectivity + quote freshness | 200 when healthy, 503 when degraded; includes per-provider health + per-position quote staleness |
 | POST | `/api/positions/:id/protections` | Attach SL/TP/trailing-stop policy | durable in PostgreSQL; `ProtectionMonitorJob` (every 3s) triggers force-close on breach; supports OCO via `oco_group_id` |

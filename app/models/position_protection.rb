@@ -23,6 +23,9 @@
 class PositionProtection < ApplicationRecord
   self.table_name = "position_protections"
 
+  # Protections of live accounts only. Cross-account jobs must use this scope.
+  scope :live_accounts, -> { where(account_id: ::Account.live.select(:account_id)) }
+
   PROTECTION_TYPES = %w[stop_loss take_profit trailing_stop].freeze
   STATUSES = %w[active triggered cancelled expired].freeze
 

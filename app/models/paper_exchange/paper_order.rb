@@ -2,6 +2,9 @@ module PaperExchange
   class PaperOrder < ApplicationRecord
     self.table_name = "paper_exchange_orders"
 
+    # Orders of live accounts only. Cross-account jobs must use this scope.
+    scope :live_accounts, -> { where(account_id: ::Account.live.select(:account_id)) }
+
     enum :side, { buy: 0, sell: 1 }
     enum :order_kind, { market: 0, bounded: 1, stop_loss: 2 }
     enum :status, {
@@ -89,7 +92,7 @@ module PaperExchange
       transaction do
         update!(
           status: :cancelled,
-          cancelled_at: Time.current
+          cancelled_at: Backtest::Session.now
         )
       end
       self
@@ -105,7 +108,7 @@ module PaperExchange
       assert_transition!(%w[open partially_filled], :fill)
       update!(
         status: :filled,
-        filled_at: Time.current,
+        filled_at: Backtest::Session.now,
         filled_quantity: quantity
       )
       self
@@ -123,7 +126,7 @@ module PaperExchange
     def rejected!(reason)
       update_columns(
         status: :rejected,
-        rejected_at: Time.current,
+        rejected_at: Backtest::Session.now,
         rejection_reason: reason
       )
       self
@@ -133,7 +136,7 @@ module PaperExchange
       assert_transition!(%w[pending open partially_filled], :expire)
       update!(
         status: :expired,
-        expired_at: Time.current
+        expired_at: Backtest::Session.now
       )
       self
     end
@@ -147,7 +150,7 @@ module PaperExchange
     end
 
     def set_placed_at
-      self.placed_at ||= Time.current
+      self.placed_at ||= Backtest::Session.now
     end
   end
 end

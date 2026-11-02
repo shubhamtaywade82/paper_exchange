@@ -15,7 +15,10 @@ module Exchange
 
       fill_qty, fill_price = compute_fill(order, book)
 
-      if fill_qty && fill_qty.positive?
+      # compute_fill returns [:unfilled, nil] for a resting order. A Symbol has
+      # no #positive?, so the old check raised NoMethodError, the rescue below
+      # rejected the order, and no limit or stop order could ever rest.
+      if fill_qty.is_a?(Numeric) && fill_qty.positive?
         [ fill_qty, fill_price ]
       else
         [ :unfilled, nil ]

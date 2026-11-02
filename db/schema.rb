@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -23,12 +23,104 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
     t.decimal "locked_margin", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "margin", precision: 36, scale: 18, default: "0.0", null: false
     t.string "name", null: false
+    t.boolean "simulated", default: false, null: false
     # P1-1: persisted equity high-water mark for the drawdown risk gate.
     t.decimal "max_equity_achieved", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "realized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.decimal "unrealized_pnl", precision: 36, scale: 18, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_accounts_on_account_id", unique: true
+  end
+
+  create_table "backtest_bars", force: :cascade do |t|
+    t.bigint "backtest_dataset_id", null: false
+    t.datetime "bar_at", null: false
+    t.decimal "open", precision: 36, scale: 18, null: false
+    t.decimal "high", precision: 36, scale: 18, null: false
+    t.decimal "low", precision: 36, scale: 18, null: false
+    t.decimal "close", precision: 36, scale: 18, null: false
+    t.decimal "volume", precision: 36, scale: 18, default: "0.0", null: false
+    t.index ["backtest_dataset_id", "bar_at"], name: "index_backtest_bars_on_backtest_dataset_id_and_bar_at", unique: true
+    t.index ["backtest_dataset_id"], name: "index_backtest_bars_on_backtest_dataset_id"
+    t.check_constraint "low > 0::numeric AND high >= low AND high >= open AND high >= close AND low <= open AND low <= close", name: "backtest_bars_ohlc_valid"
+    t.check_constraint "volume >= 0::numeric", name: "backtest_bars_volume_non_negative"
+  end
+
+  create_table "backtest_datasets", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "symbol", null: false
+    t.string "venue", default: "paper", null: false
+    t.string "instrument_type", null: false
+    t.string "currency", null: false
+    t.string "timeframe", null: false
+    t.string "option_type"
+    t.decimal "strike_price", precision: 36, scale: 18
+    t.date "expiry_date"
+    t.integer "bars_count", default: 0, null: false
+    t.datetime "first_bar_at"
+    t.datetime "last_bar_at"
+    t.string "fingerprint", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_backtest_datasets_on_created_at"
+    t.index ["fingerprint"], name: "index_backtest_datasets_on_fingerprint"
+  end
+
+  create_table "backtest_runs", force: :cascade do |t|
+    t.string "name", null: false
+    t.bigint "backtest_dataset_id", null: false
+    t.string "status", default: "pending", null: false
+    t.string "strategy_key", null: false
+    t.jsonb "strategy_params", default: {}, null: false
+    t.decimal "initial_capital", precision: 36, scale: 18, null: false
+    t.integer "leverage", default: 1, null: false
+    t.jsonb "sizing", default: {}, null: false
+    t.decimal "slippage_bps", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "lot_size", precision: 36, scale: 18, default: "1.0", null: false
+    t.boolean "risk_gate", default: true, null: false
+    t.string "account_id", null: false
+    t.jsonb "metrics", default: {}, null: false
+    t.jsonb "equity_curve", default: [], null: false
+    t.jsonb "diagnostics", default: {}, null: false
+    t.integer "bars_processed", default: 0, null: false
+    t.text "failure_reason"
+    t.datetime "started_at"
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_backtest_runs_on_account_id", unique: true
+    t.index ["backtest_dataset_id"], name: "index_backtest_runs_on_backtest_dataset_id"
+    t.index ["created_at"], name: "index_backtest_runs_on_created_at"
+    t.index ["status"], name: "index_backtest_runs_on_status"
+  end
+
+  create_table "backtest_trades", force: :cascade do |t|
+    t.bigint "backtest_run_id", null: false
+    t.integer "sequence", null: false
+    t.string "symbol", null: false
+    t.string "instrument_type", null: false
+    t.string "option_type"
+    t.decimal "strike_price", precision: 36, scale: 18
+    t.date "expiry_date"
+    t.string "direction", null: false
+    t.decimal "quantity", precision: 36, scale: 18, null: false
+    t.datetime "entry_at", null: false
+    t.decimal "entry_price", precision: 36, scale: 18, null: false
+    t.datetime "exit_at", null: false
+    t.decimal "exit_price", precision: 36, scale: 18, null: false
+    t.decimal "gross_pnl", precision: 36, scale: 18, null: false
+    t.decimal "commission", precision: 36, scale: 18, null: false
+    t.decimal "net_pnl", precision: 36, scale: 18, null: false
+    t.decimal "return_pct", precision: 36, scale: 18, null: false
+    t.integer "bars_held", default: 0, null: false
+    t.string "exit_reason", null: false
+    t.bigint "entry_order_id"
+    t.bigint "exit_order_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["backtest_run_id", "entry_at"], name: "index_backtest_trades_on_backtest_run_id_and_entry_at"
+    t.index ["backtest_run_id", "sequence"], name: "index_backtest_trades_on_backtest_run_id_and_sequence", unique: true
+    t.index ["backtest_run_id"], name: "index_backtest_trades_on_backtest_run_id"
   end
 
   create_table "position_protections", force: :cascade do |t|
@@ -240,4 +332,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
   add_foreign_key "paper_exchange_orders", "accounts", column: "account_id", primary_key: "account_id"
   add_foreign_key "paper_exchange_positions", "accounts", column: "account_id", primary_key: "account_id"
   add_foreign_key "risk_events", "accounts", column: "account_id", primary_key: "account_id"
+  add_foreign_key "backtest_bars", "backtest_datasets"
+  add_foreign_key "backtest_runs", "backtest_datasets"
+  add_foreign_key "backtest_trades", "backtest_runs"
 end

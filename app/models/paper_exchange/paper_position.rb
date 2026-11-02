@@ -2,6 +2,9 @@ module PaperExchange
   class PaperPosition < ApplicationRecord
     self.table_name = "paper_exchange_positions"
 
+    # Positions of live accounts only. Cross-account jobs must use this scope.
+    scope :live_accounts, -> { where(account_id: ::Account.live.select(:account_id)) }
+
     enum :side, { long: 0, short: 1 }
 
     has_many :paper_trades,

@@ -30,6 +30,7 @@ class OptionExpiryJob < ApplicationJob
 
   def perform(now: Time.now.utc)
     ::PaperExchange::PaperPosition
+      .live_accounts
       .where.not(option_type: nil)
       .where.not(quantity: 0)
       .where("expiry_date <= ?", [ now.to_date, Date.today ].max)

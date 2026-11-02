@@ -30,7 +30,7 @@ module Exchange
         charges: charges,
         total_charges: charges[:total],
         fill_type: "full",
-        traded_at: Time.current
+        traded_at: Backtest::Session.now
       )
       [ qty, fill_price, trade ]
     end

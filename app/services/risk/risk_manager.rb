@@ -18,6 +18,11 @@ module Risk
   class RiskManager
     class << self
       def evaluate(account_id:, signal:)
+        # A backtest run can opt out of the risk gate for strategy research
+        # (its margin lock still applies). Live traffic never has a session.
+        session = Backtest::Session.current
+        return [ [ :passed ], nil ] if session && !session.risk_gate?
+
         results = VALIDATORS.map do |name, validator|
           next [ :passed, name ] unless validator
 

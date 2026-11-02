@@ -65,7 +65,7 @@ module Exchange
       if attrs[:side] == "sell" && !attrs[:reduce_only]
         raise OrderValidationError, "CRYPTO_OPTION sell must be reduce_only: option writing (sell to open) is not supported"
       end
-      if attrs[:side] == "buy" && Time.now.utc >= CryptoInstrumentCatalog.option_expires_at(parsed.expiry_date)
+      if attrs[:side] == "buy" && Backtest::Session.now.utc >= CryptoInstrumentCatalog.option_expires_at(parsed.expiry_date)
         raise OrderValidationError, "CRYPTO_OPTION #{attrs[:symbol]} has expired; it cannot be bought"
       end
     end

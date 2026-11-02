@@ -23,7 +23,14 @@ module MarketData
     class << self
       # Called by the market data daemon on every WebSocket tick. Writes are
       # process-local (Concurrent::Hash with TTL) plus a Redis mirror — never AR.
+      # Inside a backtest run the mark lives in that run's Session, never in
+      # Redis: a simulated price must not reach the live feed (see
+      # Backtest::Session).
       def set(symbol, price)
+        if (session = Backtest::Session.current)
+          return session.set_mark(normalize(symbol), price)
+        end
+
         key = normalize(symbol)
         local_cache[key] = [ price.to_f, Time.now.to_f ]
         with_redis { |r| r.hset(REDIS_KEY, key, price.to_s) }
@@ -37,6 +44,8 @@ module MarketData
       # writes are visible. A Redis outage degrades to "no live price"
       # rather than raising into callers on the order-matching hot path.
       def get(symbol)
+        return Backtest::Session.current.mark(normalize(symbol)) if Backtest::Session.current
+
         key = normalize(symbol)
         cached = local_cache[key]
         if cached && (Time.now.to_f - cached[1]) < LOCAL_CACHE_TTL
@@ -53,6 +62,8 @@ module MarketData
       end
 
       def all
+        return Backtest::Session.current.marks if Backtest::Session.current
+
         with_redis { |r| r.hgetall(REDIS_KEY).transform_values(&:to_f) } || {}
       end
 
@@ -62,6 +73,10 @@ module MarketData
       def bulk_get(symbols)
         keys = Array(symbols).map { |s| normalize(s) }
         return {} if keys.empty?
+
+        if (session = Backtest::Session.current)
+          return keys.each_with_object({}) { |key, acc| acc[key] = session.mark(key) if session.mark(key) }
+        end
 
         raw = with_redis { |r| r.hmget(REDIS_KEY, keys) }
         return {} if raw.nil? # Redis unavailable

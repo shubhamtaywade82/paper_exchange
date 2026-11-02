@@ -16,7 +16,7 @@ class ProtectionMonitorJob < ApplicationJob
   queue_as :risk
 
   def perform
-    ::PositionProtection.where(status: "active").find_each do |protection|
+    ::PositionProtection.live_accounts.where(status: "active").find_each do |protection|
       evaluate_protection(protection)
     end
   end
