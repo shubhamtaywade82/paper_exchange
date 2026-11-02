@@ -7,7 +7,10 @@ on:
 
 jobs:
   scan_ruby:
-    runs-on: ubuntu-latest
+    # Keep CI on the runner image that still provides the exact Ruby patch
+    # pinned by .ruby-version. ubuntu-latest moved to 26.04, where setup-ruby
+    # only publishes the latest patch release for each Ruby series.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -39,7 +42,7 @@ jobs:
           fi
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RUBOCOP_CACHE_ROOT: tmp/rubocop
     steps:
@@ -65,7 +68,7 @@ jobs:
         run: bin/rubocop -f github
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
@@ -86,7 +89,7 @@ jobs:
         image: redis:7-alpine
         ports:
           - 6379:6379
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+        options: --health-cmd "redis-cli ping" --health-interval 10s --timeout 5s --retries 5
 
     steps:
       - name: Install packages
