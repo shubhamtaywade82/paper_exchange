@@ -35,6 +35,9 @@ module Backtest
         if values[:allow_short] && contract.option?
           raise InvalidParams, "allow_short is not permitted on option contracts (options are bought, never written)"
         end
+        if values[:allow_short] && contract.instrument_type == "EQUITY"
+          raise InvalidParams, "allow_short is not permitted on cash equity (the exchange does not sell cash equity short)"
+        end
 
         {
           fast_period: values[:fast_period],

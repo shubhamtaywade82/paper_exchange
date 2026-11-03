@@ -26,6 +26,12 @@ RSpec.describe 'Resting limit and stop orders', type: :service do
   end
 
   it 'keeps a stop order open until its trigger is reached' do
+    # A stop-loss on cash equity protects a holding; it cannot be placed flat.
+    exchange.submit_order(
+      account_id: account_id, symbol: 'RELIANCE', side: 'buy', quantity: 10,
+      order_kind: 'market', instrument_type: 'EQUITY'
+    )
+
     order = exchange.submit_order(
       account_id: account_id, symbol: 'RELIANCE', side: 'sell', quantity: 10,
       order_kind: 'stop_loss', trigger_price: 95.0, instrument_type: 'EQUITY'

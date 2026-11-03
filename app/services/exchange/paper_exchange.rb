@@ -6,6 +6,11 @@ module Exchange
     # find it once OrderValidator has been referenced.
     OrderValidator
     class PositionGoneError < OrderValidationError; end
+    # Raised when a cash-equity sell that is not reduce_only asks for more shares
+    # than the account holds, after shares reserved by its open sell orders.
+    # Cash equity is never sold short by this platform (no product flag exists to
+    # permit intraday shorting).
+    class InsufficientHoldingError < OrderValidationError; end
 
     attr_reader :account_id
 
@@ -119,7 +124,10 @@ module Exchange
         attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Backtest::Session.now)
       )
       begin
-        order.save!
+        ::PaperExchange::PaperOrder.transaction do
+          assert_equity_holdings!(attrs) unless internal
+          order.save!
+        end
       rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
         if client_order_id && (replay = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id))
           return replay
@@ -376,6 +384,29 @@ module Exchange
     end
 
     private
+
+    # Cash equity is delivery-only. A sell that is not reduce_only may sell only
+    # shares the account holds, less the shares its own open sell orders still
+    # reserve. Runs inside the order-save transaction, after the account row is
+    # locked. Fills take the same lock (Ledger::MarginLedger.lock_margin!), so a
+    # concurrent fill is either fully visible here or waits for this check.
+    def assert_equity_holdings!(attrs)
+      return unless attrs[:instrument_type] == "EQUITY" && attrs[:side] == "sell" && !attrs[:reduce_only]
+
+      Account.lock.find_by!(account_id: account_id)
+      held = ::PaperExchange::PaperPosition
+        .where(account_id: account_id, symbol: attrs[:symbol], instrument_type: "EQUITY", side: :long)
+        .sum(:quantity)
+      reserved = ::PaperExchange::PaperOrder
+        .where(account_id: account_id, symbol: attrs[:symbol], instrument_type: "EQUITY", side: :sell,
+               status: %i[pending open partially_filled])
+        .sum { |order| order.quantity - order.filled_quantity }
+      available = held - reserved
+      return if attrs[:quantity] <= available
+
+      raise InsufficientHoldingError,
+        "sell #{attrs[:quantity]} #{attrs[:symbol]} rejected: #{available} held and unreserved; cash equity cannot be sold short"
+    end
 
     # Cheap first check, run before any order row exists so an obviously bad
     # reduce-only order is a plain 422 that leaves nothing behind. It reads the
