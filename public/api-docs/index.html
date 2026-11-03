@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PaperExchange API Documentation</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui.css" />
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --accent: #10b981;
+      --accent-blue: #3b82f6;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 24px;
+      background: #0d131f;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .quick-links a {
+      color: #9ca3af;
+      text-decoration: none;
+      font-size: 13px;
+      margin-left: 16px;
+      transition: color 0.15s;
+    }
+    .quick-links a:hover {
+      color: var(--text);
+    }
+    .swagger-ui {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .swagger-ui .topbar { display: none; }
+    .swagger-ui .info { margin: 20px 0; }
+    .swagger-ui .info .title { color: #f9fafb; font-size: 28px; }
+    .swagger-ui .info p, .swagger-ui .info li { color: #9ca3af; }
+    .swagger-ui .scheme-container {
+      background: var(--card-bg);
+      box-shadow: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .swagger-ui .opblock {
+      border-radius: 8px;
+      box-shadow: none;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+    }
+    .swagger-ui .opblock .opblock-summary {
+      padding: 10px 16px;
+    }
+    .swagger-ui .btn.authorize {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: transparent;
+    }
+    .swagger-ui .btn.authorize svg {
+      fill: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <div class="brand">
+      <span style="font-size: 20px;">⚡</span>
+      <strong style="font-size: 16px; letter-spacing: -0.02em;">PaperExchange OpenAPI Docs</strong>
+      <span class="badge">v1.0.0</span>
+      <span class="badge" style="color: #60a5fa; border-color: rgba(96,165,250,0.3); background: rgba(96,165,250,0.15);">Rails 8.1.4 · Ruby 4.0.6</span>
+    </div>
+    <div class="quick-links">
+      <a href="/api-docs/openapi.yaml" download>Download YAML</a>
+      <a href="/api-docs/openapi.json" target="_blank">View JSON</a>
+      <a href="/health" target="_blank">Health Check</a>
+    </div>
+  </div>
+
+  <div id="swagger-ui"></div>
+
+  <script src="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '/api-docs/openapi.yaml',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIBundle.SwaggerUIStandalonePreset
+        ],
+        layout: "BaseLayout",
+        docExpansion: "list",
+        filter: true,
+        showRequestDuration: true
+      });
+    };
+  </script>
+</body>
+</html>

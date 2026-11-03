@@ -6,6 +6,12 @@ Rails.application.routes.draw do
   # "did Rails boot" probe docker compose uses.
   get "health" => "health#show", as: :deep_health
 
+  # Interactive Swagger UI & OpenAPI 3.1 specification
+  get "docs", to: "api_docs#index"
+  get "api-docs", to: "api_docs#index"
+  get "api-docs/openapi.yaml", to: "api_docs#openapi_yaml"
+  get "api-docs/openapi.json", to: "api_docs#openapi_json"
+
   concern :api_endpoints do
     get "account", to: "accounts#show"
     post "account/reset", to: "accounts#reset"

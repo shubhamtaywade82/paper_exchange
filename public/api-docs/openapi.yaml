@@ -1,0 +1,721 @@
+openapi: 3.1.0
+info:
+  title: PaperExchange API
+  description: |
+    **Production-grade exchange simulator and paper trading broker.**
+    Supports Indian equity, F&O (via DhanHQ), and crypto futures (Binance USD-M, CoinDCX)
+    through a unified REST API, real-time risk validation, ledger accounting, and deterministic backtesting.
+  version: 1.0.0
+  contact:
+    name: PaperExchange Support
+    url: https://github.com/shubhamtaywade82/paper_exchange
+servers:
+  - url: http://127.0.0.1:3100
+    description: Local Docker / Development Server
+  - url: /
+    description: Current Host
+tags:
+  - name: Accounts
+    description: Wallet balances, collateral, equity, and account state
+  - name: Orders
+    description: Order placement, status tracking, and cancellation
+  - name: Positions
+    description: Open leveraged positions, margin allocation, and PnL
+  - name: Protections
+    description: Stop-loss, take-profit, and trailing stop policies
+  - name: Mark Prices
+    description: Ingest live mark prices and trigger liquidation checks
+  - name: Funding Events
+    description: Perpetual contract funding settlement rate ingestion
+  - name: Ledger
+    description: Immutable financial audit trail and transaction log
+  - name: Performance
+    description: Metrics, win rates, drawdowns, and portfolio performance
+  - name: Exchange
+    description: Provider connectivity, quote freshness, and matching engine status
+  - name: Market Data
+    description: Real-time ticks, order book depth, and market structure analysis
+  - name: Strategy
+    description: Pre-trade risk evaluation and indicator assessments
+  - name: Backtesting
+    description: Historical OHLC datasets and deterministic replay execution
+  - name: Health
+    description: Shallow and deep dependency probes for load balancers
+
+paths:
+  /up:
+    get:
+      tags: [Health]
+      summary: Shallow health probe
+      description: Verifies that the Rails web server process is booted and responding.
+      responses:
+        '200':
+          description: Server is online
+          content:
+            text/html:
+              example: '<!DOCTYPE html><html><body>200 OK</body></html>'
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Deep dependency health probe
+      description: Unauthenticated probe verifying Postgres, Redis, and Solid Queue reachability.
+      responses:
+        '200':
+          description: All dependencies are healthy
+          content:
+            application/json:
+              example:
+                status: ok
+                checks:
+                  postgres: true
+                  redis: true
+                  solid_queue: true
+        '503':
+          description: One or more dependencies are degraded
+          content:
+            application/json:
+              example:
+                status: degraded
+                checks:
+                  postgres: true
+                  redis: false
+                  solid_queue: true
+
+  /api/v1/account:
+    get:
+      tags: [Accounts]
+      summary: Get account wallet, equity, and PnL
+      description: Returns wallet split (available and locked margin), live equity, and drawdown for the authenticated account.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Account summary
+          content:
+            application/json:
+              example:
+                account_id: test-account-1
+                currency: USDT
+                margin: 10000.0
+                available_balance: 9397.6
+                locked_margin: 600.0
+                wallet:
+                  available: 9397.6
+                  locked: 600.0
+                  position_locked: 600.0
+                  order_locked: 0.0
+                equity: 10097.4
+                unrealized_pnl: 100.0
+                realized_pnl: 0.0
+                drawdown: 0.0
+                current_equity: 10097.4
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/account/reset:
+    post:
+      tags: [Accounts]
+      summary: Reset account to pristine balance
+      description: Clears all open positions, open orders, and resets margin balance atomically.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                margin:
+                  type: number
+                  description: Starting margin balance (defaults to environment baseline 10,000)
+                  example: 10000.0
+      responses:
+        '200':
+          description: Account reset successfully
+          content:
+            application/json:
+              example:
+                account_id: test-account-1
+                margin: 10000.0
+                available_balance: 10000.0
+                locked_margin: 0.0
+                equity: 10000.0
+
+  /api/v1/orders:
+    get:
+      tags: [Orders]
+      summary: List account orders
+      description: Keyset-paginated list of orders placed by this account.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Pagination cursor
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of orders with next cursor
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 101
+                    client_order_id: agent-order-001
+                    symbol: BTCUSDT
+                    side: buy
+                    quantity: '0.1'
+                    filled_quantity: '0.1'
+                    remaining_quantity: '0.0'
+                    order_type: market
+                    status: filled
+                    price: '60000.0'
+                    trigger_price: null
+                    instrument_type: CRYPTO_PERPETUAL
+                    option_type: null
+                    strike_price: null
+                    expiry_date: null
+                    leverage: 10
+                    margin_type: isolated
+                    locked_margin: '0.0'
+                    placed_at: '2026-11-03T06:40:00Z'
+                    updated_at: '2026-11-03T06:40:01Z'
+                next_cursor: null
+
+    post:
+      tags: [Orders]
+      summary: Submit a new order
+      description: Evaluates risk limits, reserves margin, and executes market or resting limit/stop orders.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol, side, quantity]
+              properties:
+                symbol:
+                  type: string
+                  example: BTCUSDT
+                side:
+                  type: string
+                  enum: [buy, sell, BUY, SELL]
+                  example: BUY
+                quantity:
+                  type: number
+                  example: 0.1
+                type:
+                  type: string
+                  enum: [market, limit, stop_market, stop_limit]
+                  default: market
+                  example: MARKET
+                price:
+                  type: number
+                  description: Limit price (required for limit orders)
+                  example: 60000.0
+                execution_price:
+                  type: number
+                  description: Estimated execution price for simulation / fill
+                  example: 60000.0
+                trigger_price:
+                  type: number
+                  description: Trigger price for stop orders
+                  example: 59500.0
+                leverage:
+                  type: integer
+                  default: 1
+                  example: 10
+                instrument_type:
+                  type: string
+                  enum: [CRYPTO_PERPETUAL, CRYPTO_OPTION, EQUITY, FUTSTK, OPTSTK, FUTIDX, OPTIDX]
+                  default: CRYPTO_PERPETUAL
+                  example: CRYPTO_PERPETUAL
+                reduce_only:
+                  type: boolean
+                  default: false
+                  example: false
+                client_order_id:
+                  type: string
+                  example: smoke-test-1
+      responses:
+        '201':
+          description: Order created / filled
+          content:
+            application/json:
+              example:
+                id: 101
+                client_order_id: smoke-test-1
+                symbol: BTCUSDT
+                side: buy
+                quantity: '0.1'
+                filled_quantity: '0.1'
+                remaining_quantity: '0.0'
+                order_type: market
+                status: filled
+                price: '60000.0'
+                leverage: 10
+                margin_type: isolated
+                locked_margin: '0.0'
+                placed_at: '2026-11-03T06:40:00Z'
+        '422':
+          description: Validation or risk check failure
+          content:
+            application/json:
+              example:
+                error: 'Risk check failed: MARGIN_REJECTED'
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Get order details
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Orders]
+      summary: Cancel resting order
+      description: Cancels an open resting order and releases locked margin back to available balance.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              example:
+                id: 101
+                status: cancelled
+                remaining_quantity: '0.1'
+        '409':
+          description: Order is already in terminal state (filled or cancelled)
+
+  /api/v1/positions:
+    get:
+      tags: [Positions]
+      summary: List open positions
+      description: Returns active positions with live unrealized PnL, liquidation prices, and margins.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Open positions list
+          content:
+            application/json:
+              example:
+                - id: 42
+                  symbol: BTCUSDT
+                  side: long
+                  quantity: '0.1'
+                  entry_price: '60000.0'
+                  current_price: '61000.0'
+                  liquidation_price: '54240.0'
+                  leverage: 10
+                  margin_used: '600.0'
+                  unrealized_pnl: '100.0'
+                  roe_percentage: '16.67'
+                  instrument_type: CRYPTO_PERPETUAL
+
+  /api/v1/positions/{id}:
+    get:
+      tags: [Positions]
+      summary: Get specific position
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Position details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/positions/{position_id}/protections:
+    get:
+      tags: [Protections]
+      summary: List protections attached to a position
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: position_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of active protection rules
+
+    post:
+      tags: [Protections]
+      summary: Attach stop-loss, take-profit, or trailing stop
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: position_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protection_type, quantity]
+              properties:
+                protection_type:
+                  type: string
+                  enum: [stop_loss, take_profit, trailing_stop]
+                  example: stop_loss
+                trigger_price:
+                  type: number
+                  example: 58500.0
+                trailing_distance:
+                  type: number
+                  example: 500.0
+                quantity:
+                  type: number
+                  example: 0.1
+                oco_group_id:
+                  type: string
+                  example: oco-btc-001
+      responses:
+        '201':
+          description: Protection policy attached
+
+  /api/v1/positions/{position_id}/protections/{id}:
+    delete:
+      tags: [Protections]
+      summary: Cancel protection policy
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: position_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Protection cancelled
+
+  /api/v1/mark_prices:
+    post:
+      tags: [Mark Prices]
+      summary: Push live mark prices
+      description: Updates cached mark prices and evaluates liquidation checks for open leveraged positions.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prices]
+              properties:
+                prices:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    BTCUSDT: '61250.0'
+                    ETHUSDT: '3420.5'
+      responses:
+        '200':
+          description: Mark prices applied and liquidation evaluated
+          content:
+            application/json:
+              example:
+                updated:
+                  BTCUSDT: 61250.0
+                  ETHUSDT: 3420.5
+
+  /api/v1/funding_events:
+    post:
+      tags: [Funding Events]
+      summary: Ingest perpetual funding settlement
+      description: Enqueues funding debit/credit calculations for all open leveraged positions of the symbol.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: sync
+          in: query
+          schema:
+            type: boolean
+          description: If true, performs funding payment settlement synchronously
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol, funding_rate]
+              properties:
+                symbol:
+                  type: string
+                  example: BTCUSDT
+                funding_rate:
+                  type: number
+                  example: 0.0001
+                mark_price:
+                  type: number
+                  example: 61250.0
+                funding_time:
+                  type: string
+                  format: date-time
+                  example: '2026-11-03T08:00:00Z'
+      responses:
+        '202':
+          description: Funding event accepted and enqueued
+
+  /api/v1/ledger:
+    get:
+      tags: [Ledger]
+      summary: View account financial transaction ledger
+      description: Keyset-paginated immutable transaction history (deposits, fees, margin locks, realized PnL).
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Ledger entries list
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 1
+                    event_type: DEPOSIT
+                    payload: { note: 'Initial deposit' }
+                    debit: '0.0'
+                    credit: '10000.0'
+                    reference_id: null
+                    occurred_at: '2026-11-03T06:00:00Z'
+                  - id: 2
+                    event_type: FEE
+                    payload: { rate: '0.0004' }
+                    debit: '2.4'
+                    credit: '0.0'
+                    reference_id: '101'
+                    occurred_at: '2026-11-03T06:40:00Z'
+                next_cursor: null
+
+  /api/v1/performance:
+    get:
+      tags: [Performance]
+      summary: Get account performance metrics
+      description: Returns Sharpe ratio, win rate, total PnL, profit factor, and max drawdown.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Performance metrics summary
+          content:
+            application/json:
+              example:
+                total_trades: 12
+                winning_trades: 8
+                losing_trades: 4
+                win_rate: 66.67
+                realized_pnl: '1250.40'
+                unrealized_pnl: '100.00'
+                max_drawdown: 4.2
+                profit_factor: 2.45
+
+  /api/v1/exchange/status:
+    get:
+      tags: [Exchange]
+      summary: Exchange provider and matching health
+      description: Reports broker connectivity, quote freshness, and matching worker state.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Operational status
+          content:
+            application/json:
+              example:
+                status: ok
+                providers:
+                  binance_usdm: { connected: true, latency_ms: 18 }
+                quotes:
+                  'paper:BTCUSDT': { venue: paper, instrument_id: BTCUSDT, stale: false, mark_price: 61250.0 }
+                matching_worker: { running: true }
+
+  /api/v1/market_events:
+    get:
+      tags: [Market Data]
+      summary: Read latest tick stream events
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          example: BTCUSDT
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: List of market ticks
+    post:
+      tags: [Market Data]
+      summary: Ingest tick or depth events
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                  example: BTCUSDT
+                price:
+                  type: number
+                  example: 61250.0
+                bid:
+                  type: number
+                  example: 61249.0
+                ask:
+                  type: number
+                  example: 61251.0
+                quantity:
+                  type: number
+                  example: 0.5
+      responses:
+        '201':
+          description: Ticks enqueued to Redis stream
+
+  /api/v1/strategy/signals:
+    post:
+      tags: [Strategy]
+      summary: Pre-trade risk assessment
+      description: Evaluates whether a proposed signal passes risk checks without executing or mutating account state.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol, side, quantity]
+              properties:
+                symbol:
+                  type: string
+                  example: BTCUSDT
+                side:
+                  type: string
+                  example: BUY
+                quantity:
+                  type: number
+                  example: 0.1
+                leverage:
+                  type: integer
+                  example: 10
+                execution_price:
+                  type: number
+                  example: 60000.0
+      responses:
+        '200':
+          description: Assessment decision
+          content:
+            application/json:
+              example:
+                decision: allow
+                rejections: []
+                signal:
+                  symbol: BTCUSDT
+                  side: buy
+                  quantity: 0.1
+                timeframe: 5m
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Operator secret token
+    AccountIdAuth:
+      type: apiKey
+      in: header
+      name: X-Account-Id
+      description: Target account identifier (e.g. test-account-1)
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-API-Key
+      content:
+        application/json:
+          example:
+            error: unauthorized
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          example:
+            error: Resource not found
