@@ -14,12 +14,12 @@ module Risk
   # Check #2 rejects before any state mutation — the client gets a clean
   # 422 instead of a 402 mid-flight.
   class MarginValidator
-    MAX_POSITION_VALUE = ENV.fetch("PAPER_EXCHANGE_MAX_POSITION_VALUE", "500000").to_f
+    MAX_POSITION_VALUE = ENV.fetch("PAPER_EXCHANGE_MAX_POSITION_VALUE", "500000").to_d
 
     def evaluate(account_id, signal)
       h = signal.to_h
-      qty = h[:quantity].to_f   # was .to_i — silently zeroed every fractional crypto order
-      price = (h[:price] || h[:ltp]).to_f
+      qty = h[:quantity].to_d   # was .to_i — silently zeroed every fractional crypto order
+      price = (h[:price] || h[:ltp]).to_d
       instrument_type = h[:instrument_type].to_s.presence || "EQUITY"
       leverage = h[:leverage].to_i
       leverage = 1 if leverage < 1
@@ -36,7 +36,7 @@ module Risk
       account = Account.find_by(account_id: account_id)
       return :passed unless account   # no account row → fall through to MarginLedger which will raise
 
-      account.available_balance.to_f >= required_margin ? :passed : :MARGIN_REJECTED
+      account.available_balance.to_d >= required_margin ? :passed : :MARGIN_REJECTED
     end
   end
 end

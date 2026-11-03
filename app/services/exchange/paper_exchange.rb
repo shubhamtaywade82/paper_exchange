@@ -6,6 +6,11 @@ module Exchange
     # find it once OrderValidator has been referenced.
     OrderValidator
     class PositionGoneError < OrderValidationError; end
+    # Raised when a cash-equity sell that is not reduce_only asks for more shares
+    # than the account holds, after shares reserved by its open sell orders.
+    # Cash equity is never sold short by this platform (no product flag exists to
+    # permit intraday shorting).
+    class InsufficientHoldingError < OrderValidationError; end
 
     attr_reader :account_id
 
@@ -80,6 +85,7 @@ module Exchange
       end
 
       attrs = Exchange::OrderValidator.call(attrs_in)
+      Markets::OrderRules.validate!(attrs)
       attrs = clamp_to_position(attrs) if attrs[:reduce_only]
       skip_gates = internal || attrs[:reduce_only]
 
@@ -90,7 +96,7 @@ module Exchange
       # zero notional in the risk gate (bypassing MAX_POSITION_VALUE) while
       # the actual margin lock used the real execution_price.
       # Try execution_price → explicit price → ltp → order book snapshot.
-      reference_price = (attrs[:execution_price] || attrs[:price] || attrs[:ltp]).to_f
+      reference_price = decimal(attrs[:execution_price] || attrs[:price] || attrs[:ltp])
       if reference_price <= 0
         # Fall back to the order book snapshot (set via market_event or a
         # prior fill) rather than raising — many test paths submit orders
@@ -98,7 +104,7 @@ module Exchange
         # price. A truly missing price (no book either) will still surface
         # as a 0-notional order that the matching engine rejects.
         book = @order_book.snapshot(attrs[:symbol])
-        reference_price = book&.dig(:ltp).to_f if reference_price <= 0 && book
+        reference_price = decimal(book&.dig(:ltp)) if reference_price <= 0 && book
       end
 
       signal = Strategy::Signal.new(
@@ -116,10 +122,13 @@ module Exchange
       )
 
       order = ::PaperExchange::PaperOrder.new(
-        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Time.current)
+        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Backtest::Session.now)
       )
       begin
-        order.save!
+        ::PaperExchange::PaperOrder.transaction do
+          assert_equity_holdings!(attrs) unless internal
+          order.save!
+        end
       rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
         if client_order_id && (replay = ::PaperExchange::PaperOrder.find_by(account_id: account_id, client_order_id: client_order_id))
           return replay
@@ -137,12 +146,11 @@ module Exchange
         clamp_order_to_locked_position!(order) if attrs[:reduce_only]
 
         if settlement_price
-          pinned = settlement_price.to_f
+          pinned = decimal(settlement_price)
           @order_book.apply_snapshot(order.symbol, bid: pinned, ask: pinned, ltp: pinned)
         elsif attrs[:execution_price].present?
-          execution_price = attrs[:execution_price].to_f
+          execution_price = decimal(attrs[:execution_price])
           @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
-          MarketData::MarkPriceStore.set(order.symbol, execution_price)
         end
 
         unless skip_gates
@@ -152,7 +160,28 @@ module Exchange
           # here while the signal used attrs[:ltp] — a market order with
           # only execution_price passed the risk gate with zero notional
           # but locked the real margin here, creating an inconsistency.
+          # The risk gate runs BEFORE the margin lock. MarginValidator compares
+          # the order's margin with available_balance, and after lock_margin!
+          # that balance already excludes this order's own margin. The old
+          # order rejected any order needing more than half the free balance
+          # (MARGIN_REJECTED on a 6,000 buy with 10,000 free). Nothing is
+          # written before the gate, and the lock still sits inside the same
+          # transaction, so a rejection leaves no state behind.
           required_margin = order.required_margin(reference_price)
+          result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
+          _passed, rejected = result
+          if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
+            # A cash shortfall keeps its documented status: 402 via
+            # InsufficientMarginError (design.md §3), the same error the lock raises.
+            available = Account.find_by(account_id: account_id)&.available_balance
+            if Array(rejected).include?(:MARGIN_REJECTED) && available && available < required_margin
+              raise Ledger::InsufficientMarginError,
+                "account #{account_id} has #{available} available, needs #{required_margin}"
+            end
+
+            raise RiskCheckFailedError, Array(rejected)
+          end
+
           Ledger::MarginLedger.lock_margin!(
             account_id: account_id,
             amount: required_margin,
@@ -160,19 +189,13 @@ module Exchange
             payload: { order_id: order.id, symbol: order.symbol, reason: "order_margin_lock" }
           )
           order.update_column(:locked_margin, required_margin)
-
-          result = Risk::RiskManager.evaluate(account_id: account_id, signal: signal)
-          _passed, rejected = result
-          if Array(rejected).any? { |sym| sym.to_s.end_with?("_REJECTED") }
-            raise RiskCheckFailedError, Array(rejected)
-          end
         end
 
         result = @matching.execute(order)
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
         if fill_qty && fill_qty.positive?
-          exact_price = settlement_price ? settlement_price.to_f : (attrs[:execution_price].presence || order.price)&.to_f
+          exact_price = settlement_price ? decimal(settlement_price) : optional_decimal(attrs[:execution_price].presence || order.price)
           fill_qty, fill_price, trade = @fill_engine.fill(
             order,
             market_snapshot: @order_book.snapshot(order.symbol),
@@ -202,7 +225,7 @@ module Exchange
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
             if order.instrument_type == "CRYPTO_PERPETUAL"
-              if trade.total_charges.to_f > 0
+              if trade.total_charges.positive?
                 Ledger::MarginLedger.deduct_fee!(
                   account_id: account_id,
                   amount: trade.total_charges,
@@ -220,7 +243,6 @@ module Exchange
               end
               Ledger::Ledger.refresh_cached_equity!(account_id)
             end
-            MarketData::MarkPriceStore.set(order.symbol, fill_price)
           end
           order.filled!
         end
@@ -319,7 +341,7 @@ module Exchange
       Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
       if order.instrument_type == "CRYPTO_PERPETUAL"
-        if trade.total_charges.to_f > 0
+        if trade.total_charges.positive?
           Ledger::MarginLedger.deduct_fee!(
             account_id: account_id,
             amount: trade.total_charges,
@@ -337,7 +359,6 @@ module Exchange
         end
         Ledger::Ledger.refresh_cached_equity!(account_id)
       end
-      MarketData::MarkPriceStore.set(order.symbol, actual_fill_price)
 
       order.filled!
       order
@@ -361,6 +382,44 @@ module Exchange
     end
 
     private
+
+    # Money from a client, a feed or a column, as an exact decimal. A blank value
+    # is zero where a price is required, and nil where it is optional; an
+    # unparseable value raises rather than becoming a guess.
+    def decimal(value)
+      return BigDecimal("0") if value.nil? || value.to_s.strip.empty?
+
+      BigDecimal(value.to_s)
+    end
+
+    def optional_decimal(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+
+      BigDecimal(value.to_s)
+    end
+
+    # Cash equity is delivery-only. A sell that is not reduce_only may sell only
+    # shares the account holds, less the shares its own open sell orders still
+    # reserve. Runs inside the order-save transaction, after the account row is
+    # locked. Fills take the same lock (Ledger::MarginLedger.lock_margin!), so a
+    # concurrent fill is either fully visible here or waits for this check.
+    def assert_equity_holdings!(attrs)
+      return unless attrs[:instrument_type] == "EQUITY" && attrs[:side] == "sell" && !attrs[:reduce_only]
+
+      Account.lock.find_by!(account_id: account_id)
+      held = ::PaperExchange::PaperPosition
+        .where(account_id: account_id, symbol: attrs[:symbol], instrument_type: "EQUITY", side: :long)
+        .sum(:quantity)
+      reserved = ::PaperExchange::PaperOrder
+        .where(account_id: account_id, symbol: attrs[:symbol], instrument_type: "EQUITY", side: :sell,
+               status: %i[pending open partially_filled])
+        .sum { |order| order.quantity - order.filled_quantity }
+      available = held - reserved
+      return if attrs[:quantity] <= available
+
+      raise InsufficientHoldingError,
+        "sell #{attrs[:quantity]} #{attrs[:symbol]} rejected: #{available} held and unreserved; cash equity cannot be sold short"
+    end
 
     # Cheap first check, run before any order row exists so an obviously bad
     # reduce-only order is a plain 422 that leaves nothing behind. It reads the
@@ -401,7 +460,7 @@ module Exchange
     # MarginEngine.sync_position!) or is no longer needed (reject, cancel,
     # expiry).
     def release_order_margin!(order)
-      return if order.locked_margin.to_f.zero?
+      return if order.locked_margin.zero?
 
       Ledger::MarginLedger.unlock_margin!(
         account_id: order.account_id,

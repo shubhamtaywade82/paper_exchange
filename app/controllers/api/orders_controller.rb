@@ -15,7 +15,16 @@ module Api
 
     def create
       order_raw = params[:order] || params
-      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price, :reduce_only, context: {})
+      received = order_raw.permit(:symbol, :side, :quantity, :order_type, :type, :instrument_type, :option_type, :strike_price, :expiry_date, :ltp, :price, :trigger_price, :leverage, :margin_type, :client_order_id, :execution_price, :reduce_only, :stop_loss, :take_profit, context: {})
+
+      run = Backtest::Replay.run_for_account(@account_id)
+      return create_replay_order(run, received.to_unsafe_h.symbolize_keys) if run
+
+      if received[:stop_loss].present? || received[:take_profit].present?
+        return render_error(:unprocessable_content,
+          "stop_loss/take_profit on an order are set on backtest replay accounts; on live accounts use /api/positions/:id/protections")
+      end
+
       received[:account_id] = @account_id
       received[:order_kind] = (received.delete(:order_type) || received.delete(:type) || "market").to_s.downcase
       received[:side] = received[:side].to_s.downcase
@@ -51,6 +60,35 @@ module Api
     end
 
     private
+
+    # On a replay account the order is queued and executes at the next bar's
+    # open. The response is 202, because nothing has filled yet.
+    def create_replay_order(run, payload)
+      intent = Backtest::Replay.new(run).queue_api_order!(payload)
+      render json: replay_intent_json(intent, run), status: :accepted
+    rescue Backtest::Replay::Invalid => e
+      render_error(:unprocessable_content, e.message)
+    rescue Backtest::Replay::Conflict => e
+      render_error(:conflict, e.message)
+    end
+
+    def replay_intent_json(intent, run)
+      {
+        id: intent.id,
+        status: intent.status,
+        client_order_id: intent.client_order_id,
+        symbol: run.dataset.symbol,
+        side: intent.side,
+        quantity: intent.quantity&.to_f,
+        order_type: intent.order_kind,
+        reduce_only: intent.reduce_only,
+        price: intent.price&.to_f,
+        trigger_price: intent.trigger_price&.to_f,
+        stop_loss: intent.stop_loss&.to_f,
+        take_profit: intent.take_profit&.to_f,
+        executes_at: "next bar open after #{run.replay_at&.iso8601 || 'the first bar'}"
+      }
+    end
 
     def set_order
       @order = ::PaperExchange::PaperOrder.lock.find_by(id: params[:id], account_id: @account_id)

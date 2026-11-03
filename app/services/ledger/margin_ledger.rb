@@ -34,7 +34,7 @@ module Ledger
             balance_after: account.available_balance,
             reference_id: reference_id,
             payload: payload,
-            occurred_at: Time.current
+            occurred_at: Backtest::Session.now
           )
         end
       end
@@ -64,7 +64,7 @@ module Ledger
             balance_after: account.available_balance,
             reference_id: reference_id,
             payload: payload,
-            occurred_at: Time.current
+            occurred_at: Backtest::Session.now
           )
         end
       end
@@ -86,7 +86,7 @@ module Ledger
             balance_after: account.available_balance,
             reference_id: reference_id,
             payload: payload,
-            occurred_at: Time.current
+            occurred_at: Backtest::Session.now
           )
         end
       end
@@ -107,7 +107,7 @@ module Ledger
             balance_after: account.available_balance,
             reference_id: reference_id,
             payload: payload,
-            occurred_at: Time.current
+            occurred_at: Backtest::Session.now
           )
         end
       end

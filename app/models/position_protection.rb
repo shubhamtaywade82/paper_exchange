@@ -23,12 +23,18 @@
 class PositionProtection < ApplicationRecord
   self.table_name = "position_protections"
 
+  # Protections of live accounts only. Cross-account jobs must use this scope.
+  scope :live_accounts, -> { where(account_id: ::Account.live.select(:account_id)) }
+
   PROTECTION_TYPES = %w[stop_loss take_profit trailing_stop].freeze
+  # The price a protection is evaluated on, declared when it is placed (I3).
+  TRIGGER_SOURCES = %w[last_trade bid_ask mark index].freeze
   STATUSES = %w[active triggered cancelled expired].freeze
 
   belongs_to :paper_position, class_name: "PaperExchange::PaperPosition"
 
   validates :protection_type, presence: true, inclusion: { in: PROTECTION_TYPES }
+  validates :trigger_source, inclusion: { in: TRIGGER_SOURCES }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :quantity, numericality: { greater_than: 0 }
   validates :trigger_price, numericality: { greater_than: 0 }, allow_nil: true
@@ -88,13 +94,13 @@ class PositionProtection < ApplicationRecord
   # Marks this protection as triggered and cancels any OCO siblings.
   def trigger!
     transaction do
-      update_columns(status: "triggered", triggered_at: Time.current)
+      update_columns(status: "triggered", triggered_at: Clock.now)
       cancel_oco_siblings! if oco_group_id.present?
     end
   end
 
   def cancel!
-    update_columns(status: "cancelled", cancelled_at: Time.current)
+    update_columns(status: "cancelled", cancelled_at: Clock.now)
   end
 
   private
@@ -123,7 +129,7 @@ class PositionProtection < ApplicationRecord
     PositionProtection
       .where(oco_group_id: oco_group_id, status: "active")
       .where.not(id: id)
-      .update_all(status: "cancelled", cancelled_at: Time.current)
+      .update_all(status: "cancelled", cancelled_at: Clock.now)
   end
 
   def required_price_for_type

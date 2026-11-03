@@ -4,6 +4,11 @@ module Api
 
     before_action :authenticate_api_key!
     before_action :set_account
+    around_action :with_replay_session
+
+    # Live market-data writes are global: they move every account's marks. A
+    # replay account moves its own prices, only through POST /advance.
+    REPLAY_GLOBAL_WRITES = %w[mark_prices funding_events market_events market_structure].freeze
 
     # Global API contract (prod-hardening NEW-6): every unhandled exception
     # used to bubble to Rails' default ActionController::API 500 handler,
@@ -65,6 +70,22 @@ module Api
       @account_id = (request.headers["X-Account-Id"].presence ||
                      params[:account_id].presence ||
                      "default").to_s
+    end
+
+    # A request on a replay account runs inside that run's simulation session:
+    # the account's clock is the last processed bar, and its mark is that bar's
+    # close. Live feeds cannot be posted against a replay account, because the
+    # replay alone sets its prices.
+    def with_replay_session
+      run = Backtest::Replay.run_for_account(@account_id)
+      return yield unless run
+
+      if request.post? && REPLAY_GLOBAL_WRITES.include?(controller_name)
+        return render_error(:unprocessable_content,
+          "#{controller_name.tr('_', ' ')} writes global market state; a replay account moves its own prices with POST /api/backtest_runs/:id/advance")
+      end
+
+      Backtest::Replay.with_session(run) { yield }
     end
 
     def render_error(status, message)

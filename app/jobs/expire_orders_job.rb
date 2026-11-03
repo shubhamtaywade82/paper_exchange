@@ -14,6 +14,7 @@ class ExpireOrdersJob < ApplicationJob
     cutoff = ttl_minutes.minutes.ago
 
     ::PaperExchange::PaperOrder
+      .live_accounts
       .where(status: :open)
       .where("placed_at < ?", cutoff)
       .find_each do |order|

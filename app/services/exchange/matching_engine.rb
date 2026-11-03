@@ -15,7 +15,10 @@ module Exchange
 
       fill_qty, fill_price = compute_fill(order, book)
 
-      if fill_qty && fill_qty.positive?
+      # compute_fill returns [:unfilled, nil] for a resting order. A Symbol has
+      # no #positive?, so the old check raised NoMethodError, the rescue below
+      # rejected the order, and no limit or stop order could ever rest.
+      if fill_qty.is_a?(Numeric) && fill_qty.positive?
         [ fill_qty, fill_price ]
       else
         [ :unfilled, nil ]
@@ -43,8 +46,7 @@ module Exchange
         price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         [ qty, price ]
       when "bounded"
@@ -58,8 +60,7 @@ module Exchange
         raw_price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         fill_price = clamp_to_limit(raw_price, order)
         [ qty, fill_price ]
@@ -72,8 +73,7 @@ module Exchange
         price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         [ qty, price ]
       else

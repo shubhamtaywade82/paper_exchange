@@ -2,6 +2,10 @@ module Exchange
   class OrderValidationError < StandardError; end
 
   class OrderValidator
+    # Options that are bought to open and sold only to close. CRYPTO_OPTION has
+    # its own, stricter checks in validate_crypto_option!.
+    OPTION_TYPES = %w[OPTIDX OPTSTK OPTFUT OPTCUR].freeze
+
     Schema = Dry::Schema.Params do
       required(:account_id).filled(:string)
       required(:symbol).filled(:string)
@@ -37,8 +41,20 @@ module Exchange
       end
 
       validated = result.to_h
+      validate_options_buy_only!(validated) if OPTION_TYPES.include?(validated[:instrument_type])
       validate_crypto_option!(validated) if validated[:instrument_type] == CryptoInstrumentCatalog::OPTION
       validated
+    end
+
+    # Index and stock options, and commodity and currency options, are bought to
+    # open and sold only to close. A sell that is not reduce_only would write the
+    # option, which the platform does not support (options buying only). A
+    # reduce_only buy is still accepted so that a legacy short can be closed.
+    def self.validate_options_buy_only!(attrs)
+      return if attrs[:side] == "buy" || attrs[:reduce_only]
+
+      raise OrderValidationError,
+        "#{attrs[:instrument_type]} sell must be reduce_only: options are bought to open and sold only to close (option writing is not supported)"
     end
 
     # Long-premium-only crypto options. The contract fields must agree with
@@ -65,7 +81,7 @@ module Exchange
       if attrs[:side] == "sell" && !attrs[:reduce_only]
         raise OrderValidationError, "CRYPTO_OPTION sell must be reduce_only: option writing (sell to open) is not supported"
       end
-      if attrs[:side] == "buy" && Time.now.utc >= CryptoInstrumentCatalog.option_expires_at(parsed.expiry_date)
+      if attrs[:side] == "buy" && Backtest::Session.now.utc >= CryptoInstrumentCatalog.option_expires_at(parsed.expiry_date)
         raise OrderValidationError, "CRYPTO_OPTION #{attrs[:symbol]} has expired; it cannot be bought"
       end
     end
