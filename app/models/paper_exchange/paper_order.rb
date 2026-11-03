@@ -87,12 +87,15 @@ module PaperExchange
     #   open           → filled, partially_filled, cancelled, rejected, expired
     #   partially_filled → filled, partially_filled, cancelled, open, rejected, expired
     #   filled/cancelled/rejected/expired are terminal
-    def cancel!
+    # `reason` says why the order was withdrawn, for example insufficient_depth
+    # when a market order's unfilled remainder is cancelled.
+    def cancel!(reason: nil)
       assert_transition!(%w[pending open partially_filled], :cancel)
       transaction do
         update!(
           status: :cancelled,
-          cancelled_at: Backtest::Session.now
+          cancelled_at: Backtest::Session.now,
+          cancel_reason: reason
         )
       end
       self

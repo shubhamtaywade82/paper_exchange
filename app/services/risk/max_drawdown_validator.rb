@@ -14,7 +14,7 @@ module Risk
     #   2. Compares against the persisted high-water mark
     #      (account.max_equity_achieved), which PortfolioProjection.summary
     #      updates lazily on read.
-    MAX_DD = ENV.fetch("PAPER_EXCHANGE_MAX_DRAWDOWN") { ENV.fetch("PAPER_EXCHANGE_MAX_DD", "0.20") }.to_f
+    MAX_DD = ENV.fetch("PAPER_EXCHANGE_MAX_DRAWDOWN") { ENV.fetch("PAPER_EXCHANGE_MAX_DD", "0.20") }.to_d
 
     def evaluate(account_id, signal)
       account = Account.find_by(account_id: account_id)
@@ -28,7 +28,7 @@ module Risk
       # max_equity_achieved is backfilled to margin on migration, so accounts
       # that never grew use the old baseline; accounts that grew track their
       # real peak.
-      peak = [ account.max_equity_achieved.to_f, account.margin.to_f ].max
+      peak = [ account.max_equity_achieved.to_d, account.margin.to_d ].max
       return :passed if peak <= 0
 
       dd = (peak - equity) / peak

@@ -31,17 +31,9 @@ RSpec.describe 'money paths' do
 
   # The remaining conversions, each with the reason it is still there.
   FLOAT_RATCHET = {
-    'app/jobs/funding_job.rb' => 4,
-    'app/jobs/option_expiry_job.rb' => 4,
-    'app/jobs/protection_monitor_job.rb' => 3,
-    'app/models/position_protection.rb' => 12,         # trailing-stop arithmetic, next to decimal columns
     'app/services/exchange/fill_engine.rb' => 1,        # the presentation copy of charges (jsonb)
-    'app/services/exchange/matching_engine.rb' => 4,    # limit and trigger comparisons against Float quotes
-    'app/services/exchange/matching_worker.rb' => 8,    # limit and trigger comparisons against Float quotes
     'app/services/exchange/paper_exchange.rb' => 2,     # settlement_price finiteness check (validation)
-    'app/services/exchange/slippage_engine.rb' => 1,    # negative-price check (validation)
-    'app/services/risk/liquidation_engine.rb' => 3,     # liquidation comparisons against Float marks
-    'app/services/risk/max_drawdown_validator.rb' => 3  # equity peak comparison
+    'app/services/exchange/slippage_engine.rb' => 1     # negative-price check (validation)
   }.freeze
 
   # `Time.current` and friends. The one exemption is when a quote arrived, which

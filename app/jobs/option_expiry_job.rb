@@ -82,7 +82,9 @@ class OptionExpiryJob < ApplicationJob
 
 
     underlying_price = fetch_underlying_price(position)
-    if crypto_option?(position) && !underlying_price.to_f.positive?
+    # No underlying price means no settlement value. Settling on a fallback such as
+    # the option's own premium would book a false result, so the settlement waits.
+    if underlying_price.nil? || !underlying_price.to_d.positive?
       defer!(position)
       return
     end
@@ -98,7 +100,7 @@ class OptionExpiryJob < ApplicationJob
       account_id: position.account_id,
       symbol: position.symbol,
       side: close_side,
-      quantity: position.quantity.to_f,
+      quantity: position.quantity,
       order_kind: "market",
       instrument_type: position.instrument_type,
       option_type: position.option_type,
@@ -154,9 +156,10 @@ class OptionExpiryJob < ApplicationJob
       return underlying && MarketData::MarkPriceStore.get(underlying)
     end
 
-    MarketData::MarkPriceStore.get(position.symbol) ||
-      MarketData::MarkPriceStore.get(underlying_symbol(position.symbol)) ||
-      position.current_price.to_f
+    # Only the underlying's mark is a settlement input. The position's own price is
+    # the option premium, so it is never used here.
+    (MarketData::MarkPriceStore.get(position.symbol) ||
+      MarketData::MarkPriceStore.get(underlying_symbol(position.symbol)))&.to_d
   end
 
   # For index options, the "underlying" is the index itself (NIFTY, BANKNIFTY).
@@ -174,16 +177,17 @@ class OptionExpiryJob < ApplicationJob
   # the premium paid/received — the realized PnL is the difference between
   # the settlement value and the entry premium.
   def settlement_value(position, underlying_price)
-    return 0.0 if underlying_price.nil? || underlying_price <= 0
+    underlying = underlying_price.to_d
+    return BigDecimal("0") unless underlying.positive?
 
-    strike = position.strike_price.to_f
+    strike = position.strike_price.to_d
     case position.option_type
     when "CE" # Call: ITM when underlying > strike
-      [ underlying_price - strike, 0.0 ].max
+      [ underlying - strike, BigDecimal("0") ].max
     when "PE" # Put: ITM when underlying < strike
-      [ strike - underlying_price, 0.0 ].max
+      [ strike - underlying, BigDecimal("0") ].max
     else
-      0.0
+      BigDecimal("0")
     end
   end
 end

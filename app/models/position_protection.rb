@@ -73,19 +73,20 @@ class PositionProtection < ApplicationRecord
     return nil if mark_price.nil?
 
     position = paper_position
+    mark = mark_price.to_d
     if position.long?
-      current_hwm = high_water_mark || position.avg_price.to_f
-      new_hwm = [ current_hwm.to_f, mark_price.to_f ].max
+      current_hwm = high_water_mark || position.avg_price.to_d
+      new_hwm = [ current_hwm.to_d, mark ].max
       update_columns(
         high_water_mark: new_hwm,
-        trigger_price: new_hwm - trailing_distance.to_f
+        trigger_price: new_hwm - trailing_distance.to_d
       )
     else
-      current_lwm = low_water_mark || position.avg_price.to_f
-      new_lwm = [ current_lwm.to_f, mark_price.to_f ].min
+      current_lwm = low_water_mark || position.avg_price.to_d
+      new_lwm = [ current_lwm.to_d, mark ].min
       update_columns(
         low_water_mark: new_lwm,
-        trigger_price: new_lwm + trailing_distance.to_f
+        trigger_price: new_lwm + trailing_distance.to_d
       )
     end
     trigger_price
@@ -108,13 +109,13 @@ class PositionProtection < ApplicationRecord
   def stop_loss_breached?(mark_price)
     position = paper_position
     return false unless trigger_price
-    position.long? ? mark_price <= trigger_price.to_f : mark_price >= trigger_price.to_f
+    position.long? ? mark_price.to_d <= trigger_price.to_d : mark_price.to_d >= trigger_price.to_d
   end
 
   def take_profit_breached?(mark_price)
     position = paper_position
     return false unless trigger_price
-    position.long? ? mark_price >= trigger_price.to_f : mark_price <= trigger_price.to_f
+    position.long? ? mark_price.to_d >= trigger_price.to_d : mark_price.to_d <= trigger_price.to_d
   end
 
   def trailing_stop_breached?(mark_price)

@@ -25,7 +25,7 @@ class ProtectionMonitorJob < ApplicationJob
 
   def evaluate_protection(protection)
     position = protection.paper_position
-    return if position.nil? || position.quantity.to_f.zero?
+    return if position.nil? || position.quantity.zero?
 
     price = trigger_price_for(protection, position)
     return record_unavailable(protection) if price.nil?
@@ -96,7 +96,7 @@ class ProtectionMonitorJob < ApplicationJob
       account_id: protection.account_id,
       symbol: position.symbol,
       side: close_side,
-      quantity: [ protection.quantity.to_f, position.quantity.to_f ].min,
+      quantity: [ protection.quantity, position.quantity ].min,
       order_kind: "market",
       instrument_type: position.instrument_type,
       option_type: position.option_type,

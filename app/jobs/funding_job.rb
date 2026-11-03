@@ -43,14 +43,14 @@ class FundingJob < ApplicationJob
       .where("instrument_type = ? AND quantity <> 0", Exchange::CryptoInstrumentCatalog::PERPETUAL)
     return if positions.none?
 
-    positions.find_each { |position| apply_funding!(position, funding_rate.to_f, mark_price, funding_time) }
+    positions.find_each { |position| apply_funding!(position, funding_rate.to_d, mark_price, funding_time) }
   end
 
   private
 
   def apply_funding!(position, funding_rate, mark_price, funding_time)
-    mark_price = mark_price.to_f if mark_price
-    mark_price = MarketData::MarkPriceStore.get(position.symbol) || position.current_price.to_f if mark_price.to_f.zero?
+    mark_price = mark_price.to_d if mark_price
+    mark_price = MarketData::MarkPriceStore.get(position.symbol)&.to_d || position.current_price if mark_price.to_d.zero?
 
     notional = position.notional_value(mark_price)
     direction = position.long? ? 1 : -1

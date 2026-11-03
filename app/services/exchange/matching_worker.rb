@@ -119,20 +119,20 @@ module Exchange
       when "bounded"
         # Limit orders fill only when the book crosses the limit.
         if order.side == "buy"
-          return nil unless quote[:ask] && quote[:ask] <= order.price.to_f
-          [ quote[:ask].to_f, order.price.to_f ].min # price improvement
+          return nil unless quote[:ask] && quote[:ask].to_d <= order.price.to_d
+          [ quote[:ask].to_d, order.price.to_d ].min # price improvement
         else
-          return nil unless quote[:bid] && quote[:bid] >= order.price.to_f
-          [ quote[:bid].to_f, order.price.to_f ].max
+          return nil unless quote[:bid] && quote[:bid].to_d >= order.price.to_d
+          [ quote[:bid].to_d, order.price.to_d ].max
         end
       when "stop_loss"
         # Stop-market: triggers when the trigger price is breached, then
         # fills at the available executable price.
         if order.side == "buy"
-          return nil unless quote[:ask] && quote[:ask] >= order.trigger_price.to_f
+          return nil unless quote[:ask] && quote[:ask].to_d >= order.trigger_price.to_d
           quote[:ask] || quote[:ltp]
         else
-          return nil unless quote[:bid] && quote[:bid] <= order.trigger_price.to_f
+          return nil unless quote[:bid] && quote[:bid].to_d <= order.trigger_price.to_d
           quote[:bid] || quote[:ltp]
         end
       else

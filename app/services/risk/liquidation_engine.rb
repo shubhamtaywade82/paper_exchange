@@ -24,7 +24,7 @@ module Risk
 
       def check_symbol!(symbol, mark_price)
         key = symbol.to_s.upcase
-        price = mark_price.to_f
+        price = mark_price.to_d
 
         mutex.synchronize do
           positions = cache[key]
@@ -32,7 +32,7 @@ module Risk
 
           breached_ids = positions.each_with_object([]) do |(id, _symbol, side, liquidation_price), acc|
             is_long = side.to_s == "long" || side.to_s == "0"
-            breached = is_long ? price <= liquidation_price.to_f : price >= liquidation_price.to_f
+            breached = is_long ? price <= liquidation_price.to_d : price >= liquidation_price.to_d
             next unless breached
 
             LiquidationJob.perform_later(id, price)

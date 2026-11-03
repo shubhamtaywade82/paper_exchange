@@ -85,8 +85,8 @@ module Exchange
     # fill never exceeds the buyer's max or falls below the seller's min.
     def clamp_to_limit(price, order)
       case order.side
-      when "buy"  then [ price.to_f, order.price.to_f ].min
-      when "sell" then [ price.to_f, order.price.to_f ].max
+      when "buy"  then [ price.to_d, order.price.to_d ].min
+      when "sell" then [ price.to_d, order.price.to_d ].max
       else price
       end
     end
