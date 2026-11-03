@@ -85,6 +85,7 @@ module Exchange
       end
 
       attrs = Exchange::OrderValidator.call(attrs_in)
+      Markets::OrderRules.validate!(attrs)
       attrs = clamp_to_position(attrs) if attrs[:reduce_only]
       skip_gates = internal || attrs[:reduce_only]
 

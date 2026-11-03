@@ -139,7 +139,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.index ["backtest_dataset_id"], name: "index_backtest_runs_on_backtest_dataset_id"
     t.index ["created_at"], name: "index_backtest_runs_on_created_at"
     t.index ["status"], name: "index_backtest_runs_on_status"
-    t.check_constraint "fidelity::text = ANY (ARRAY['ohlc_bar'::character varying::text, 'trade_tick'::character varying::text, 'l1'::character varying::text, 'l2'::character varying::text])", name: "backtest_runs_fidelity_valid"
+    t.check_constraint "fidelity::text = ANY (ARRAY['ohlc_bar'::character varying, 'trade_tick'::character varying, 'l1'::character varying, 'l2'::character varying]::text[])", name: "backtest_runs_fidelity_valid"
   end
 
   create_table "backtest_trades", force: :cascade do |t|
@@ -190,8 +190,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.datetime "updated_at", null: false
     t.index ["exchange_id"], name: "index_charge_rules_on_exchange_id"
     t.check_constraint "(rate IS NOT NULL) <> (flat_amount IS NOT NULL) OR basis::text = 'component_sum'::text", name: "charge_rules_one_amount_source"
-    t.check_constraint "basis::text = ANY (ARRAY['turnover'::character varying::text, 'flat'::character varying::text, 'component_sum'::character varying::text])", name: "charge_rules_basis_valid"
-    t.check_constraint "side::text = ANY (ARRAY['buy'::character varying::text, 'sell'::character varying::text, 'both'::character varying::text])", name: "charge_rules_side_valid"
+    t.check_constraint "basis::text = ANY (ARRAY['turnover'::character varying, 'flat'::character varying, 'component_sum'::character varying]::text[])", name: "charge_rules_basis_valid"
+    t.check_constraint "side::text = ANY (ARRAY['buy'::character varying, 'sell'::character varying, 'both'::character varying]::text[])", name: "charge_rules_side_valid"
     t.exclusion_constraint "product WITH =, component WITH =, side WITH =, COALESCE(exchange_id, (0)::bigint) WITH =, daterange(effective_from, COALESCE(effective_until, 'infinity'::date), '[]'::text) WITH &&", using: :gist, name: "charge_rules_no_overlap"
   end
 
@@ -235,7 +235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_instrument_specs_on_instrument_id"
     t.check_constraint "lot_size > 0::numeric AND tick_size > 0::numeric", name: "instrument_specs_positive_units"
-    t.check_constraint "settlement_type::text = ANY (ARRAY['cash'::character varying::text, 'physical'::character varying::text, 'none'::character varying::text])", name: "instrument_specs_settlement_valid"
+    t.check_constraint "settlement_type::text = ANY (ARRAY['cash'::character varying, 'physical'::character varying, 'none'::character varying]::text[])", name: "instrument_specs_settlement_valid"
     t.check_constraint "valid_until IS NULL OR valid_until > valid_from", name: "instrument_specs_valid_window"
     t.exclusion_constraint "instrument_id WITH =, tsrange(valid_from, COALESCE(valid_until, 'infinity'::timestamp without time zone), '[)'::text) WITH &&", using: :gist, name: "instrument_specs_no_overlap"
   end
@@ -256,9 +256,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.index ["exchange_id"], name: "index_instruments_on_exchange_id"
     t.index ["symbol", "instrument_type", "expiry_date"], name: "idx_on_symbol_instrument_type_expiry_date_a6e8f1e6b2"
     t.index ["underlying_id"], name: "index_instruments_on_underlying_id"
-    t.check_constraint "(instrument_type::text <> ALL (ARRAY['FUTIDX'::character varying::text, 'FUTSTK'::character varying::text, 'FUTCOM'::character varying::text, 'FUTCUR'::character varying::text, 'OPTIDX'::character varying::text, 'OPTSTK'::character varying::text, 'OPTFUT'::character varying::text, 'OPTCUR'::character varying::text, 'CRYPTO_OPTION'::character varying::text])) OR expiry_date IS NOT NULL", name: "instruments_expiry_required"
-    t.check_constraint "(instrument_type::text = ANY (ARRAY['OPTIDX'::character varying::text, 'OPTSTK'::character varying::text, 'OPTFUT'::character varying::text, 'OPTCUR'::character varying::text, 'CRYPTO_OPTION'::character varying::text])) = (option_type IS NOT NULL)", name: "instruments_option_fields_consistent"
-    t.check_constraint "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying::text, 'PE'::character varying::text]))", name: "instruments_option_type_valid"
+    t.check_constraint "(instrument_type::text <> ALL (ARRAY['FUTIDX'::character varying, 'FUTSTK'::character varying, 'FUTCOM'::character varying, 'FUTCUR'::character varying, 'OPTIDX'::character varying, 'OPTSTK'::character varying, 'OPTFUT'::character varying, 'OPTCUR'::character varying, 'CRYPTO_OPTION'::character varying]::text[])) OR expiry_date IS NOT NULL", name: "instruments_expiry_required"
+    t.check_constraint "(instrument_type::text = ANY (ARRAY['OPTIDX'::character varying, 'OPTSTK'::character varying, 'OPTFUT'::character varying, 'OPTCUR'::character varying, 'CRYPTO_OPTION'::character varying]::text[])) = (option_type IS NOT NULL)", name: "instruments_option_fields_consistent"
+    t.check_constraint "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying, 'PE'::character varying]::text[]))", name: "instruments_option_type_valid"
   end
 
   create_table "ledger_entries", force: :cascade do |t|
@@ -457,7 +457,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.index ["backtest_dataset_id", "event_at", "sequence"], name: "index_replay_events_on_dataset_time"
     t.index ["backtest_dataset_id", "symbol", "event_type", "sequence"], name: "index_replay_events_on_identity", unique: true
     t.index ["backtest_dataset_id"], name: "index_replay_events_on_backtest_dataset_id"
-    t.check_constraint "event_type::text = ANY (ARRAY['snapshot'::character varying::text, 'depth_delta'::character varying::text, 'trade'::character varying::text, 'mark'::character varying::text, 'funding'::character varying::text])", name: "replay_events_type_valid"
+    t.check_constraint "event_type::text = ANY (ARRAY['snapshot'::character varying, 'depth_delta'::character varying, 'trade'::character varying, 'mark'::character varying, 'funding'::character varying]::text[])", name: "replay_events_type_valid"
   end
 
   create_table "risk_events", force: :cascade do |t|
@@ -485,7 +485,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.index ["exchange_id", "segment", "trade_date"], name: "index_calendar_days_on_session", unique: true
     t.index ["exchange_id"], name: "index_trading_calendar_days_on_exchange_id"
     t.check_constraint "status::text = 'closed'::text OR session_open_at IS NOT NULL AND session_close_at > session_open_at", name: "trading_calendar_days_session_window"
-    t.check_constraint "status::text = ANY (ARRAY['open'::character varying::text, 'closed'::character varying::text, 'special'::character varying::text])", name: "trading_calendar_days_status_valid"
+    t.check_constraint "status::text = ANY (ARRAY['open'::character varying, 'closed'::character varying, 'special'::character varying]::text[])", name: "trading_calendar_days_status_valid"
   end
 
   add_foreign_key "backtest_bars", "backtest_datasets"

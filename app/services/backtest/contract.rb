@@ -40,10 +40,6 @@ module Backtest
       OPTION_INSTRUMENTS.include?(instrument_type) || option_type.present?
     end
 
-    def crypto?
-      instrument_type.start_with?("CRYPTO_")
-    end
-
     def leverage_allowed?
       instrument_type == "CRYPTO_PERPETUAL"
     end

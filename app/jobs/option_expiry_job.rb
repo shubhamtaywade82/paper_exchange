@@ -45,6 +45,19 @@ class OptionExpiryJob < ApplicationJob
 
   private
 
+  def record_physical_settlement!(position)
+    already = RiskEvent.where(account_id: position.account_id, event_type: PHYSICAL_EVENT)
+      .where("details ->> 'position_id' = ?", position.id.to_s).exists?
+    return if already
+
+    RiskEvent.create!(
+      account_id: position.account_id,
+      event_type: PHYSICAL_EVENT,
+      details: { position_id: position.id, symbol: position.symbol, expiry_date: position.expiry_date.to_s,
+                 instrument_type: position.instrument_type }
+    )
+  end
+
   def due?(position, now)
     return now >= Exchange::CryptoInstrumentCatalog.option_expires_at(position.expiry_date) if crypto_option?(position)
 
@@ -55,8 +68,18 @@ class OptionExpiryJob < ApplicationJob
     position.instrument_type == Exchange::CryptoInstrumentCatalog::OPTION
   end
 
+  # Stock options settle by physical delivery. This platform has no delivery
+  # model, so cash-settling them at intrinsic value would book a result the
+  # exchange does not produce. Such a position is left open, and a risk event asks
+  # for it to be exited before expiry. The event is written once per position.
+  PHYSICALLY_SETTLED = %w[OPTSTK].freeze
+  PHYSICAL_EVENT = "PHYSICAL_SETTLEMENT_REQUIRES_EXIT".freeze
+
   def settle!(position)
     return unless position.option_type.present? && position.expiry_date
+
+    return record_physical_settlement!(position) if PHYSICALLY_SETTLED.include?(position.instrument_type)
+
 
     underlying_price = fetch_underlying_price(position)
     if crypto_option?(position) && !underlying_price.to_f.positive?

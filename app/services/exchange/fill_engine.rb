@@ -10,7 +10,7 @@ module Exchange
     # per order, so a slice cannot be booked twice. The sequence is the order's
     # existing fill count plus one. Callers must hold the order's account lock, as
     # the matching paths do, so two slices cannot read the same count.
-    def fill(order, market_snapshot:, instrument_type: "EQUITY", quantity: nil, price: nil)
+    def fill(order, market_snapshot:, instrument_type: "EQUITY", quantity: nil, price: nil, liquidity_source: LIQUIDITY_SOURCE)
       qty = quantity || order.remaining_quantity
       return [ :unfilled, 0 ] if qty <= 0
 
@@ -36,7 +36,7 @@ module Exchange
         total_charges: charges[:total],
         charge_rule_ids: charges.fetch(:rule_ids, []),
         execution_key: "#{order.id}:#{order.paper_trades.count + 1}",
-        liquidity_source: LIQUIDITY_SOURCE,
+        liquidity_source: liquidity_source,
         fill_type: "full",
         traded_at: Clock.now
       )

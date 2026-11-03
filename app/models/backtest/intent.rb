@@ -33,9 +33,5 @@ module Backtest
 
     scope :queued, -> { where(status: "queued") }
     scope :reduce_only, -> { where(reduce_only: true) }
-
-    def queued?
-      status == "queued"
-    end
   end
 end
