@@ -63,7 +63,8 @@ async function runSmokeTest() {
 
   account = (await http.get('/account')).data;
   assertEqual(account.wallet.available, '9397.6', 'Available after Open (10000 - 600 margin - 2.4 fee)');
-  assertEqual(account.wallet.locked, '0.0', 'Locked should be 0 after fill');
+  assertEqual(account.wallet.order_locked, '0.0', 'Order locked should be 0 after fill');
+  assertEqual(account.wallet.locked, '600.0', 'Locked includes position margin');
 
   const getPositions = async () => {
     const res = (await http.get('/positions')).data;
@@ -109,7 +110,8 @@ async function runSmokeTest() {
   // Net Available Change = +915 (margin) + 300 (PnL) - 3.78 (fee) = +1211.22
   await http.post('/orders', {
     symbol: SYMBOL, side: 'SELL', type: 'MARKET', quantity: '0.15',
-    leverage: 10, client_order_id: 'smoke-test-3', execution_price: '63000.0'
+    leverage: 10, client_order_id: 'smoke-test-3', execution_price: '63000.0',
+    reduce_only: true
   });
 
   positions = await getPositions();
@@ -135,10 +137,9 @@ async function runSmokeTest() {
 
   // 8. LEDGER RECONCILIATION CHECK
   console.log('\n--- Step 8: Ledger & Cash Invariant Check ---');
-  // Total Cash = Available + Locked + Position Margin
+  // Total Cash = Available + Locked (includes position margin)
   const totalCash = new BigNumber(account.wallet.available)
-    .plus(account.wallet.locked)
-    .plus(btcPos.margin_used);
+    .plus(account.wallet.locked);
 
   // Expected Total Cash = Initial (10000) + Realized PnL (300) - Fees (2.4 + 2.48 + 3.78 + 0.315)
   // Expected Total Cash = 10300 - 8.975 = 10291.025

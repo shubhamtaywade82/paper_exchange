@@ -32,6 +32,5 @@ class CreatePositionProtections < ActiveRecord::Migration[8.1]
     add_index :position_protections, %i[account_id status], name: "index_position_protections_on_account_status"
     add_index :position_protections, %i[venue instrument_id status], name: "index_position_protections_on_venue_instrument_status"
     add_index :position_protections, :oco_group_id, where: "oco_group_id IS NOT NULL"
-    add_index :position_protections, :paper_position_id
   end
 end

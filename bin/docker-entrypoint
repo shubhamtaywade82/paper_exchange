@@ -8,6 +8,8 @@ set -e
 # Remove leftover server PID from previous crashes or abrupt container stops
 rm -f /rails/tmp/pids/server.pid
 
+bundle check >/dev/null 2>&1 || bundle install
+
 if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
   echo "Preparing database..."
   ./bin/rails db:prepare

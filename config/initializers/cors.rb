@@ -10,7 +10,7 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins ->(origin) { origin.match?(/\Ahttps?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\z/) }
+    origins ->(origin, *args) { origin == "null" || origin.to_s.match?(/\Ahttps?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\z/) }
 
     resource "*",
       headers: :any,

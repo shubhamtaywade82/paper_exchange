@@ -3,7 +3,7 @@
 # ==============================================================================
 # Stage 1: Base — common OS packages, no Ruby env yet
 # ==============================================================================
-ARG RUBY_VERSION=3.4.12
+ARG RUBY_VERSION=4.0.6
 FROM ruby:$RUBY_VERSION-slim-bookworm AS base
 
 RUN apt-get update -qq && \
