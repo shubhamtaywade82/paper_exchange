@@ -152,6 +152,7 @@ paths:
 
   /api/v1/orders:
     get:
+      operationId: listOrders
       tags: [Orders]
       summary: List account orders
       description: Keyset-paginated list of orders placed by this account.
@@ -199,6 +200,7 @@ paths:
                 next_cursor: null
 
     post:
+      operationId: createOrder
       tags: [Orders]
       summary: Submit a new order
       description: Evaluates risk limits, reserves margin, and executes market or resting limit/stop orders.
@@ -285,6 +287,7 @@ paths:
 
   /api/v1/orders/{id}:
     get:
+      operationId: getOrder
       tags: [Orders]
       summary: Get order details
       security:
@@ -303,6 +306,7 @@ paths:
           $ref: '#/components/responses/NotFound'
 
     delete:
+      operationId: cancelOrder
       tags: [Orders]
       summary: Cancel resting order
       description: Cancels an open resting order and releases locked margin back to available balance.
@@ -329,6 +333,7 @@ paths:
 
   /api/v1/positions:
     get:
+      operationId: listPositions
       tags: [Positions]
       summary: List open positions
       description: Returns active positions with live unrealized PnL, liquidation prices, and margins.
@@ -356,6 +361,7 @@ paths:
 
   /api/v1/positions/{id}:
     get:
+      operationId: getPosition
       tags: [Positions]
       summary: Get specific position
       security:
@@ -375,6 +381,7 @@ paths:
 
   /api/v1/positions/{position_id}/protections:
     get:
+      operationId: listProtections
       tags: [Protections]
       summary: List protections attached to a position
       security:
@@ -391,6 +398,7 @@ paths:
           description: List of active protection rules
 
     post:
+      operationId: createProtection
       tags: [Protections]
       summary: Attach stop-loss, take-profit, or trailing stop
       security:
@@ -432,6 +440,7 @@ paths:
 
   /api/v1/positions/{position_id}/protections/{id}:
     delete:
+      operationId: cancelProtection
       tags: [Protections]
       summary: Cancel protection policy
       security:
@@ -454,6 +463,7 @@ paths:
 
   /api/v1/mark_prices:
     post:
+      operationId: updateMarkPrices
       tags: [Mark Prices]
       summary: Push live mark prices
       description: Updates cached mark prices and evaluates liquidation checks for open leveraged positions.
@@ -487,6 +497,7 @@ paths:
 
   /api/v1/funding_events:
     post:
+      operationId: createFundingEvent
       tags: [Funding Events]
       summary: Ingest perpetual funding settlement
       description: Enqueues funding debit/credit calculations for all open leveraged positions of the symbol.
@@ -526,6 +537,7 @@ paths:
 
   /api/v1/ledger:
     get:
+      operationId: getLedger
       tags: [Ledger]
       summary: View account financial transaction ledger
       description: Keyset-paginated immutable transaction history (deposits, fees, margin locks, realized PnL).
@@ -557,6 +569,7 @@ paths:
 
   /api/v1/performance:
     get:
+      operationId: getPerformance
       tags: [Performance]
       summary: Get account performance metrics
       description: Returns Sharpe ratio, win rate, total PnL, profit factor, and max drawdown.
@@ -580,6 +593,7 @@ paths:
 
   /api/v1/exchange/status:
     get:
+      operationId: getExchangeStatus
       tags: [Exchange]
       summary: Exchange provider and matching health
       description: Reports broker connectivity, quote freshness, and matching worker state.
@@ -601,6 +615,7 @@ paths:
 
   /api/v1/market_events:
     get:
+      operationId: listMarketEvents
       tags: [Market Data]
       summary: Read latest tick stream events
       security:
@@ -621,6 +636,7 @@ paths:
         '200':
           description: List of market ticks
     post:
+      operationId: ingestMarketEvents
       tags: [Market Data]
       summary: Ingest tick or depth events
       security:
@@ -654,6 +670,7 @@ paths:
 
   /api/v1/strategy/signals:
     post:
+      operationId: evaluateSignal
       tags: [Strategy]
       summary: Pre-trade risk assessment
       description: Evaluates whether a proposed signal passes risk checks without executing or mutating account state.
