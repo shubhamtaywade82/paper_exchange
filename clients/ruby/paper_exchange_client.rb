@@ -40,14 +40,14 @@ class Client
 
   contract :create_order, "POST /api/v1/orders", description: "Submit a new order" do
     param :symbol, String, required: true
-    param :side, String, required: true, inclusion: [ "buy", "sell", "BUY", "SELL" ]
+    param :side, String, required: true, inclusion: ["buy", "sell", "BUY", "SELL"]
     param :quantity, Float, required: true
-    param :type, String, default: "market", inclusion: [ "market", "limit", "stop_market", "stop_limit" ]
+    param :type, String, default: "market", inclusion: ["market", "limit", "stop_market", "stop_limit"]
     param :price, Float
     param :execution_price, Float
     param :trigger_price, Float
     param :leverage, Integer, default: 1
-    param :instrument_type, String, default: "CRYPTO_PERPETUAL", inclusion: [ "CRYPTO_PERPETUAL", "CRYPTO_OPTION", "EQUITY", "FUTSTK", "OPTSTK", "FUTIDX", "OPTIDX" ]
+    param :instrument_type, String, default: "CRYPTO_PERPETUAL", inclusion: ["CRYPTO_PERPETUAL", "CRYPTO_OPTION", "EQUITY", "FUTSTK", "OPTSTK", "FUTIDX", "OPTIDX"]
     param :reduce_only, :boolean, default: false
     param :client_order_id, String
     responds 201, 422, type: :json
@@ -72,14 +72,14 @@ class Client
     responds 200, 404
   end
 
-  contract :list_protections, "GET /api/v1/positions/:position_id/protections", description: "List protections attached to a position" do
-    param :position_id, Integer, required: true
+  contract :list_protections, "GET /api/v1/positions/:positionId/protections", description: "List protections attached to a position" do
+    param :positionId, Integer, required: true
     responds 200
   end
 
-  contract :create_protection, "POST /api/v1/positions/:position_id/protections", description: "Attach stop-loss, take-profit, or trailing stop" do
-    param :position_id, Integer, required: true
-    param :protection_type, String, required: true, inclusion: [ "stop_loss", "take_profit", "trailing_stop" ]
+  contract :create_protection, "POST /api/v1/positions/:positionId/protections", description: "Attach stop-loss, take-profit, or trailing stop" do
+    param :positionId, Integer, required: true
+    param :protection_type, String, required: true, inclusion: ["stop_loss", "take_profit", "trailing_stop"]
     param :trigger_price, Float
     param :trailing_distance, Float
     param :quantity, Float, required: true
@@ -87,8 +87,8 @@ class Client
     responds 201
   end
 
-  contract :cancel_protection, "DELETE /api/v1/positions/:position_id/protections/:id", description: "Cancel protection policy" do
-    param :position_id, Integer, required: true
+  contract :cancel_protection, "DELETE /api/v1/positions/:positionId/protections/:id", description: "Cancel protection policy" do
+    param :positionId, Integer, required: true
     param :id, Integer, required: true
     responds 200
   end
@@ -142,5 +142,6 @@ class Client
     param :execution_price, Float
     responds 200, type: :json
   end
+
 end
 end

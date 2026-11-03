@@ -9,17 +9,17 @@ export const protectionsApi = defineApi({
   base: "http://127.0.0.1:3100",
   contracts: {
     /** List protections attached to a position */
-    listProtections: contract("GET /api/v1/positions/:position_id/protections", {
+    listProtections: contract("GET /api/v1/positions/:positionId/protections", {
       params: {
-        positionId: P.integer({ required: true, as: "position_id" }),
+        positionId: P.integer({ required: true }),
       },
       responds: [{ status: 200 }],
       security: ["ApiKeyAuth", "AccountIdAuth"],
     }),
     /** Attach stop-loss, take-profit, or trailing stop */
-    createProtection: contract("POST /api/v1/positions/:position_id/protections", {
+    createProtection: contract("POST /api/v1/positions/:positionId/protections", {
       params: {
-        positionId: P.integer({ required: true, as: "position_id" }),
+        positionId: P.integer({ required: true }),
         protectionType: P.string({ required: true, as: "protection_type", in: "body", inclusion: ["stop_loss", "take_profit", "trailing_stop"] }),
         triggerPrice: P.float({ as: "trigger_price", in: "body" }),
         trailingDistance: P.float({ as: "trailing_distance", in: "body" }),
@@ -31,9 +31,9 @@ export const protectionsApi = defineApi({
       security: ["ApiKeyAuth", "AccountIdAuth"],
     }),
     /** Cancel protection policy */
-    cancelProtection: contract("DELETE /api/v1/positions/:position_id/protections/:id", {
+    cancelProtection: contract("DELETE /api/v1/positions/:positionId/protections/:id", {
       params: {
-        positionId: P.integer({ required: true, as: "position_id" }),
+        positionId: P.integer({ required: true }),
         id: P.integer({ required: true }),
       },
       responds: [{ status: 200 }],

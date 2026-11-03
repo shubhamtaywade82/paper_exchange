@@ -17,5 +17,5 @@ export const CLIENT_METADATA = {
   generator: 'contractful-ts',
   generatorVersion: "0.4.2",
   api: "PaperExchange API",
-  sources: [{ file: "/rails/public/api-docs/openapi.yaml", hash: "sha256:0c3c57e46c352cf8245d0bcb2956aff69bc2a1e696482414e5a927e86227ef90" }],
+  sources: [{ file: "/rails/public/api-docs/openapi.yaml", hash: "sha256:973ddfdcd6fff79a3c3c9626fdc4f7810c21d09f7c73d6f70d578099f9226022" }],
 } as const;
