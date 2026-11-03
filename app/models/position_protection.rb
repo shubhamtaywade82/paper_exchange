@@ -27,11 +27,14 @@ class PositionProtection < ApplicationRecord
   scope :live_accounts, -> { where(account_id: ::Account.live.select(:account_id)) }
 
   PROTECTION_TYPES = %w[stop_loss take_profit trailing_stop].freeze
+  # The price a protection is evaluated on, declared when it is placed (I3).
+  TRIGGER_SOURCES = %w[last_trade bid_ask mark index].freeze
   STATUSES = %w[active triggered cancelled expired].freeze
 
   belongs_to :paper_position, class_name: "PaperExchange::PaperPosition"
 
   validates :protection_type, presence: true, inclusion: { in: PROTECTION_TYPES }
+  validates :trigger_source, inclusion: { in: TRIGGER_SOURCES }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :quantity, numericality: { greater_than: 0 }
   validates :trigger_price, numericality: { greater_than: 0 }, allow_nil: true

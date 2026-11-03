@@ -27,27 +27,57 @@ class ProtectionMonitorJob < ApplicationJob
     position = protection.paper_position
     return if position.nil? || position.quantity.to_f.zero?
 
-    # Fetch the latest mark price from QuoteStore (venue-aware). Falls back
-    # to the legacy MarkPriceStore for paper-venue positions.
-    mark_price = fetch_mark_price(protection)
-    return if mark_price.nil?
+    price = trigger_price_for(protection, position)
+    return record_unavailable(protection) if price.nil?
 
     # Update trailing-stop water marks before checking the breach.
-    protection.update_water_mark!(mark_price) if protection.protection_type == "trailing_stop"
+    protection.update_water_mark!(price) if protection.protection_type == "trailing_stop"
 
-    return unless protection.breached?(mark_price)
+    return unless protection.breached?(price)
 
-    trigger_close(protection, position, mark_price)
+    trigger_close(protection, position, price)
   rescue StandardError => e
     Rails.logger.error("[ProtectionMonitor] error evaluating protection #{protection.id}: #{e.class}: #{e.message}")
   end
 
-  def fetch_mark_price(protection)
+  # The price a protection is evaluated on is the one it declares (I3). The
+  # sources are not substituted for one another: last trade never stands in for
+  # mark, and a stored position price is not a market source at all. `mark` is the
+  # one source with two stores, the quote's mark and the mark store that paper and
+  # agent flows write to; both are mark, so reading either keeps the declared
+  # source. A declared source with no fresh value yields nil, and the protection is
+  # not evaluated.
+  def trigger_price_for(protection, position)
     quote = MarketData::QuoteStore.get(protection.venue, protection.instrument_id)
-    return quote[:mark_price] || quote[:ltp] if quote && !MarketData::QuoteStore.stale?(quote)
+    fresh = quote if quote && !MarketData::QuoteStore.stale?(quote)
 
-    # Fallback for paper-venue or when QuoteStore has no entry.
-    MarketData::MarkPriceStore.get(protection.instrument_id) || position(protection).current_price.to_f
+    case protection.trigger_source
+    when "last_trade" then fresh&.dig(:ltp)
+    when "bid_ask" then fresh&.dig(position.long? ? :bid : :ask)
+    when "mark" then fresh&.dig(:mark_price) || MarketData::MarkPriceStore.get(protection.instrument_id)
+    when "index" then nil # no index quote is loaded on this venue yet
+    end
+  end
+
+  UNAVAILABLE_EVENT = "PROTECTION_PRICE_UNAVAILABLE".freeze
+  UNAVAILABLE_DEDUPE_WINDOW = 5.minutes
+
+  # Records, at most once per window, that a protection could not be evaluated.
+  # The job runs every few seconds, so without the window one stale quote would
+  # write a row per run.
+  def record_unavailable(protection)
+    recent = RiskEvent.where(account_id: protection.account_id, event_type: UNAVAILABLE_EVENT)
+      .where("created_at > ?", UNAVAILABLE_DEDUPE_WINDOW.ago)
+      .where("details ->> 'protection_id' = ?", protection.id.to_s)
+      .exists?
+    return if recent
+
+    RiskEvent.create!(
+      account_id: protection.account_id,
+      event_type: UNAVAILABLE_EVENT,
+      details: { protection_id: protection.id, trigger_source: protection.trigger_source,
+                 instrument_id: protection.instrument_id }
+    )
   end
 
   def position(protection)
@@ -58,7 +88,7 @@ class ProtectionMonitorJob < ApplicationJob
   # same internal/reduce_only path as LiquidationJob so the close bypasses
   # the margin lock (the position is by definition at risk) and runs
   # through the normal fill + ledger sequence.
-  def trigger_close(protection, position, mark_price)
+  def trigger_close(protection, position, price)
     exchange = Exchange::PaperExchange.new(account_id: protection.account_id)
     close_side = position.long? ? "sell" : "buy"
 
@@ -72,7 +102,7 @@ class ProtectionMonitorJob < ApplicationJob
       option_type: position.option_type,
       strike_price: position.strike_price,
       expiry_date: position.expiry_date,
-      ltp: mark_price,
+      ltp: price,
       leverage: position.leverage,
       margin_type: position.margin_type,
       context: { reason: "PROTECTION_TRIGGER", protection_id: protection.id },
@@ -91,7 +121,8 @@ class ProtectionMonitorJob < ApplicationJob
         symbol: position.symbol,
         protection_type: protection.protection_type,
         trigger_price: protection.trigger_price.to_s,
-        mark_price: mark_price.to_s
+        trigger_source: protection.trigger_source,
+        evaluated_price: price.to_s
       }
     )
   rescue Exchange::PaperExchange::PositionGoneError

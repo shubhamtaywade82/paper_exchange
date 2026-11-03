@@ -26,14 +26,20 @@
 # Run daily (e.g. at market close) via config/recurring.yml; crypto expiries
 # run on their own, more frequent schedule there.
 class OptionExpiryJob < ApplicationJob
+  # Non-crypto option expiries are Indian exchange contracts, so their calendar
+  # date is the exchange's, not the server's. Using the server zone would make
+  # an expiry day depend on where the process happens to run.
+  EXCHANGE_ZONE = "Asia/Kolkata".freeze
+
   queue_as :default
 
-  def perform(now: Time.now.utc)
+  def perform(now: Clock.now)
+    today = Clock.exchange_date(zone: EXCHANGE_ZONE, at: now)
     ::PaperExchange::PaperPosition
       .live_accounts
       .where.not(option_type: nil)
       .where.not(quantity: 0)
-      .where("expiry_date <= ?", [ now.to_date, Date.today ].max)
+      .where("expiry_date <= ?", [ now.to_date, today ].max)
       .find_each { |position| settle!(position) if due?(position, now) }
   end
 
@@ -42,7 +48,7 @@ class OptionExpiryJob < ApplicationJob
   def due?(position, now)
     return now >= Exchange::CryptoInstrumentCatalog.option_expires_at(position.expiry_date) if crypto_option?(position)
 
-    position.expiry_date < Date.today
+    position.expiry_date < Clock.exchange_date(zone: EXCHANGE_ZONE, at: now)
   end
 
   def crypto_option?(position)

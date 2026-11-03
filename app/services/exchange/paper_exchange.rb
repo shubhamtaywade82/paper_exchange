@@ -95,7 +95,7 @@ module Exchange
       # zero notional in the risk gate (bypassing MAX_POSITION_VALUE) while
       # the actual margin lock used the real execution_price.
       # Try execution_price → explicit price → ltp → order book snapshot.
-      reference_price = (attrs[:execution_price] || attrs[:price] || attrs[:ltp]).to_f
+      reference_price = decimal(attrs[:execution_price] || attrs[:price] || attrs[:ltp])
       if reference_price <= 0
         # Fall back to the order book snapshot (set via market_event or a
         # prior fill) rather than raising — many test paths submit orders
@@ -103,7 +103,7 @@ module Exchange
         # price. A truly missing price (no book either) will still surface
         # as a 0-notional order that the matching engine rejects.
         book = @order_book.snapshot(attrs[:symbol])
-        reference_price = book&.dig(:ltp).to_f if reference_price <= 0 && book
+        reference_price = decimal(book&.dig(:ltp)) if reference_price <= 0 && book
       end
 
       signal = Strategy::Signal.new(
@@ -145,12 +145,11 @@ module Exchange
         clamp_order_to_locked_position!(order) if attrs[:reduce_only]
 
         if settlement_price
-          pinned = settlement_price.to_f
+          pinned = decimal(settlement_price)
           @order_book.apply_snapshot(order.symbol, bid: pinned, ask: pinned, ltp: pinned)
         elsif attrs[:execution_price].present?
-          execution_price = attrs[:execution_price].to_f
+          execution_price = decimal(attrs[:execution_price])
           @order_book.apply_snapshot(order.symbol, bid: execution_price, ask: execution_price, ltp: execution_price)
-          MarketData::MarkPriceStore.set(order.symbol, execution_price)
         end
 
         unless skip_gates
@@ -195,7 +194,7 @@ module Exchange
         fill_qty, fill_price = result if result.is_a?(Array) && result[0].is_a?(Numeric)
 
         if fill_qty && fill_qty.positive?
-          exact_price = settlement_price ? settlement_price.to_f : (attrs[:execution_price].presence || order.price)&.to_f
+          exact_price = settlement_price ? decimal(settlement_price) : optional_decimal(attrs[:execution_price].presence || order.price)
           fill_qty, fill_price, trade = @fill_engine.fill(
             order,
             market_snapshot: @order_book.snapshot(order.symbol),
@@ -225,7 +224,7 @@ module Exchange
             Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
             if order.instrument_type == "CRYPTO_PERPETUAL"
-              if trade.total_charges.to_f > 0
+              if trade.total_charges.positive?
                 Ledger::MarginLedger.deduct_fee!(
                   account_id: account_id,
                   amount: trade.total_charges,
@@ -243,7 +242,6 @@ module Exchange
               end
               Ledger::Ledger.refresh_cached_equity!(account_id)
             end
-            MarketData::MarkPriceStore.set(order.symbol, fill_price)
           end
           order.filled!
         end
@@ -342,7 +340,7 @@ module Exchange
       Ledger::Ledger.record_trade(account_id: account_id, trade: trade, realized_pnl: position.last_realized_pnl)
 
       if order.instrument_type == "CRYPTO_PERPETUAL"
-        if trade.total_charges.to_f > 0
+        if trade.total_charges.positive?
           Ledger::MarginLedger.deduct_fee!(
             account_id: account_id,
             amount: trade.total_charges,
@@ -360,7 +358,6 @@ module Exchange
         end
         Ledger::Ledger.refresh_cached_equity!(account_id)
       end
-      MarketData::MarkPriceStore.set(order.symbol, actual_fill_price)
 
       order.filled!
       order
@@ -384,6 +381,21 @@ module Exchange
     end
 
     private
+
+    # Money from a client, a feed or a column, as an exact decimal. A blank value
+    # is zero where a price is required, and nil where it is optional; an
+    # unparseable value raises rather than becoming a guess.
+    def decimal(value)
+      return BigDecimal("0") if value.nil? || value.to_s.strip.empty?
+
+      BigDecimal(value.to_s)
+    end
+
+    def optional_decimal(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+
+      BigDecimal(value.to_s)
+    end
 
     # Cash equity is delivery-only. A sell that is not reduce_only may sell only
     # shares the account holds, less the shares its own open sell orders still
@@ -447,7 +459,7 @@ module Exchange
     # MarginEngine.sync_position!) or is no longer needed (reject, cancel,
     # expiry).
     def release_order_margin!(order)
-      return if order.locked_margin.to_f.zero?
+      return if order.locked_margin.zero?
 
       Ledger::MarginLedger.unlock_margin!(
         account_id: order.account_id,

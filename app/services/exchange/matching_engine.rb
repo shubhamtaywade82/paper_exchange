@@ -46,8 +46,7 @@ module Exchange
         price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         [ qty, price ]
       when "bounded"
@@ -61,8 +60,7 @@ module Exchange
         raw_price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         fill_price = clamp_to_limit(raw_price, order)
         [ qty, fill_price ]
@@ -75,8 +73,7 @@ module Exchange
         price = @slippage.fill_price(
           market_snapshot: book,
           side: order.side,
-          instrument_type: order.instrument_type,
-          quantity: qty
+          instrument_type: order.instrument_type
         )
         [ qty, price ]
       else

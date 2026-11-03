@@ -1,79 +1,29 @@
 module Exchange
-  # Indian market transaction charge calculator.
+  # Trade charge entry point used by FillEngine and margin sizing.
   #
-  # P1-3 fix: STT rates updated to the NSE schedule effective April 1, 2026:
-  #   - Options sale (sell side): 0.15% of premium  (was 0.05% — 3x understated)
-  #   - Futures sale (sell side): 0.05% of traded value (was 0.01% — 5x understated)
-  # These are env-overridable so operators can pin to a specific FY schedule,
-  # but the defaults now match the live NSE rates rather than a stale schedule
-  # that systematically overstated net profitability.
+  # India instruments (equity, index and stock futures and options) are costed by
+  # Charges::Calculator from effective-dated ChargeRule rows. A missing rule raises;
+  # nothing is defaulted.
+  #
+  # Crypto is not yet on rule rows. Its schedule still comes from ENV and constants
+  # below, and it moves to rows in a later step. Its arithmetic is decimal.
   class BrokerageCalculator
     def initialize
-      @brokerage_floor = ENV.fetch("PAPER_EXCHANGE_BROKERAGE_FLOOR", "20.0").to_f
-      @stt_delivery = ENV.fetch("PAPER_EXCHANGE_STT_DELIVERY", "0.025").to_f / 100
-      @stt_intraday = ENV.fetch("PAPER_EXCHANGE_STT_INTRADAY", "0.0125").to_f / 100
-      # P1-3: NSE FY2026-27 schedule — options sell-side STT is 0.15%,
-      # futures sell-side STT is 0.05%.
-      @stt_options_sell = ENV.fetch("PAPER_EXCHANGE_STT_OPTIONS_SELL", "0.15").to_f / 100
-      @stt_futures_sell = ENV.fetch("PAPER_EXCHANGE_STT_FUTURES_SELL", "0.05").to_f / 100
-      @gst_rate = ENV.fetch("PAPER_EXCHANGE_GST", "18").to_f / 100
-      @sebi_fee = ENV.fetch("PAPER_EXCHANGE_SEBI_FEE", "0.0001").to_f
-      @stamp_duty = ENV.fetch("PAPER_EXCHANGE_STAMP_DUTY", "0.003").to_f / 100
-      @exchange_txn = ENV.fetch("PAPER_EXCHANGE_EXCHANGE_TXN", "0.00145").to_f / 100
       # Crypto options (Binance Options schedule): the fee is a rate on the
-      # underlying's notional, capped at a fraction of the premium. Defaults
-      # are the published taker tier; an account's own tier is what
+      # underlying's notional, capped at a fraction of the premium. Defaults are the
+      # published taker tier; an account's own tier is what
       # GET /eapi/v1/commission returns, so pin these to that.
-      @crypto_option_fee_rate = ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_RATE", "0.0003").to_f
-      @crypto_option_fee_cap = ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_CAP", "0.10").to_f
+      @crypto_option_fee_rate = BigDecimal(ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_RATE", "0.0003"))
+      @crypto_option_fee_cap = BigDecimal(ENV.fetch("PAPER_EXCHANGE_CRYPTO_OPTION_FEE_CAP", "0.10"))
     end
 
-    def calculate(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
-      segment_class = segment_class_for(instrument_type)
-      turnover = trade_price * quantity
+    def calculate(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY", at: Clock.now)
+      return crypto_option_charges(trade_price, quantity, symbol) if instrument_type == "CRYPTO_OPTION"
+      return crypto_perpetual_charges(trade_price, quantity) if instrument_type == "CRYPTO_PERPETUAL"
 
-      return crypto_option_charges(trade_price, quantity, symbol) if segment_class == "crypto_option"
-
-      if instrument_type == "CRYPTO_PERPETUAL" || segment_class == "crypto_perpetual"
-        fee = (turnover * 0.0004).round(8)
-        return {
-          brokerage: fee,
-          stt: 0.0,
-          gst: 0.0,
-          sebi: 0.0,
-          stamp_duty: 0.0,
-          exchange_txn: 0.0,
-          total: fee,
-          notional: turnover.round(8)
-        }
-      end
-
-      stt = if segment_class == "equity"
-        side == "buy" ? turnover * @stt_delivery : turnover * @stt_intraday
-      elsif side == "sell"
-        # P1-3: use the updated NSE schedule rates.
-        futures_or_options_stt(turnover, instrument_type)
-      else
-        0.0
-      end
-
-      brokerage = [ turnover * 0.0003, @brokerage_floor ].max
-      sebi = turnover * @sebi_fee
-      stamp = turnover * @stamp_duty if side == "buy"
-      exchange = turnover * @exchange_txn
-      gst = gst_on(brokerage + sebi + exchange)
-      total = brokerage + stt + gst + sebi + (stamp || 0.0) + exchange
-
-      {
-        brokerage: brokerage.round(2),
-        stt: stt.round(2),
-        gst: gst.round(2),
-        sebi: sebi.round(2),
-        stamp_duty: (stamp || 0.0).round(2),
-        exchange_txn: exchange.round(2),
-        total: total.round(2),
-        notional: turnover.round(2)
-      }
+      Charges::Calculator.new.calculate(
+        trade_price: trade_price, quantity: quantity, side: side, instrument_type: instrument_type, at: at
+      )
     end
 
     def margin_required_for(trade_price:, quantity:, side:, symbol:, instrument_type: "EQUITY")
@@ -83,53 +33,33 @@ module Exchange
 
     private
 
-    def segment_class_for(instrument_type)
-      case instrument_type
-      when "EQUITY" then "equity"
-      when "FUTIDX", "FUTSTK", "FUTCUR", "FUTCOM", "OPTFUT" then "future"
-      when "OPTIDX", "OPTSTK", "OPTCUR" then "option"
-      when "CRYPTO_PERPETUAL" then "crypto_perpetual"
-      when "CRYPTO_OPTION" then "crypto_option"
-      else "other"
-      end
-    end
-
-    # min(rate x underlying index x qty, cap x premium x qty). Without a
-    # pushed underlying price the cap alone is charged: it is the upper bound
-    # of the formula, so a missing price can only overstate the cost.
-    def crypto_option_charges(premium, quantity, symbol)
-      premium_turnover = premium.to_f * quantity.to_f
-      cap = premium_turnover * @crypto_option_fee_cap
-      underlying = CryptoInstrumentCatalog.option_underlying(symbol)
-      index_price = underlying && MarketData::MarkPriceStore.get(underlying)
-      fee = index_price.to_f.positive? ? [ @crypto_option_fee_rate * index_price.to_f * quantity.to_f, cap ].min : cap
-      fee = fee.round(8)
+    def crypto_perpetual_charges(trade_price, quantity)
+      turnover = BigDecimal(trade_price.to_s) * BigDecimal(quantity.to_s)
+      fee = (turnover * BigDecimal("0.0004")).round(8)
       {
-        brokerage: fee,
-        stt: 0.0,
-        gst: 0.0,
-        sebi: 0.0,
-        stamp_duty: 0.0,
-        exchange_txn: 0.0,
-        total: fee,
-        notional: premium_turnover.round(8)
+        brokerage: fee, stt: 0, gst: 0, sebi: 0, stamp_duty: 0, exchange_txn: 0,
+        total: fee, notional: turnover.round(8), rule_ids: []
       }
     end
 
-    # P1-3: NSE FY2026-27 STT schedule for derivatives sell-side.
-    # Options: 0.15% of premium. Futures: 0.05% of traded value.
-    # (Previously: options 0.05%, futures 0.01% — 3x and 5x understated.)
-    def futures_or_options_stt(turnover, instrument_type)
-      case instrument_type
-      when "OPTIDX", "OPTSTK", "OPTCUR"
-        turnover * @stt_options_sell
+    # min(rate x underlying index x qty, cap x premium x qty). Without a pushed
+    # underlying price the cap alone is charged: it is the upper bound of the
+    # formula, so a missing price can only overstate the cost.
+    def crypto_option_charges(premium, quantity, symbol)
+      premium_turnover = BigDecimal(premium.to_s) * BigDecimal(quantity.to_s)
+      cap = premium_turnover * @crypto_option_fee_cap
+      underlying = CryptoInstrumentCatalog.option_underlying(symbol)
+      index_price = underlying && MarketData::MarkPriceStore.get(underlying)
+      fee = if index_price && BigDecimal(index_price.to_s).positive?
+        [ @crypto_option_fee_rate * BigDecimal(index_price.to_s) * BigDecimal(quantity.to_s), cap ].min
       else
-        turnover * @stt_futures_sell
+        cap
       end
-    end
-
-    def gst_on(amount)
-      amount * @gst_rate
+      fee = fee.round(8)
+      {
+        brokerage: fee, stt: 0, gst: 0, sebi: 0, stamp_duty: 0, exchange_txn: 0,
+        total: fee, notional: premium_turnover.round(8), rule_ids: []
+      }
     end
   end
 end
