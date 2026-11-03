@@ -379,7 +379,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /api/v1/positions/{position_id}/protections:
+  /api/v1/positions/{positionId}/protections:
     get:
       operationId: listProtections
       tags: [Protections]
@@ -388,7 +388,7 @@ paths:
         - ApiKeyAuth: []
         - AccountIdAuth: []
       parameters:
-        - name: position_id
+        - name: positionId
           in: path
           required: true
           schema:
@@ -405,7 +405,7 @@ paths:
         - ApiKeyAuth: []
         - AccountIdAuth: []
       parameters:
-        - name: position_id
+        - name: positionId
           in: path
           required: true
           schema:
@@ -438,7 +438,7 @@ paths:
         '201':
           description: Protection policy attached
 
-  /api/v1/positions/{position_id}/protections/{id}:
+  /api/v1/positions/{positionId}/protections/{id}:
     delete:
       operationId: cancelProtection
       tags: [Protections]
@@ -447,7 +447,7 @@ paths:
         - ApiKeyAuth: []
         - AccountIdAuth: []
       parameters:
-        - name: position_id
+        - name: positionId
           in: path
           required: true
           schema:
