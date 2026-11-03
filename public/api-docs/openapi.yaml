@@ -45,6 +45,7 @@ tags:
 paths:
   /up:
     get:
+      operationId: checkUp
       tags: [Health]
       summary: Shallow health probe
       description: Verifies that the Rails web server process is booted and responding.
@@ -57,6 +58,7 @@ paths:
 
   /health:
     get:
+      operationId: checkHealth
       tags: [Health]
       summary: Deep dependency health probe
       description: Unauthenticated probe verifying Postgres, Redis, and Solid Queue reachability.
@@ -84,6 +86,7 @@ paths:
 
   /api/v1/account:
     get:
+      operationId: getAccount
       tags: [Accounts]
       summary: Get account wallet, equity, and PnL
       description: Returns wallet split (available and locked margin), live equity, and drawdown for the authenticated account.
@@ -118,6 +121,7 @@ paths:
 
   /api/v1/account/reset:
     post:
+      operationId: resetAccount
       tags: [Accounts]
       summary: Reset account to pristine balance
       description: Clears all open positions, open orders, and resets margin balance atomically.
