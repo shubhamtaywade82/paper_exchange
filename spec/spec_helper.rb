@@ -12,6 +12,19 @@
 # the additional setup, and require it from the spec files that actually need
 # it.
 #
+# Coverage starts here, before the Rails environment boots. Starting it from a
+# support file (loaded after rails_helper boots the app) missed every file that
+# boot loads, such as PaperExchange::PaperOrder, so those showed as 0% covered.
+require 'simplecov'
+SimpleCov.start 'rails' do
+  skip '/spec/'
+  skip '/config/'
+  skip '/vendor/'
+  group 'Services', 'app/services'
+  group 'Models', 'app/models'
+  group 'Controllers', 'app/controllers'
+end
+
 # See https://rubydoc.info/gems/rspec-core/RSpec/Core/Configuration
 RSpec.configure do |config|
   # rspec-expectations config goes here. You can use an alternate
