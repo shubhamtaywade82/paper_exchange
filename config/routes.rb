@@ -14,6 +14,21 @@ Rails.application.routes.draw do
       resources :protections, only: %i[index create destroy]
     end
     resources :risk_events, only: %i[index]
+    resources :backtest_datasets, only: %i[index show create destroy]
+    resources :backtest_runs, only: %i[index show create destroy] do
+      member do
+        post :execute
+        post :advance
+        post :finish
+        post :reset
+        get :history
+        get :intents
+        get :trades
+        get :orders
+        get :positions
+        get :equity
+      end
+    end
     get "performance", to: "performance#show"
     get "exchange/status", to: "exchange#status"
     resources :ledger, only: %i[index]

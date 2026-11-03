@@ -26,30 +26,60 @@
 # Run daily (e.g. at market close) via config/recurring.yml; crypto expiries
 # run on their own, more frequent schedule there.
 class OptionExpiryJob < ApplicationJob
+  # Non-crypto option expiries are Indian exchange contracts, so their calendar
+  # date is the exchange's, not the server's. Using the server zone would make
+  # an expiry day depend on where the process happens to run.
+  EXCHANGE_ZONE = "Asia/Kolkata".freeze
+
   queue_as :default
 
-  def perform(now: Time.now.utc)
+  def perform(now: Clock.now)
+    today = Clock.exchange_date(zone: EXCHANGE_ZONE, at: now)
     ::PaperExchange::PaperPosition
+      .live_accounts
       .where.not(option_type: nil)
       .where.not(quantity: 0)
-      .where("expiry_date <= ?", [ now.to_date, Date.today ].max)
+      .where("expiry_date <= ?", [ now.to_date, today ].max)
       .find_each { |position| settle!(position) if due?(position, now) }
   end
 
   private
 
+  def record_physical_settlement!(position)
+    already = RiskEvent.where(account_id: position.account_id, event_type: PHYSICAL_EVENT)
+      .where("details ->> 'position_id' = ?", position.id.to_s).exists?
+    return if already
+
+    RiskEvent.create!(
+      account_id: position.account_id,
+      event_type: PHYSICAL_EVENT,
+      details: { position_id: position.id, symbol: position.symbol, expiry_date: position.expiry_date.to_s,
+                 instrument_type: position.instrument_type }
+    )
+  end
+
   def due?(position, now)
     return now >= Exchange::CryptoInstrumentCatalog.option_expires_at(position.expiry_date) if crypto_option?(position)
 
-    position.expiry_date < Date.today
+    position.expiry_date < Clock.exchange_date(zone: EXCHANGE_ZONE, at: now)
   end
 
   def crypto_option?(position)
     position.instrument_type == Exchange::CryptoInstrumentCatalog::OPTION
   end
 
+  # Stock options settle by physical delivery. This platform has no delivery
+  # model, so cash-settling them at intrinsic value would book a result the
+  # exchange does not produce. Such a position is left open, and a risk event asks
+  # for it to be exited before expiry. The event is written once per position.
+  PHYSICALLY_SETTLED = %w[OPTSTK].freeze
+  PHYSICAL_EVENT = "PHYSICAL_SETTLEMENT_REQUIRES_EXIT".freeze
+
   def settle!(position)
     return unless position.option_type.present? && position.expiry_date
+
+    return record_physical_settlement!(position) if PHYSICALLY_SETTLED.include?(position.instrument_type)
+
 
     underlying_price = fetch_underlying_price(position)
     if crypto_option?(position) && !underlying_price.to_f.positive?

@@ -38,6 +38,7 @@ class FundingJob < ApplicationJob
     # P0-2: filter on open perpetual positions regardless of leverage.
     # Binance USD-M perpetuals incur funding at 1x too.
     positions = ::PaperExchange::PaperPosition
+      .live_accounts
       .where(symbol: symbol)
       .where("instrument_type = ? AND quantity <> 0", Exchange::CryptoInstrumentCatalog::PERPETUAL)
     return if positions.none?
@@ -69,7 +70,7 @@ class FundingJob < ApplicationJob
         funding_rate: funding_rate,
         position_notional: notional,
         amount: amount,
-        occurred_at: Time.current
+        occurred_at: Clock.now
       )
       payment.save! unless already_existed
       return if already_existed
@@ -105,7 +106,7 @@ class FundingJob < ApplicationJob
           credit: 0,
           reference_id: position.id.to_s,
           payload: payload,
-          occurred_at: Time.current
+          occurred_at: Clock.now
         )
       end
     end

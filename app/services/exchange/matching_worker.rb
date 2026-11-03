@@ -45,6 +45,7 @@ module Exchange
       # order determines which feed should drive it; for paper venue orders
       # any tick matches).
       open_orders = ::PaperExchange::PaperOrder
+        .live_accounts
         .where(status: :open)
         .where(symbol: event.symbol.to_s.upcase)
 

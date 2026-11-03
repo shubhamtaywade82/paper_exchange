@@ -1,17 +1,23 @@
 module Exchange
+  # In-process top-of-book for the live matching path.
+  #
+  # Depth is stored only when the feed supplies it, and nothing is invented
+  # to fill the gap. The matching path reads top of book, so a missing depth
+  # has no effect on fills; it is nil, not a fabricated 100-unit level.
   class OrderBook
     def initialize(mutex, books)
       @mutex = mutex
       @books = books
     end
 
-    def apply_snapshot(symbol, bid:, ask:, ltp:, depth: nil, timestamp: Time.current)
+    def apply_snapshot(symbol, bid:, ask:, ltp:, depth: nil, timestamp: Clock.now)
       @mutex.synchronize do
         @books[symbol] = {
           bid: bid,
           ask: ask,
           ltp: ltp,
-          depth: depth || default_depth(bid, ask),
+          depth: depth,
+          source: :feed,
           updated_at: timestamp
         }
       end
@@ -39,32 +45,24 @@ module Exchange
 
     private
 
-    # No live snapshot has been applied to this in-process order book for
-    # `symbol`. Falls back to the last price the trading agent pushed via
-    # POST /api/mark_prices (MarketData::MarkPriceStore) when one exists.
-    # In production, refuses to fabricate a price — a market order against a
-    # hallucinated book is a hallucinated fill (a $1 spread at $100 was the
-    # previous default; for a 1000-share RELIANCE order at ₹2,500 that's a
-    # ₹24M accounting hole). Tests keep the stub because they exercise the
-    # matching engine without spinning up a market-data feed.
+    # No feed snapshot exists for `symbol` in this process. Production falls
+    # back to the last price the trading agent pushed (MarketData::MarkPriceStore)
+    # and labels the book `:mark_derived`: the bid and ask are a 2 bp model around
+    # that price, not observed quotes, and there is no depth. With no mark
+    # either, production refuses to price the order at all. Test builds a fixed
+    # book so matching can be exercised without a feed.
     def default_book(symbol)
       mark_price = MarketData::MarkPriceStore.get(symbol)
       unless mark_price
         raise "No market data for #{symbol}. Push a tick via PaperExchange#market_event or POST /api/mark_prices before submitting orders." unless Rails.env.test?
-        return { bid: 100.0, ask: 101.0, ltp: 100.5, depth: default_depth(100.0, 101.0) }
+
+        return { bid: 100.0, ask: 101.0, ltp: 100.5, depth: nil, source: :test_fixture }
       end
 
       spread = mark_price * 0.0002
       bid = mark_price - spread
       ask = mark_price + spread
-      { bid: bid, ask: ask, ltp: mark_price, depth: default_depth(bid, ask) }
-    end
-
-    def default_depth(bid, ask)
-      {
-        bids: Array([ [ bid, 100 ] ]),
-        asks: Array([ [ ask, 100 ] ])
-      }
+      { bid: bid, ask: ask, ltp: mark_price, depth: nil, source: :mark_derived }
     end
   end
 end

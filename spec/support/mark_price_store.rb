@@ -1,10 +1,10 @@
-# MarketData::MarkPriceStore keeps a process-level in-memory cache by design
-# (see its class docs) so it survives across requests within one process.
-# In the test process that cache would otherwise leak a symbol's price from
-# one example into the next — reset it before every example so specs stay
-# order-independent regardless of which other specs ran first.
+# MarketData::MarkPriceStore keeps a process-level cache and a Redis mirror
+# shared by every process. Both survive across examples and across test runs,
+# so a price one example writes would leak into the next and change its results.
+# Clear both before every example, so specs are independent of order and of
+# earlier runs.
 RSpec.configure do |config|
   config.before do
-    MarketData::MarkPriceStore.instance_variable_set(:@local_cache, nil)
+    MarketData::MarkPriceStore.clear
   end
 end

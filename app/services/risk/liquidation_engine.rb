@@ -13,6 +13,7 @@ module Risk
     class << self
       def refresh_cache!
         rows = ::PaperExchange::PaperPosition
+          .live_accounts
           .where("leverage > 1 AND quantity <> 0 AND liquidation_price IS NOT NULL")
           .pluck(:id, :symbol, :side, :liquidation_price)
 

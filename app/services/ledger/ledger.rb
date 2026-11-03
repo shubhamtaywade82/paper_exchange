@@ -16,21 +16,21 @@ module Ledger
     # (a cheap option close), the remainder is posted as a debit.
     def self.record_trade(account_id:, trade:, realized_pnl: nil)
       is_crypto_perp = trade.paper_order.respond_to?(:instrument_type) && trade.paper_order.instrument_type == "CRYPTO_PERPETUAL"
-      charges = trade.respond_to?(:total_charges) ? trade.total_charges.to_f : 0.0
+      charges = trade.respond_to?(:total_charges) ? BigDecimal(trade.total_charges.to_s) : BigDecimal("0")
 
       # The TRADE entry is the immutable audit record of the fill. Its
       # debit/credit fields capture the gross cash flow direction for
       # reconciliation; the actual wallet movements happen via MarginLedger
       # so available_balance/locked_margin stay consistent with the
       # position's initial_margin (P0-1).
-      debit = 0.0
-      credit = 0.0
+      debit = BigDecimal("0")
+      credit = BigDecimal("0")
 
       if !is_crypto_perp && trade.side == "buy"
-        debit = (trade.price * trade.quantity).to_f + charges
+        debit = BigDecimal(trade.price.to_s) * BigDecimal(trade.quantity.to_s) + charges
       elsif !is_crypto_perp && trade.side == "sell"
-        net = (trade.price * trade.quantity).to_f - charges
-        credit = [ net, 0.0 ].max
+        net = BigDecimal(trade.price.to_s) * BigDecimal(trade.quantity.to_s) - charges
+        credit = [ net, BigDecimal("0") ].max
         debit = net.negative? ? net.abs : 0.0
       end
 
@@ -120,7 +120,7 @@ module Ledger
     # via MarginEngine.sync_position!, so trade_cash_pnl is no longer needed
     # in the equity formula — it was the source of the 80% phantom drawdown.
     def self.compute_equity(account, unrealized)
-      account.available_balance.to_f + account.locked_margin.to_f + unrealized.to_f
+      BigDecimal(account.available_balance.to_s) + BigDecimal(account.locked_margin.to_s) + BigDecimal(unrealized.to_s)
     end
 
     # Realized PnL comes from the REALIZED_PNL ledger stream — posted by
@@ -130,7 +130,7 @@ module Ledger
     # cost that is already in locked_margin.
     def self.compute_realized_pnl(account_id)
       pnl_entries = LedgerEntry.where(account_id: account_id, event_type: "REALIZED_PNL")
-      (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).to_f.round(8)
+      (pnl_entries.sum(:credit) - pnl_entries.sum(:debit)).round(8)
     end
 
     # `mark_price` defaults to the live price from MarketData::MarkPriceStore
@@ -145,7 +145,7 @@ module Ledger
       return 0 if avg_price.nil?
 
       multiplier = position.long? ? 1 : -1
-      (mark_price.to_f - avg_price.to_f) * position.quantity.to_f * multiplier
+      (BigDecimal(mark_price.to_s) - BigDecimal(avg_price.to_s)) * BigDecimal(position.quantity.to_s) * multiplier
     end
 
     def self.compute_unrealized_pnl(account_id)

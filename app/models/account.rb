@@ -1,6 +1,13 @@
 class Account < ApplicationRecord
   self.table_name = "accounts"
 
+  # Backtest accounts (simulated: true) share these tables with live accounts.
+  # Live jobs scope their cross-account queries to `live` accounts, so a
+  # simulated position is never matched, expired, settled or funded at live
+  # prices. See Backtest::RunManager.
+  scope :live, -> { where(simulated: false) }
+  scope :simulated, -> { where(simulated: true) }
+
   validates :account_id, presence: true, uniqueness: true
   validates :name, presence: true
   validates :currency, presence: true, inclusion: { in: %w[INR USD USDT] }

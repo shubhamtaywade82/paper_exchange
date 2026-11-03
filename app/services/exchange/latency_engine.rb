@@ -10,8 +10,11 @@ module Exchange
     # that artificially sleeps 100-500ms on every matching call caps Puma
     # throughput at ~2-10 orders/sec/worker — fine for the realism use case
     # it was added for, not fine to leave on by default.
+    # Never inside a backtest: a replay must be deterministic and must not
+    # sleep once per simulated bar (see Backtest::Session).
     def simulate
       return if Rails.env.test?
+      return if Backtest::Session.current
       return unless ENV["PAPER_EXCHANGE_SIMULATE_LATENCY"] == "true"
 
       sleep(rand(@min_ms..@max_ms) / 1000.0)

@@ -90,13 +90,13 @@ module MarketData
     # symbol with an open order, open position, or active protection.
     def load_active_instruments
       symbols = Set.new
-      ::PaperExchange::PaperOrder.where(status: :open).distinct.pluck(:venue, :symbol).each do |venue, sym|
+      ::PaperExchange::PaperOrder.live_accounts.where(status: :open).distinct.pluck(:venue, :symbol).each do |venue, sym|
         symbols << { venue: venue, symbol: sym }
       end
-      ::PaperExchange::PaperPosition.where("quantity <> 0").distinct.pluck(:venue, :symbol).each do |venue, sym|
+      ::PaperExchange::PaperPosition.live_accounts.where("quantity <> 0").distinct.pluck(:venue, :symbol).each do |venue, sym|
         symbols << { venue: venue, symbol: sym }
       end
-      ::PositionProtection.where(status: "active").distinct.pluck(:venue, :instrument_id).each do |venue, sym|
+      ::PositionProtection.live_accounts.where(status: "active").distinct.pluck(:venue, :instrument_id).each do |venue, sym|
         symbols << { venue: venue, symbol: sym }
       end
       symbols.to_a

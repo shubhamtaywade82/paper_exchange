@@ -23,10 +23,10 @@ module Exchange
   # was double-counted against available_balance in the equity formula.
   class MarginEngine
     def self.sync_position!(position, account_id:)
-      flat = position.quantity.to_f.zero?
+      flat = position.quantity.zero?
       leveraged = !flat && position.leverage.to_i > 1
 
-      notional = (position.avg_price.to_f * position.quantity.to_f).abs
+      notional = (position.avg_price.to_d * position.quantity.to_d).abs
       required = if flat
         BigDecimal("0")
       elsif leveraged
