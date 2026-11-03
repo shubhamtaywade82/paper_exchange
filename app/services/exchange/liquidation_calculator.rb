@@ -13,27 +13,27 @@ module Exchange
   # liquidation price.
   class LiquidationCalculator
     def self.default_maintenance_margin_rate
-      ENV.fetch("PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE", "0.004").to_f
+      ENV.fetch("PAPER_EXCHANGE_MAINTENANCE_MARGIN_RATE", "0.004").to_d
     end
 
     def self.liquidation_price(entry_price:, leverage:, side:, maintenance_margin_rate: default_maintenance_margin_rate)
       return nil if entry_price.nil? || leverage.to_i <= 1
 
-      entry = entry_price.to_f
-      lev = leverage.to_f
+      entry = entry_price.to_d
+      lev = leverage.to_d
 
       case side.to_s
       when "long"
-        entry * (1 - (1.0 / lev) + maintenance_margin_rate)
+        entry * (1 - (BigDecimal("1") / lev) + maintenance_margin_rate)
       when "short"
-        entry * (1 + (1.0 / lev) - maintenance_margin_rate)
+        entry * (1 + (BigDecimal("1") / lev) - maintenance_margin_rate)
       else
         raise ArgumentError, "unknown side #{side.inspect}"
       end
     end
 
     def self.initial_margin(notional:, leverage:)
-      notional.to_f / [ leverage.to_i, 1 ].max
+      notional.to_d / [ leverage.to_i, 1 ].max
     end
   end
 end

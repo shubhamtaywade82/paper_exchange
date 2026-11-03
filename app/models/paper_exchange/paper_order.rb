@@ -73,13 +73,13 @@ module PaperExchange
     # limit/trigger price where set — callers filling at market must pass the
     # fill price explicitly since `price` is nil for market orders).
     def notional(reference_price)
-      reference_price.to_f * quantity.to_f
+      reference_price.to_d * quantity.to_d
     end
 
     # Initial margin required to open this order's full quantity at the given
     # reference price under the order's own leverage.
     def required_margin(reference_price)
-      notional(reference_price) / leverage.to_f
+      notional(reference_price) / leverage.to_d
     end
 
     # Legal transitions (audit S1/N1):

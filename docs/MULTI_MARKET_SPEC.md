@@ -763,3 +763,67 @@ Implementation of the affected milestones cannot be validated without these. I w
 - Changing live matching to walk depth. That follows once live L2 feed quality is established.
 - Changing the Rails time zone. Storage stays UTC. Session logic uses each exchange's zone.
 - Any change to `crypto-trading-agent`.
+
+---
+
+## 16. Implementation status
+
+Branch `ccr-4b6aedd2-6l8o0y`. Suite: 688 examples, 0 failures; RuboCop, Brakeman and bundler-audit clean.
+
+### Done
+
+| Item | Where |
+|---|---|
+| Options buy-only: a non-reduce_only sell on OPTIDX, OPTSTK, OPTFUT or OPTCUR is refused | `Exchange::OrderValidator` (4161e02) |
+| Cash equity cannot be sold short; checked under the account lock with open sells reserved | `Exchange::PaperExchange#assert_equity_holdings!` (4161e02) |
+| Backtests refuse `allow_short` on cash equity | `Backtest::Strategies::SmaCross` (4161e02) |
+| Decimal money: ledger posting and PnL, prices, notional, margin, liquidation | `Ledger::Ledger`, `PaperExchange`, `MarginValidator`, `LiquidationCalculator`, `MarginEngine` (2b3b24b) |
+| Ratchet on the float conversions still in money code | `spec/lint/money_paths_spec.rb` |
+| One clock; expiry decided on the exchange date (Asia/Kolkata) | `Clock` (2b3b24b) |
+| No fabricated depth; mark-derived books labelled `:mark_derived` | `Exchange::OrderBook` (2b3b24b) |
+| Scale-invariant slippage (fraction of price) | `Exchange::SlippageEngine` (2b3b24b) |
+| India charges from effective-dated `charge_rules`; a missing rule raises; legacy values installed | `Charges::Calculator`, `Charges::LegacyRules`, `charges:install_legacy_rules` (2b3b24b) |
+| Fill identity: `execution_key` unique per order, rule ids, liquidity source | `Exchange::FillEngine` (2b3b24b) |
+| Protections declare a trigger source; no fallback; unavailable prices recorded | `ProtectionMonitorJob`, `PositionProtection` (2b3b24b) |
+| Fills no longer write the mark-price cache | `Exchange::PaperExchange` (2b3b24b) |
+| Reference-data migrations: exchanges, instruments, instrument specs, calendar, market rules, charge rules | `db/migrate/20261103100000_*` (2b3b24b) |
+| Order rules: unsupported types refused; instrument, lot, freeze, tick, validity and session checks when enforced | `Markets::OrderRules`, `Markets::Enforcement` (822a71c) |
+| Stock options are not cash-settled; one risk event per position | `OptionExpiryJob` (822a71c) |
+| L2 book with decimal arithmetic and depth deltas; ordered events; contiguous sequences | `Backtest::Tick` (822a71c) |
+| Market orders priced against the book, one fill per consumed level | `Backtest::Tick::Gateway` (822a71c) |
+| Runs declare fidelity; only `ohlc_bar` is executable | `Backtest::RunValidator` (this commit) |
+
+### Partial
+
+- **T0.1 float money.** About 33 `.to_f` occurrences remain in 11 money files. They are the matching comparisons against float quotes, liquidation comparisons, and the trailing-stop arithmetic. The ratchet stops them growing.
+- **T0.5 charges.** Crypto charges still come from ENV. The legacy India rows are unverified and carry source `legacy:`. They are in force for every date, as the code always applied them.
+- **T2.2 to T2.3 replay.** `EventLog` and `TickReplay` are not driven by a run loop. The gateway handles market orders only, and it does not yet update positions, margin or the ledger.
+- **M3 settlement.** Stock options are gated. Forced exit before a physical expiry is not built.
+
+### Not done, and blocked
+
+| Item | Blocked on |
+|---|---|
+| T1.2 instrument master importer | The instrument master source (§14, item 4) |
+| T1.4 trading-calendar rows | The calendar source (§14, item 3) |
+| T2.4 NSE depth dataset loader; replay run loop; replay accounting | NSE L2 or tick data (§14, item 1) |
+| T3.2 daily futures mark-to-market; estimated margin flag | Settlement price and margin sources (§14, items 6 and 8) |
+| T3.3 forced exit before physical expiry | Cutoff rules, loaded into `market_rules` |
+| T3.4 and M4 intraday square-off and intraday policy | A product flag on orders and positions; none exists |
+| T0.8 close PR #51 | Your decision. Its primitives now live in `Backtest::Tick` on this branch |
+| M6 results recorder | Not started |
+| T7.4 funding and T7.5 option expiry in backtests | Not started |
+| T6.43 CI coverage gate | A threshold decision |
+| T0.7 remove the thread-local `Backtest::Session` | Still used by the mark store and the risk gate |
+
+### Decisions taken in this change
+
+1. Option writing is refused for every option type, not only crypto (D8).
+2. Cash-equity sells are limited to holdings, and equity shorts are refused in backtests as well as live.
+3. A `mark` protection reads the quote's mark, then the mark store. Those are the same declared source. Last trade and bid/ask never stand in for it.
+4. Stock options are never cash-settled. Their positions stay open and get a risk event.
+5. The legacy charge rows have no effective date. They are in force for every date, which is the behaviour the code always had.
+6. Market-rule enforcement is off until `PAPER_EXCHANGE_MARKET_RULES=enforce` is set. The always-on refusals of unsupported types do not depend on it.
+7. A market order that exhausts depth reports its remainder. Cancelling the remainder as `insufficient_depth` is not yet wired to order status.
+8. `db/schema.rb` was regenerated by the dumper, which drops the hand-written comments. The migrations keep the design notes.
+9. Pre-existing: `spec/services/exchange/position_manager_concurrency_spec.rb` commits rows outside a transaction. The charge-rule hook clears the table before each example for that reason.

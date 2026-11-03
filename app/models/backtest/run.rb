@@ -16,6 +16,9 @@ module Backtest
 
     STATUSES = %w[pending running completed failed].freeze
     MODES = %w[engine external].freeze
+    # Declared execution fidelity. Only ohlc_bar is executable today; the others are
+    # refused by Backtest::RunValidator until a replay loop runs them.
+    FIDELITIES = %w[ohlc_bar trade_tick l1 l2].freeze
 
     belongs_to :dataset,
       class_name: "Backtest::Dataset",
@@ -42,6 +45,7 @@ module Backtest
     validates :name, presence: true
     validates :status, inclusion: { in: STATUSES }
     validates :mode, inclusion: { in: MODES }
+    validates :fidelity, inclusion: { in: FIDELITIES }
     validates :strategy_key, presence: true
     validates :initial_capital, numericality: { greater_than: 0 }
     validates :leverage, numericality: { only_integer: true, in: 1..100 }

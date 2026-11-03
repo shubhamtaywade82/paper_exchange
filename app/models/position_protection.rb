@@ -94,13 +94,13 @@ class PositionProtection < ApplicationRecord
   # Marks this protection as triggered and cancels any OCO siblings.
   def trigger!
     transaction do
-      update_columns(status: "triggered", triggered_at: Time.current)
+      update_columns(status: "triggered", triggered_at: Clock.now)
       cancel_oco_siblings! if oco_group_id.present?
     end
   end
 
   def cancel!
-    update_columns(status: "cancelled", cancelled_at: Time.current)
+    update_columns(status: "cancelled", cancelled_at: Clock.now)
   end
 
   private
@@ -129,7 +129,7 @@ class PositionProtection < ApplicationRecord
     PositionProtection
       .where(oco_group_id: oco_group_id, status: "active")
       .where.not(id: id)
-      .update_all(status: "cancelled", cancelled_at: Time.current)
+      .update_all(status: "cancelled", cancelled_at: Clock.now)
   end
 
   def required_price_for_type

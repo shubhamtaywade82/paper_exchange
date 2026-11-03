@@ -47,6 +47,19 @@ RSpec.describe Backtest::RunValidator do
       .to include('bytes; the limit is')
   end
 
+  it 'defaults a run to ohlc_bar fidelity, the only one the replay loop executes' do
+    expect(described_class.call(base)[:fidelity]).to eq('ohlc_bar')
+  end
+
+  it 'refuses a fidelity the replay loop cannot execute, so no result overstates its accuracy' do
+    expect(invalid_reasons(base.merge(fidelity: 'l2')))
+      .to include('fidelity l2 is not executable yet')
+  end
+
+  it 'refuses an unknown fidelity name' do
+    expect(invalid_reasons(base.merge(fidelity: 'queue_aware'))).to include('fidelity')
+  end
+
   it 'stores the declared thresholds as strings and the manifest with string keys' do
     attrs = described_class.call(base.merge(
       benchmarks: { min_trades: 5, beat_buy_and_hold: true },

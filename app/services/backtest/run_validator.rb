@@ -26,6 +26,7 @@ module Backtest
       required(:dataset_id).filled(:integer)
       required(:name).filled(:string, max_size?: 120)
       optional(:mode).maybe(:string, included_in?: Run::MODES)
+      optional(:fidelity).maybe(:string, included_in?: Run::FIDELITIES)
       optional(:strategy).maybe(:hash) do
         required(:key).filled(:string)
         optional(:params).maybe(:hash)
@@ -58,6 +59,10 @@ module Backtest
       raise Invalid, "dataset_id #{values[:dataset_id]} does not exist" unless dataset
 
       mode = (values[:mode] || (values[:strategy] ? "engine" : "external"))
+      fidelity = values[:fidelity] || "ohlc_bar"
+      unless fidelity == "ohlc_bar"
+        raise Invalid, "fidelity #{fidelity} is not executable yet: the replay loop runs OHLC bars only, so a #{fidelity} result would overstate its accuracy"
+      end
       contract = Contract.from_dataset(dataset)
       lot_size = values[:lot_size] || BigDecimal("1")
       leverage = values[:leverage] || 1
@@ -70,6 +75,7 @@ module Backtest
       {
         name: values[:name].strip,
         mode: mode,
+        fidelity: fidelity,
         backtest_dataset_id: dataset.id,
         strategy_key: strategy_key,
         strategy_params: strategy_params,

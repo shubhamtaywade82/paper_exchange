@@ -43,13 +43,13 @@ module PaperExchange
     end
 
     def notional_value(price = mark_price)
-      price.to_f.abs * quantity.to_f.abs
+      price.to_d.abs * quantity.to_d.abs
     end
 
     def liquidated?(price)
-      return false unless leveraged? && liquidation_price.present? && quantity.to_f != 0
+      return false unless leveraged? && liquidation_price.present? && !quantity.zero?
 
-      long? ? price.to_f <= liquidation_price.to_f : price.to_f >= liquidation_price.to_f
+      long? ? price.to_d <= liquidation_price.to_d : price.to_d >= liquidation_price.to_d
     end
   end
 end

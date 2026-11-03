@@ -70,7 +70,7 @@ class FundingJob < ApplicationJob
         funding_rate: funding_rate,
         position_notional: notional,
         amount: amount,
-        occurred_at: Time.current
+        occurred_at: Clock.now
       )
       payment.save! unless already_existed
       return if already_existed
@@ -106,7 +106,7 @@ class FundingJob < ApplicationJob
           credit: 0,
           reference_id: position.id.to_s,
           payload: payload,
-          occurred_at: Time.current
+          occurred_at: Clock.now
         )
       end
     end

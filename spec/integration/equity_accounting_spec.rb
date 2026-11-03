@@ -39,6 +39,9 @@ RSpec.describe 'P0-1: Non-crypto wallet accounting', type: :integration do
   end
 
   it 'keeps equity correct at the entry price (no phantom drawdown)' do
+    # The mark is the agent's price. A fill no longer sets it, so the test states
+    # that the mark equals the entry price, as a live feed would.
+    MarketData::MarkPriceStore.set('RELIANCE', 100.0)
     exchange.market_event(MarketData::MarketEvent.new(
       symbol: 'RELIANCE', bid: 100.0, ask: 100.0, ltp: 100.0, timestamp: Time.current
     ))

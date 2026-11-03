@@ -47,7 +47,7 @@ module Ledger
             cached_locked_margin: account.locked_margin.to_s,
             derived_locked_margin: locked.to_s
           },
-          occurred_at: Time.current
+          occurred_at: Clock.now
         )
 
         account.update_columns(available_balance: available, locked_margin: locked)

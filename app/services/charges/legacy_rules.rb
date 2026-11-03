@@ -12,7 +12,11 @@ module Charges
   # installs the same rows before each example.
   module LegacyRules
     SOURCE = "legacy: Exchange::BrokerageCalculator ENV defaults at install; unverified against circulars".freeze
-    EFFECTIVE_FROM = Date.new(2026, 4, 1)
+    # The legacy values carry no effective date. The code applied them to every
+    # trade date, so they are in force from the earliest date, which keeps every
+    # existing charge unchanged. Replace them with dated rows once the verified
+    # schedule is loaded.
+    EFFECTIVE_FROM = Date.new(1900, 1, 1)
     BROKERAGE_RATE = BigDecimal("0.0003")
     PRODUCTS = %w[EQUITY_CASH FUTURES OPTIONS].freeze
 
