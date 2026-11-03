@@ -10,7 +10,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "smoke-test": "tsx smoke-test.ts",
-    "smoke-test:simulation": "tsx smoke-test-simulation.ts"
+    "smoke-test:simulation": "tsx smoke-test-simulation.ts",
+    "generate:client:ts": "contractful-gen --spec public/api-docs/openapi.yaml --out clients/ts",
+    "generate:client:ruby": "ruby -rcontractful -rcontractful/contract/openapi_import -e 'File.write(\"clients/ruby/paper_exchange_client.rb\", Contractful::Contract::OpenAPIImport.to_ruby(\"public/api-docs/openapi.yaml\", class_name: \"PaperExchange::Client\"))'",
+    "generate:clients": "npm run generate:client:ts && npm run generate:client:ruby"
   },
   "repository": {
     "type": "git",
@@ -26,7 +29,8 @@
   "homepage": "https://github.com/shubhamtaywade82/paper_exchange#readme",
   "dependencies": {
     "axios": "^1.20.0",
-    "bignumber.js": "^11.1.5"
+    "bignumber.js": "^11.1.5",
+    "contractful-ts": "^0.4.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
