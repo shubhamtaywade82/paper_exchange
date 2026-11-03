@@ -49,6 +49,9 @@ module Api
       render json: step_json(step)
     rescue Backtest::Replay::Conflict => e
       render_error(:conflict, e.message)
+    rescue Backtest::OrderManager::ExecutionError, Backtest::UnsupportedScenario => e
+      # The run has been failed; the bot reads why from the run.
+      render_error(:conflict, "run failed: #{e.message}")
     end
 
     # Ends the replay now. Resting orders are withdrawn, and the trades, metrics

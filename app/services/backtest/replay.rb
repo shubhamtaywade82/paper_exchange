@@ -157,6 +157,12 @@ module Backtest
         bar = next_bar
         bar ? step_bar(bar) : nil
       end
+    rescue OrderManager::ExecutionError, UnsupportedScenario => e
+      # The step rolled back, so the account is as it was before this bar. The run
+      # cannot continue safely (an unprotected position, or an unmodelled
+      # settlement), so it is failed, and the reason is stored for the bot to read.
+      RunManager.fail!(@run, e)
+      raise
     end
 
     # Ends the replay now. Remaining bars are not processed.

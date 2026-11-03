@@ -101,6 +101,59 @@ RSpec.describe Backtest::DatasetValidator do
     expect(invalid_reasons(base.merge(bars: valid_bars.first(1)))).to include('at least 2 bars are required')
   end
 
+  it 'accepts bars given as [ts, open, high, low, close, volume] arrays' do
+    rows = [
+      [ '2026-11-02T03:45:00Z', '100', '101', '99', '100.5', '10' ],
+      [ '2026-11-02T03:50:00Z', '100.5', '102', '100', '101', '12' ]
+    ]
+
+    expect(described_class.call(base.merge(bars: rows))[:attributes][:bars_count]).to eq(2)
+  end
+
+  it 'accepts epoch-second timestamps, as integers or as digit strings' do
+    epoch = Time.utc(2026, 11, 2, 3, 45).to_i
+    rows = [
+      { bar_at: epoch, open: 100, high: 101, low: 99, close: 100 },
+      { bar_at: (epoch + 300).to_s, open: 100, high: 101, low: 99, close: 100 }
+    ]
+
+    result = described_class.call(base.merge(bars: rows))
+
+    expect(result[:attributes][:first_bar_at]).to eq(Time.utc(2026, 11, 2, 3, 45))
+    expect(result[:attributes][:last_bar_at]).to eq(Time.utc(2026, 11, 2, 3, 50))
+  end
+
+  it 'refuses a bar that is neither an object nor an array' do
+    expect(invalid_reasons(base.merge(bars: [ 'oops', valid_bars[1] ])))
+      .to include('bar 1: must be an object or an array')
+  end
+
+  it 'refuses a dataset with neither bars nor csv' do
+    expect(invalid_reasons(base.except(:bars)))
+      .to include('either bars (array) or csv (text) must be provided')
+  end
+
+  it 'refuses malformed CSV rather than raising' do
+    csv = "bar_at,open,high,low,close,volume\n\"unterminated"
+
+    expect(invalid_reasons(base.except(:bars).merge(csv: csv))).to include('csv is malformed')
+  end
+
+  it 'refuses CSV whose header lacks a price column' do
+    csv = "bar_at,open\n2026-11-02T03:45:00Z,100\n"
+
+    expect(invalid_reasons(base.except(:bars).merge(csv: csv)))
+      .to include('csv header must include bar_at, open, high, low, close')
+  end
+
+  it 'refuses a blank price cell' do
+    bars = valid_bars.dup
+    bars[0] = bars[0].merge(open: '')
+
+    expect(invalid_reasons(base.merge(bars: bars)))
+      .to include('open/high/low/close must be finite positive numbers')
+  end
+
   it 'rejects datasets above the configured bar limit' do
     allow(described_class).to receive(:max_bars).and_return(1)
 
