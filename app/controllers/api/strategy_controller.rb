@@ -128,19 +128,7 @@ module Api
     end
 
     def structure_json(snapshot)
-      {
-        symbol: snapshot.symbol,
-        timeframe: snapshot.timeframe,
-        trend: snapshot.trend,
-        last_bos: snapshot.last_bos,
-        last_choch: snapshot.last_choch,
-        bullish_fvg_count: snapshot.bullish_fvg_count,
-        bearish_fvg_count: snapshot.bearish_fvg_count,
-        liquidity_sweep: snapshot.liquidity_sweep,
-        order_block: snapshot.order_block,
-        premium_discount: snapshot.premium_discount,
-        as_of: snapshot.as_of
-      }
+      snapshot.api_attributes
     end
   end
 end
