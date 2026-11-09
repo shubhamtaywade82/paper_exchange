@@ -30,10 +30,16 @@ services:
       target: development
     ports:
       - "${PORT:-3100}:3100"
+      # debug gem has no auth: localhost-only so nothing off this machine can run code in the container.
+      - "127.0.0.1:12345:12345"
     env_file:
       - .env
     environment:
       RAILS_ENV: development
+      # Opt-in remote debugger for debug-mcp: set RUBY_DEBUG_OPEN=true in .env.
+      RUBY_DEBUG_OPEN: "${RUBY_DEBUG_OPEN:-false}"
+      RUBY_DEBUG_HOST: 0.0.0.0
+      RUBY_DEBUG_PORT: 12345
       DATABASE_URL: postgres://paper_user:paper_password@db:5432/paper_exchange_development
       REDIS_URL: redis://redis:6379/0
       PORT: 3100
