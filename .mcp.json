@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "railsforge": {
+      "command": "node",
+      "args": ["/home/nemesis/.vscode-server/extensions/shubhamtaywade.railsforge-0.1.4/dist/mcp/server.js"],
+      "env": { "RAILSFORGE_WORKSPACE_ROOT": "/home/nemesis/projects/apps/paper_exchange" }
+    },
+    "rails": {
+      "command": "rails-mcp-server",
+      "args": ["--single-project"],
+      "env": { "RAILS_MCP_PROJECT_PATH": "/home/nemesis/projects/apps/paper_exchange" }
+    },
+    "rails-harness": {
+      "command": "bundle",
+      "args": ["exec", "ask-rails-harness-mcp"],
+      "env": { "BUNDLE_GEMFILE": "/home/nemesis/projects/apps/paper_exchange/Gemfile" }
+    },
+    "debug": {
+      "command": "debug-mcp"
+    }
+  }
+}

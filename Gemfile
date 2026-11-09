@@ -109,3 +109,7 @@ group :development, :test do
   gem "shoulda-matchers"
   gem "simplecov", require: false
 end
+
+# ask-ruby-harness 0.4.1 references Ask::Tools::Shell without requiring it; load it first.
+gem "ask-tools-shell", require: "ask/tools/shell", group: :development
+gem "ask-rails-harness-mcp", "~> 0.2.9", group: :development

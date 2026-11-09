@@ -89,6 +89,68 @@ GEM
       uri (>= 0.13.1)
     addressable (2.9.2)
       public_suffix (>= 2.0.2, < 8.0)
+    ask-agent (0.43.0)
+      ask-core (>= 0.12.1)
+      ask-instrumentation (>= 0.1)
+      ask-llm-providers (>= 0.14.3)
+      ask-permissions (>= 0.3.0)
+      ask-runtime (>= 0.1.1)
+      ask-session (>= 0.1.2)
+      ask-skills (>= 0.5.4)
+      ask-state-providers (>= 0.4.6)
+      ask-tools (>= 0.6.2)
+      rufus-scheduler (~> 3.9)
+    ask-auth (0.3.5)
+      base64 (~> 0.2)
+    ask-core (0.12.1)
+      base64 (~> 0.2)
+    ask-instrumentation (0.2.4)
+      activesupport (>= 7.0)
+      ask-runtime (>= 0.1.1)
+    ask-llm-providers (0.14.3)
+      ask-auth (>= 0.3.5)
+      ask-core (>= 0.12.1)
+      base64 (~> 0.2)
+      faraday (>= 2.0)
+      faraday-multipart (>= 1.0)
+      json
+    ask-mcp (0.6.1)
+      base64
+      httpx (~> 1.4)
+      json-schema (~> 5.0)
+    ask-permissions (0.3.0)
+    ask-rails-harness (0.5.1)
+      ask-auth (>= 0.3.5)
+      ask-ruby-harness (>= 0.4.1)
+      rails (>= 7.1)
+    ask-rails-harness-mcp (0.2.9)
+      ask-mcp (>= 0.6.1)
+      ask-rails-harness (>= 0.1)
+      rails (>= 7.1)
+    ask-ruby-harness (0.4.1)
+      activerecord (>= 7.0)
+      ask-agent (>= 0.40.28)
+      ask-permissions (>= 0.3.0)
+      ask-tools (>= 0.6.2)
+      ask-tools-shell (>= 0.6.2)
+    ask-runtime (0.1.1)
+      ask-core (>= 0.12.1)
+    ask-sandbox-providers (0.1.7)
+      ask-runtime (>= 0.1.1)
+    ask-schema (0.1.3)
+    ask-session (0.1.2)
+    ask-skills (0.5.4)
+      ask-tools (>= 0.6.2)
+    ask-state-providers (0.4.9)
+      ask-core (>= 0.12.1)
+      connection_pool (>= 2.2)
+      pg (>= 1.5)
+    ask-tools (0.6.7)
+      ask-core (>= 0.12.1)
+      ask-schema (>= 0.1.3)
+    ask-tools-shell (0.6.2)
+      ask-sandbox-providers (>= 0.1.6)
+      ask-tools (>= 0.6.2)
     ast (2.4.3)
     base64 (0.3.0)
     bcrypt_pbkdf (1.1.2)
@@ -186,6 +248,8 @@ GEM
       faraday-net_http (>= 2.0, < 3.6)
       json
       logger
+    faraday-multipart (1.2.0)
+      multipart-post (~> 2.0)
     faraday-net_http (3.5.0)
       net-http (~> 0.5)
     faye-websocket (0.12.0)
@@ -197,6 +261,7 @@ GEM
     globalid (1.4.0)
       activesupport (>= 6.1)
     hashdiff (1.2.1)
+    http-2 (1.3.0)
     http-accept (1.7.0)
     http-cookie (1.1.6)
       domain_name (~> 0.5)
@@ -204,6 +269,8 @@ GEM
       csv
       mini_mime (>= 1.0.0)
       multi_xml (>= 0.5.2)
+    httpx (1.9.0)
+      http-2 (>= 1.2.0)
     i18n (1.15.2)
       concurrent-ruby (~> 1.0)
     io-console (0.9.5)
@@ -213,6 +280,8 @@ GEM
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
     json (3.1.0)
+    json-schema (5.1.0)
+      addressable (~> 2.8)
     kamal (2.12.0)
       activesupport (>= 7.0)
       base64 (~> 0.2)
@@ -248,6 +317,7 @@ GEM
     msgpack (1.8.7)
     multi_xml (0.9.1)
       bigdecimal (>= 3.1, < 5)
+    multipart-post (2.4.1)
     net-http (0.10.0)
       net-protocol (>= 0.3.0)
       uri (>= 0.11.1)
@@ -417,6 +487,8 @@ GEM
       rubocop-performance (>= 1.24)
       rubocop-rails (>= 2.30)
     ruby-progressbar (1.13.0)
+    rufus-scheduler (3.9.2)
+      fugit (~> 1.1, >= 1.11.1)
     securerandom (0.4.1)
     shoulda-matchers (8.0.1)
       activesupport (>= 7.2)
@@ -488,6 +560,8 @@ PLATFORMS
 
 DEPENDENCIES
   DhanHQ (~> 4.1)
+  ask-rails-harness-mcp (~> 0.2.9)
+  ask-tools-shell
   bootsnap
   brakeman
   bullet
@@ -534,6 +608,24 @@ CHECKSUMS
   activestorage (8.1.4) sha256=f4956f3ec9ee63e5e0b332b57c877cb627f82b56f4cc902279310d2aa285c7a8
   activesupport (8.1.4) sha256=891dd3fe43c4fc8391934b237b1189bb1f661c932a84a840043db9d46a4e80df
   addressable (2.9.2) sha256=9117c7e7d6ee07230e75ce41fb9401ae55354dc654fcd0e862ba41d539e9a610
+  ask-agent (0.43.0) sha256=131ad482d279a3758ee3d6cd4ef8be015a31675257d418a9fb537b50df3f5bd3
+  ask-auth (0.3.5) sha256=0a13bc19b1e685e8a19a2e7df6bfaecf700e144edb679bfc31397d3139b1bbb7
+  ask-core (0.12.1) sha256=fb03a4ecdc140e629bd8ac7eeb90ece5d78e502a513f68329018c4909d085c50
+  ask-instrumentation (0.2.4) sha256=2044f9f4b1756e14280ae65f115ab4632837068504f74b0d2892b9919ef35d36
+  ask-llm-providers (0.14.3) sha256=7b321e68ab83813f4a86f906500630b97260c305693dda39fc7fe89098eabd63
+  ask-mcp (0.6.1) sha256=dbecc249b99c2daea6957e692041a467d70c81028c96fbdf40b9ece9a59e7caf
+  ask-permissions (0.3.0) sha256=ef7aabb6a6c157e01d4b82d28fb0208cb3e087ca483452ea4486d1092804f8ba
+  ask-rails-harness (0.5.1) sha256=775414ad5017318c8d9a5682f9257d08552483c122aec7b0522094bc4677b450
+  ask-rails-harness-mcp (0.2.9) sha256=4cd454807100ac868cbae482eb006b7696e24c95f5b6f5c96036f499cb2bd433
+  ask-ruby-harness (0.4.1) sha256=676f8e182c8767af95a77f3e365b20395f44b3e64f2960a765349d8f804a6077
+  ask-runtime (0.1.1) sha256=7a780fa4d8cbaeb3d11033bb5c0752ef635cb392735b908ddce1ffcdb6a86524
+  ask-sandbox-providers (0.1.7) sha256=2c1894455db26a0eb2173c26287757e7c87e8b42533532f06f2266756825ae3a
+  ask-schema (0.1.3) sha256=f4dff5784657e77a06744f2b82613df9addf852635148d2efd21fb9ccea1f2e0
+  ask-session (0.1.2) sha256=4a1f92180b26be1010afc6b128557127599371dfed691a76011958cdee31305e
+  ask-skills (0.5.4) sha256=e9ee3ee0bfed3a5d50e1e702c0bcf53f7175beb5cb0bce8d741e40d8546fff33
+  ask-state-providers (0.4.9) sha256=73fb669582ac7be5f9752e74714d4c34c1ad7543ed45923b5fad9df840360ed5
+  ask-tools (0.6.7) sha256=e429422da722927d3b223a65dcfc127ff5a2840140588c13eccf1c6802acdfbe
+  ask-tools-shell (0.6.2) sha256=a80f8e23cf743486e97e918f3946de3fac3bb3eebc42a9eb4acf724b08ff33c9
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
   bcrypt_pbkdf (1.1.2) sha256=c2414c23ce66869b3eb9f643d6a3374d8322dfb5078125c82792304c10b94cf6
@@ -578,18 +670,22 @@ CHECKSUMS
   factory_bot_rails (6.5.1) sha256=d3cc4851eae4dea8a665ec4a4516895045e710554d2b5ac9e68b94d351bc6d68
   faker (3.8.0) sha256=c147b308df73a90f27a4fc84f18d4c22ef0ad9c2a64b2b61c86fd0ca71753efc
   faraday (2.15.1) sha256=8708154deda739c5e86cc42b74960e23e8491fce0eba9e11639a6a34b1ac288f
+  faraday-multipart (1.2.0) sha256=7d89a949693714176f612323ca13746a2ded204031a6ba528adee788694ef757
   faraday-net_http (3.5.0) sha256=2e7094c34e38754ee048cc3df47376f8657005d9375f8473bce1c3b526a22e36
   faye-websocket (0.12.0) sha256=ad9f7dfcd0306d0a13baeee450729657661129af15bb5f38716c242484ab42e1
   fugit (1.14.0) sha256=e311a9cc85a54bb67649df45060e721282a1e2c8ebad40e41874a3a7d576f37e
   globalid (1.4.0) sha256=037f12fbf1d9d7a014d501c2d5c77356fd4ddd96d7a7991d6700bba96706f427
   hashdiff (1.2.1) sha256=9c079dbc513dfc8833ab59c0c2d8f230fa28499cc5efb4b8dd276cf931457cd1
+  http-2 (1.3.0) sha256=58fc8636c2b937b651853e9f6d9ada9fdaa8bf80b5a7d0333ce15653e5ca6ac1
   http-accept (1.7.0) sha256=c626860682bfbb3b46462f8c39cd470fd7b0584f61b3cc9df5b2e9eb9972a126
   http-cookie (1.1.6) sha256=ba4b82be64de61dc281243dac70e3c382c45142f20268ed9276a3670c93feaa9
   httparty (0.24.3) sha256=5c95cf29ca70d5bfd834e56140ddfca6e94166c3b870cde9c25d157cdb5a00d2
+  httpx (1.9.0) sha256=ce6fb4bee1d23d311fb41414094f3423a0ad7b6ae68ea6d9619d1b6e411f18a9
   i18n (1.15.2) sha256=00f9eb62412fe593b2a65a97daa75300d37abb8f7202ec748e94b6d46a9dd1b5
   io-console (0.9.5) sha256=83dd9bbf4c4680416629245b39cd4212eb5f4d9a4ea91804870c1f6b846414d5
   irb (1.18.0) sha256=de9454a0703a54704b9811a5ef31a60c86949fbf4013fcf244fabc7c775248e3
   json (3.1.0) sha256=3ce7ccf8fde58960177a3a756c31f292a4c1e1dedee884547096a5b0604e3bd8
+  json-schema (5.1.0) sha256=c12729e346dce58ecc9be07301f4f247aeba1e3daae208e867278f3d27c64eb7
   kamal (2.12.0) sha256=c51d1ab085e515470f98d0c0f043637122b5ebf76e8b610cb1fbbed0b7f9b8fa
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
@@ -603,6 +699,7 @@ CHECKSUMS
   minitest (6.0.6) sha256=153ea36d1d987a62942382b61075745042a2b3123b1cd48f4c3675af9cc7d6f1
   msgpack (1.8.7) sha256=dfefec761b5f9047e6e8d95d2c7f8af4b3725d984a01942adc533aa819a2df33
   multi_xml (0.9.1) sha256=7ce766b59c17241ed62976caeae1fae9b2431b263398c35396239a68c4a64e57
+  multipart-post (2.4.1) sha256=9872d03a8e552020ca096adadbf5e3cb1cd1cdd6acd3c161136b8a5737cdb4a8
   net-http (0.10.0) sha256=1a2ff6e37a05724973c43f2bf7bf105f59c36a4cd0a7e9b1c021a0a566987c27
   net-imap (0.6.8) sha256=eb30bb62227b64a3af6b518b04b2375113d69f68f15de59b0193b07d98acf6d9
   net-pop (0.1.2) sha256=848b4e982013c15b2f0382792268763b748cce91c9e91e36b0f27ed26420dff3
@@ -670,6 +767,7 @@ CHECKSUMS
   rubocop-rails (2.38.0) sha256=6e2b7c532efa95e3050371bec20b8f5b025662acead8bc70ee31f0e3e6fa2f06
   rubocop-rails-omakase (1.1.0) sha256=2af73ac8ee5852de2919abbd2618af9c15c19b512c4cfc1f9a5d3b6ef009109d
   ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
+  rufus-scheduler (3.9.2) sha256=55fa9e4db0ff69d7f38c804f17baba0c9bce5cba39984ae3c5cf6c039d1323b9
   securerandom (0.4.1) sha256=cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1
   shoulda-matchers (8.0.1) sha256=5dbb46e5765b9da225111b085e0819e8c8a121ff94bba430a153eb1ea2c60288
   simplecov (1.3.2) sha256=2a22ec1759f1b8db60881a2e038758956fc69ef93ed669be0bde0678de6d0e85
