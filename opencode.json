@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "railsforge": {
+        "type": "local",
+        "command": ["node", "/home/nemesis/.vscode-server/extensions/shubhamtaywade.railsforge-0.1.4/dist/mcp/server.js"],
+        "environment": { "RAILSFORGE_WORKSPACE_ROOT": "{env:PWD}" }
+      },
+      "rails-harness": {
+        "type": "local",
+        "command": ["docker", "compose", "exec", "-T", "api", "bundle", "exec", "ask-rails-harness-mcp"]
+      },
+      "debug": {
+        "type": "local",
+        "command": ["debug-mcp"]
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "railsforge": {
+      "command": "node",
+      "args": ["/home/nemesis/.vscode-server/extensions/shubhamtaywade.railsforge-0.1.4/dist/mcp/server.js"],
+      "env": { "RAILSFORGE_WORKSPACE_ROOT": "${workspaceFolder}" }
+    },
+    "rails-harness": {
+      "command": "docker",
+      "args": ["compose", "-f", "${workspaceFolder}/docker-compose.yml", "exec", "-T", "api", "bundle", "exec", "ask-rails-harness-mcp"]
+    },
+    "debug": {
+      "command": "debug-mcp"
+    }
+  }
+}
