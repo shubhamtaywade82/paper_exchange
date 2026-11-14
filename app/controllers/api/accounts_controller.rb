@@ -36,11 +36,17 @@ module Api
         locked_margin: account.locked_margin,
         wallet: {
           available: account.available_balance,
-          locked: (order_locked + position_locked).to_f,
+          # #11: wallet.locked is the ledger-maintained locked_margin, the same
+          # value as the top-level field. Ledger::Reconciler derives it from the
+          # MARGIN_LOCKED/MARGIN_UNLOCKED entries and corrects drift. The
+          # position_locked and order_locked breakdown is reported separately
+          # and is not used to compute locked.
+          locked: account.locked_margin.to_f,
           position_locked: position_locked.to_f,
           order_locked: order_locked.to_f
         },
         equity: summary[:equity],
+        current_equity: summary[:equity],
         unrealized_pnl: summary[:unrealized_pnl],
         realized_pnl: summary[:realized_pnl],
         max_equity: summary[:max_equity],

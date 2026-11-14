@@ -35,6 +35,12 @@ class FundingJob < ApplicationJob
   discard_on ActiveRecord::RecordNotFound
 
   def perform(symbol, funding_rate, mark_price = nil, funding_time = nil)
+    # #60: the settlement timestamp is the dedup key. A nil key matches the
+    # previous settlement's row (IS NULL), so every later settlement on the
+    # position would be skipped without any error. Fail loudly instead; the
+    # job shows up as failed rather than silently charging nothing.
+    raise ArgumentError, "funding_time is required: it is the idempotency key for funding settlement (#60)" if funding_time.nil?
+
     # P0-2: filter on open perpetual positions regardless of leverage.
     # Binance USD-M perpetuals incur funding at 1x too.
     positions = ::PaperExchange::PaperPosition

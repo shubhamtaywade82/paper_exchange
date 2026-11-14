@@ -28,7 +28,7 @@ It is designed as an **exchange-first** system: strategies call `PaperExchange.s
   - Indian market STT, GST, SEBI fees, stamp duty, exchange transaction charges
   - Configurable per instrument type
 - **Unified event model**
-  - `MarketEvent`, `OrderEvent`, `TradeEvent` — source-agnostic across CSV, Parquet, TimescaleDB, live feeds, and Redis Streams
+  - `MarketEvent`, `TradeEvent` — source-agnostic across CSV, Parquet, TimescaleDB, live feeds, and Redis Streams
 - **Immutable ledger & projections**
   - Ledger entries and risk events are append-only
   - Positions and PnL are derived at query time via projection services

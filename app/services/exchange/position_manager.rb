@@ -32,7 +32,7 @@ module Exchange
   # and re-applies its fill on top. The savepoint is what makes the
   # violation recoverable inside the caller's fill transaction.
   class PositionManager
-    def self.apply!(account_id:, symbol:, side:, quantity:, avg_price:, leverage: 1, margin_type: "cross", instrument_type: "EQUITY", option_type: nil, strike_price: nil, expiry_date: nil)
+    def self.apply!(account_id:, symbol:, side:, quantity:, avg_price:, leverage: 1, margin_type: "cross", instrument_type: "EQUITY", option_type: nil, strike_price: nil, expiry_date: nil, metadata: {})
       fill_side = normalize_side(side)
       fill_qty = to_decimal(quantity).abs
       return if fill_qty.zero?
@@ -49,7 +49,7 @@ module Exchange
 
       attempts = 0
       begin
-        apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type)
+        apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type, metadata: metadata)
       rescue ActiveRecord::RecordNotUnique
         attempts += 1
         raise if attempts > 1
@@ -62,7 +62,7 @@ module Exchange
     # act on the position right after the fill (MarginEngine.sync_position!)
     # must use this instance — its in-memory attributes reflect the fill
     # that was just applied under the lock (audit S6).
-    def self.apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type)
+    def self.apply_locked!(contract_scope, fill_side, fill_qty, fill_price, leverage, margin_type, metadata: {})
       ::PaperExchange::PaperPosition.transaction(requires_new: true) do
         position = ::PaperExchange::PaperPosition.lock.where(contract_scope).first
         position ||= ::PaperExchange::PaperPosition.new(contract_scope.merge(side: fill_side, quantity: 0, avg_price: 0))
@@ -80,6 +80,9 @@ module Exchange
           if was_flat
             position.leverage = leverage
             position.margin_type = margin_type
+            # #19: a position records the strategy that opened it. Adds to an
+            # open position keep the original attribution.
+            position.metadata = metadata if metadata.present?
           end
         else
           closed_qty = [ fill_qty, current_qty ].min

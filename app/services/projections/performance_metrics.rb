@@ -45,7 +45,10 @@ module Projections
           max_drawdown: summary[:drawdown],
           sharpe_ratio: sharpe,
           win_rate: win_rate.round(4),
-          profit_factor: profit_factor.round(4)
+          profit_factor: profit_factor.round(4),
+          total_trades: trades.size,
+          winning_trades: wins.size,
+          losing_trades: losses.size
         }
       end
 

@@ -122,7 +122,7 @@ module Exchange
       )
 
       order = ::PaperExchange::PaperOrder.new(
-        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Backtest::Session.now)
+        attrs.slice(*ORDER_COLUMN_KEYS).merge(account_id: account_id, placed_at: Backtest::Session.now, metadata: order_metadata(attrs))
       )
       begin
         ::PaperExchange::PaperOrder.transaction do
@@ -211,6 +211,7 @@ module Exchange
               quantity: fill_qty,
               avg_price: fill_price,
               leverage: order.leverage,
+              metadata: order.metadata,
               margin_type: order.margin_type,
               instrument_type: order.instrument_type,
               option_type: order.option_type,
@@ -329,6 +330,7 @@ module Exchange
         quantity: fill_qty,
         avg_price: actual_fill_price,
         leverage: order.leverage,
+        metadata: order.metadata,
         margin_type: order.margin_type,
         instrument_type: order.instrument_type,
         option_type: order.option_type,
@@ -386,6 +388,17 @@ module Exchange
     # Money from a client, a feed or a column, as an exact decimal. A blank value
     # is zero where a price is required, and nil where it is optional; an
     # unparseable value raises rather than becoming a guess.
+    # #19: strategy attribution. The key comes from the order's `context`, as
+    # the agent sends it. It is stored on the order and copied to the position
+    # when the fill opens it.
+    def order_metadata(attrs)
+      context = attrs[:context]
+      return {} unless context.is_a?(Hash)
+
+      key = context[:strategy_key] || context["strategy_key"]
+      key.present? ? { "strategy_key" => key.to_s } : {}
+    end
+
     def decimal(value)
       return BigDecimal("0") if value.nil? || value.to_s.strip.empty?
 
