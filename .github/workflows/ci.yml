@@ -28,15 +28,37 @@ jobs:
         run: |
           # Fails the build if any secret-shaped hex run (16+ hex chars) is
           # committed to a tracked file. 16+ catches Rails master keys (32 hex)
-          # and secret_key_base (64+ hex). Gemfile.lock is excluded because its
-          # Diagrams and HTML assets are excluded because SVG vector paths
-          # contain numeric/alphanumeric coordinate strings that match hex patterns.
+          # and secret_key_base (64+ hex).
+          # Excluded from the scan:
+          #   - Gemfile.lock and *.sum: checksums, not credentials.
+          #   - diagrams/ and docs/diagrams/: SVG path data contains hex-like runs.
+          # A SHA-256 digest written as `sha256:` followed by exactly 64 hex chars
+          # (e.g. the OpenAPI source hash in clients/ts/index.ts) is an integrity
+          # hash, not a credential, so the lookahead exempts it. Any other length
+          # after `sha256:` still fails. The exemption is scoped to the digest
+          # rather than the file, so a secret in the same file is still caught.
           # A real RAILS_MASTER_KEY shipped in .env.example once (audit M1,
           # 2026-09-25) and decrypted config/credentials.yml.enc.
-          if git grep -InE '[0-9a-fA-F]{16,}' -- . ':!Gemfile.lock' ':!*.sum' ':!diagrams/*' ':!docs/diagrams/*'; then
-            echo "::error::Secret-shaped hex string committed. Tracked files must use placeholders; real values belong only in the uncommitted .env (audit M1)."
-            exit 1
-          fi
+          pattern='(?<![0-9a-fA-F])(?!(?<=sha256:)[0-9a-fA-F]{64}(?![0-9a-fA-F]))[0-9a-fA-F]{16,}'
+          set +e
+          git grep -InP "$pattern" -- . ':!Gemfile.lock' ':!*.sum' ':!diagrams/*' ':!docs/diagrams/*'
+          status=$?
+          set -e
+          case "$status" in
+            0)
+              echo "::error::Secret-shaped hex string committed. Tracked files must use placeholders; real values belong only in the uncommitted .env (audit M1)."
+              exit 1
+              ;;
+            1)
+              echo "No secret-shaped hex strings found in tracked files."
+              ;;
+            *)
+              # Exit >1 means git grep itself failed (e.g. PCRE unavailable). Fail
+              # closed: a guard that silently passes on error is no guard.
+              echo "::error::Secret guard could not run (git grep exit $status)."
+              exit "$status"
+              ;;
+          esac
 
   lint:
     runs-on: ubuntu-latest
