@@ -5,9 +5,11 @@ require 'rails_helper'
 # documented 200 example, so a key that is missing or undocumented fails the
 # build. The docs and the code cannot drift apart silently.
 #
-# Covered: GET /api/v1/account (including the nested wallet object) and
-# GET /api/v1/performance. Not covered: /api/v1/exchange/status (no request spec
-# exists for it yet) and the list endpoints, whose documented examples are arrays.
+# Covered: GET /api/v1/account (including the nested wallet object),
+# GET /api/v1/performance, and GET /api/v1/exchange/status. The status check
+# compares keys only, not the status code, because the endpoint answers 503
+# when a provider is degraded. Not covered: the list endpoints, whose documented
+# examples are arrays.
 RSpec.describe 'OpenAPI response contract (#18)', type: :request do
   let(:account_id) { 'ACC-CONTRACT' }
   let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => account_id } }
@@ -38,5 +40,11 @@ RSpec.describe 'OpenAPI response contract (#18)', type: :request do
     expect(response).to have_http_status(:ok)
 
     expect(JSON.parse(response.body).keys.sort).to eq(documented_example('/api/v1/performance').keys.sort)
+  end
+
+  it 'GET /api/v1/exchange/status returns exactly the documented top-level keys' do
+    get '/api/v1/exchange/status', headers: headers
+
+    expect(JSON.parse(response.body).keys.sort).to eq(documented_example('/api/v1/exchange/status').keys.sort)
   end
 end
