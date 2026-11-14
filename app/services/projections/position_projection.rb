@@ -37,7 +37,9 @@ module Projections
           initial_margin: pos.initial_margin,
           margin_used: pos.initial_margin,
           liquidation_price: pos.liquidation_price,
-          unrealized_pnl: Ledger::Ledger.compute_pnl(pos, mark_price)
+          unrealized_pnl: Ledger::Ledger.compute_pnl(pos, mark_price),
+          # #19: the strategy that opened the position, e.g. { "strategy_key": "sma_cross" }.
+          metadata: pos.metadata
         }
       end
     end

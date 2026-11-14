@@ -56,6 +56,12 @@ RSpec.describe Api::AccountsController, type: :controller do
         json = JSON.parse(response.body)
         expect(json['locked_margin'].to_f).to eq(6_000.0)
         expect(json['available_balance'].to_f).to eq(94_000.0)
+        # #11: wallet.locked must agree with the ledger-backed locked_margin.
+        expect(json['wallet']['locked'].to_f).to eq(json['locked_margin'].to_f)
+        expect(json['wallet']['position_locked'].to_f).to eq(6_000.0)
+        expect(json['wallet']['order_locked'].to_f).to eq(0.0)
+        # #18: current_equity is documented; it matches equity.
+        expect(json['current_equity'].to_f).to eq(json['equity'].to_f)
       end
     end
   end

@@ -8,8 +8,11 @@ module Api
     # Payload: { "symbol": "BTCUSDT", "funding_rate": "0.0001", "mark_price": "65000.0",
     #            "funding_time": "2026-09-20T08:00:00Z" }
     # `mark_price` is optional — falls back to MarketData::MarkPriceStore.
-    # `funding_time` is the idempotency key — pass Binance's funding
-    # settlement timestamp so an HTTP retry doesn't double-charge funding.
+    # `funding_time` is REQUIRED (#60). It is the idempotency key: pass Binance's
+    # settlement timestamp so an HTTP retry doesn't double-charge funding. A
+    # missing key made the dedup lookup match the previous settlement, so every
+    # later settlement on that position was silently skipped; the request is
+    # now rejected with 400 instead.
     #
     # Boundary validation (audit M3): an unbounded funding_rate used to pass
     # straight through .to_f — a fat-fingered "1.0" (100% per settlement)
@@ -26,10 +29,9 @@ module Api
       symbol = params.require(:symbol)
       rate = parse_funding_rate!(params.require(:funding_rate))
       mark_price = parse_optional_mark_price!(params[:mark_price])
-      funding_time = parse_optional_funding_time!(params[:funding_time])
+      funding_time = parse_funding_time!(params.require(:funding_time))
 
-      args = [ symbol.to_s.upcase, rate, mark_price ]
-      args << funding_time if funding_time
+      args = [ symbol.to_s.upcase, rate, mark_price, funding_time ]
       if params[:sync].present?
         FundingJob.perform_now(*args)
       else
@@ -61,12 +63,15 @@ module Api
       raise InvalidInput, "invalid mark_price #{raw.inspect}: must be a finite number > 0 and <= #{MAX_MARK_PRICE}"
     end
 
-    def parse_optional_funding_time!(raw)
-      return nil if raw.blank?
-
+    # Time.zone.parse raises ArgumentError for out-of-range dates such as
+    # 2026-13-45, and returns nil for text that is not a timestamp at all.
+    # Both are client errors, so both become 422.
+    def parse_funding_time!(raw)
       parsed = Time.zone.parse(raw.to_s)
       return parsed if parsed
 
+      raise InvalidInput, "invalid funding_time #{raw.inspect}: must be a parseable timestamp (e.g. 2026-09-20T08:00:00Z)"
+    rescue ArgumentError
       raise InvalidInput, "invalid funding_time #{raw.inspect}: must be a parseable timestamp (e.g. 2026-09-20T08:00:00Z)"
     end
   end

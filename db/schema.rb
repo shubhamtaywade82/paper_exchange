@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_14_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -369,6 +369,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.string "venue", default: "paper", null: false
     t.bigint "instrument_id"
     t.index ["account_id", "client_order_id"], name: "index_paper_orders_on_account_and_client_order_id", unique: true
+    t.jsonb "metadata", default: {}, null: false
     t.index ["account_id", "placed_at", "id"], name: "index_paper_orders_on_account_placed_id"
     t.index ["account_id"], name: "index_paper_exchange_orders_on_account_id"
     t.index ["instrument_id"], name: "index_paper_exchange_orders_on_instrument_id"
@@ -396,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_140000) do
     t.string "symbol", null: false
     t.datetime "updated_at", null: false
     t.string "venue", default: "paper", null: false
+    t.jsonb "metadata", default: {}, null: false
     t.index ["account_id", "symbol", "instrument_type", "option_type", "strike_price", "expiry_date"], name: "index_paper_positions_uniqueness", unique: true
     t.index ["account_id", "symbol", "instrument_type"], name: "index_paper_positions_contract_strict", unique: true, where: "((option_type IS NULL) AND (strike_price IS NULL) AND (expiry_date IS NULL))"
     t.index ["venue", "account_id", "symbol"], name: "index_paper_positions_on_venue_account_symbol"

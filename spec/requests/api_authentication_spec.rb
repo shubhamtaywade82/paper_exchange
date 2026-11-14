@@ -64,7 +64,7 @@ RSpec.describe 'API authentication (audit M2)', type: :request do
       post '/api/mark_prices', params: { prices: { BTCUSDT: '65000' } }, headers: auth_headers
       expect(response).to have_http_status(:ok)
 
-      post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001' }, headers: auth_headers
+      post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001', funding_time: '2026-09-20T08:00:00Z' }, headers: auth_headers
       expect(response).to have_http_status(:accepted)
 
       post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }, headers: auth_headers

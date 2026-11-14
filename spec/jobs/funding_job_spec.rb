@@ -2,6 +2,7 @@ require 'rails_helper'
 
 RSpec.describe FundingJob, type: :job do
   let(:account) { create(:account, account_id: 'ACC-FUNDING', margin: 100_000.0) }
+  let(:funding_time) { Time.zone.parse('2026-10-10T08:00:00Z') }
 
   let!(:long_position) do
     create(:paper_position,
@@ -17,7 +18,7 @@ RSpec.describe FundingJob, type: :job do
 
   it 'debits a long position when the funding rate is positive (longs pay shorts)' do
     expect {
-      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
     }.to change(FundingPayment, :count).by(1)
 
     payment = FundingPayment.last
@@ -38,20 +39,20 @@ RSpec.describe FundingJob, type: :job do
       instrument_type: Exchange::CryptoInstrumentCatalog::PERPETUAL,
       leverage: 10)
 
-    described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+    described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
     expect(FundingPayment.last.amount).to be < 0
   end
 
   it 'writes a FUNDING_FEE ledger entry and refreshes the account equity snapshot' do
     expect {
-      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
     }.to change { LedgerEntry.where(event_type: 'FUNDING_FEE').count }.by(1)
   end
 
   it 'falls back to MarketData::MarkPriceStore when no mark_price is given' do
     allow(MarketData::MarkPriceStore).to receive(:get).with('BTCUSDT').and_return(61_000.0)
 
-    described_class.perform_now('BTCUSDT', 0.0003, nil)
+    described_class.perform_now('BTCUSDT', 0.0003, nil, funding_time)
 
     expect(FundingPayment.last.position_notional).to eq(61_000.0)
   end
@@ -59,7 +60,7 @@ RSpec.describe FundingJob, type: :job do
   it 'falls back to the position column price when no mark_price and no store entry exist' do
     allow(MarketData::MarkPriceStore).to receive(:get).with('BTCUSDT').and_return(nil)
 
-    described_class.perform_now('BTCUSDT', 0.0003, nil)
+    described_class.perform_now('BTCUSDT', 0.0003, nil, funding_time)
 
     expect(FundingPayment.last.position_notional).to eq(60_000.0) # long_position.current_price
   end
@@ -68,7 +69,7 @@ RSpec.describe FundingJob, type: :job do
     long_position.update!(leverage: 1, instrument_type: 'EQUITY')
 
     expect {
-      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
     }.not_to change(FundingPayment, :count)
   end
 
@@ -76,7 +77,7 @@ RSpec.describe FundingJob, type: :job do
     long_position.destroy!
 
     expect {
-      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
     }.not_to change(FundingPayment, :count)
   end
 
@@ -91,7 +92,7 @@ RSpec.describe FundingJob, type: :job do
       instrument_type: Exchange::CryptoInstrumentCatalog::PERPETUAL,
       leverage: 5)
 
-    described_class.perform_now('BTCUSDT', 0.0003, 60_000.0)
+    described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
 
     expect(FundingPayment.where(symbol: 'ETHUSDT')).to be_empty
   end
@@ -101,6 +102,27 @@ RSpec.describe FundingJob, type: :job do
   # same funding settlement does not double-charge. The dedup path
   # (find_or_initialize_by + already_existed skip) was previously untested at
   # the regression level — a future refactor could silently break it.
+  # #60 regression guards. Without a funding_time the dedup key is NULL, and
+  # find_or_initialize_by(funding_time: nil) matched the first settlement's row,
+  # so every later settlement on the position was skipped with no error.
+  context 'without a settlement timestamp' do
+    it 'refuses to settle, so no funding is silently skipped' do
+      expect {
+        described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, nil)
+      }.to raise_error(ArgumentError, /funding_time is required/)
+
+      expect(FundingPayment.count).to eq(0)
+    end
+
+    it 'charges each settlement on the same position, one payment per funding_time' do
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time + 8.hours)
+      described_class.perform_now('BTCUSDT', 0.0003, 60_000.0, funding_time + 16.hours)
+
+      expect(FundingPayment.where(paper_position: long_position).count).to eq(3)
+    end
+  end
+
   context 'idempotency on (position, funding_time)' do
     let(:funding_time) { Time.zone.parse('2026-10-10T08:00:00Z') }
 

@@ -9,8 +9,22 @@ module Risk
   # When a position's liquidation price is breached this only enqueues
   # LiquidationJob — the actual force-close (a DB write, an exchange fill) is
   # never performed inline on the request thread.
+  #
+  # A breached position stays in the watch cache until the database shows it
+  # closed (refresh_cache! prunes it). Re-enqueueing is throttled by `pending`:
+  # each enqueue records when it expires, so a burst of ticks enqueues once.
+  # If LiquidationJob fails or does not close the position, the entry expires
+  # and the next breaching price enqueues it again. The previous version
+  # removed the position from the cache on enqueue, so a failed job left it
+  # unwatched until some later refresh (#9).
   class LiquidationEngine
+    # Seconds before a breached, still-open position is enqueued again.
+    PENDING_TTL = 5.0
+
     class << self
+      # Test seam: a callable returning monotonic seconds.
+      attr_writer :clock
+
       def refresh_cache!
         rows = ::PaperExchange::PaperPosition
           .live_accounts
@@ -19,6 +33,8 @@ module Risk
 
         mutex.synchronize do
           cache.replace(rows.group_by { |(_id, symbol, *)| symbol.to_s.upcase })
+          open_ids = rows.map(&:first).to_set
+          pending.delete_if { |id, _expires_at| !open_ids.include?(id) }
         end
       end
 
@@ -30,21 +46,24 @@ module Risk
           positions = cache[key]
           next if positions.blank?
 
-          breached_ids = positions.each_with_object([]) do |(id, _symbol, side, liquidation_price), acc|
+          now = clock.call
+          positions.each do |(id, _symbol, side, liquidation_price)|
             is_long = side.to_s == "long" || side.to_s == "0"
             breached = is_long ? price <= liquidation_price.to_f : price >= liquidation_price.to_f
             next unless breached
+            next if pending.key?(id) && pending[id] > now
 
+            pending[id] = now + PENDING_TTL
             LiquidationJob.perform_later(id, price)
-            acc << id
           end
-
-          cache[key] = positions.reject { |p| breached_ids.include?(p[0]) } if breached_ids.any?
         end
       end
 
       def reset_cache!
-        mutex.synchronize { cache.clear }
+        mutex.synchronize do
+          cache.clear
+          pending.clear
+        end
       end
 
       private
@@ -55,6 +74,14 @@ module Risk
 
       def cache
         @cache ||= Concurrent::Hash.new
+      end
+
+      def pending
+        @pending ||= {}
+      end
+
+      def clock
+        @clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       end
     end
   end

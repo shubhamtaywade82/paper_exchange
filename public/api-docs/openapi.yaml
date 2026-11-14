@@ -112,8 +112,10 @@ paths:
                 equity: 10097.4
                 unrealized_pnl: 100.0
                 realized_pnl: 0.0
+                max_equity: 10097.4
                 drawdown: 0.0
                 current_equity: 10097.4
+                positions_count: 1
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -588,7 +590,9 @@ paths:
                 win_rate: 66.67
                 realized_pnl: '1250.40'
                 unrealized_pnl: '100.00'
+                total_pnl: '1350.40'
                 max_drawdown: 4.2
+                sharpe_ratio: 1.85
                 profit_factor: 2.45
 
   /api/v1/exchange/status:
