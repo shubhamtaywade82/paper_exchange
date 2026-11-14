@@ -5,6 +5,14 @@ on:
   push:
     branches: [ main ]
 
+# Read-only by default. Jobs that need more (CodeQL) request it at job level.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scan_ruby:
     runs-on: ubuntu-latest
@@ -19,46 +27,14 @@ jobs:
           bundler-cache: true
 
       - name: Scan for common Rails security vulnerabilities using static analysis
-        run: bin/brakeman --no-pager
-      
+        # Without --exit-on-warn, brakeman exits 0 even when it reports warnings.
+        run: bin/brakeman --no-pager --exit-on-warn
+
       - name: Scan for known security vulnerabilities in gems used
         run: bin/bundler-audit
 
       - name: Guard against committed secrets (audit M1 regression guard)
-        run: |
-          # Fails the build if any secret-shaped hex run (16+ hex chars) is
-          # committed to a tracked file. 16+ catches Rails master keys (32 hex)
-          # and secret_key_base (64+ hex).
-          # Excluded from the scan:
-          #   - Gemfile.lock and *.sum: checksums, not credentials.
-          #   - diagrams/ and docs/diagrams/: SVG path data contains hex-like runs.
-          # A SHA-256 digest written as `sha256:` followed by exactly 64 hex chars
-          # (e.g. the OpenAPI source hash in clients/ts/index.ts) is an integrity
-          # hash, not a credential, so the lookahead exempts it. Any other length
-          # after `sha256:` still fails. The exemption is scoped to the digest
-          # rather than the file, so a secret in the same file is still caught.
-          # A real RAILS_MASTER_KEY shipped in .env.example once (audit M1,
-          # 2026-09-25) and decrypted config/credentials.yml.enc.
-          pattern='(?<![0-9a-fA-F])(?!(?<=sha256:)[0-9a-fA-F]{64}(?![0-9a-fA-F]))[0-9a-fA-F]{16,}'
-          set +e
-          git grep -InP "$pattern" -- . ':!Gemfile.lock' ':!*.sum' ':!diagrams/*' ':!docs/diagrams/*'
-          status=$?
-          set -e
-          case "$status" in
-            0)
-              echo "::error::Secret-shaped hex string committed. Tracked files must use placeholders; real values belong only in the uncommitted .env (audit M1)."
-              exit 1
-              ;;
-            1)
-              echo "No secret-shaped hex strings found in tracked files."
-              ;;
-            *)
-              # Exit >1 means git grep itself failed (e.g. PCRE unavailable). Fail
-              # closed: a guard that silently passes on error is no guard.
-              echo "::error::Secret guard could not run (git grep exit $status)."
-              exit "$status"
-              ;;
-          esac
+        run: bash script/check_committed_secrets.sh
 
   lint:
     runs-on: ubuntu-latest
@@ -89,9 +65,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432
+      REDIS_URL: redis://localhost:6379/0
+      # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+
     services:
       postgres:
-        image: postgres
+        # Pinned to the major version in docker-compose.yml so CI and local
+        # development run the same server.
+        image: postgres:15-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -122,12 +106,43 @@ jobs:
         with:
           bundler-cache: true
 
+      - name: Prepare test database
+        run: bin/rails db:test:prepare
+
+      - name: Fail on pending migrations
+        run: bin/rails db:abort_if_pending_migrations
+
       - name: Run tests
-        env:
-          RAILS_ENV: test
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432
-          REDIS_URL: redis://localhost:6379/0
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
         # `bin/rails test` is unrecognized in this API-only app (no Minitest
         # railtie); the suite is RSpec, which registers `bin/rails spec`.
-        run: bin/rails db:test:prepare spec
+        run: bin/rails spec
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ruby
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
