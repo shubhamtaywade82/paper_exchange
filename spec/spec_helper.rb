@@ -23,6 +23,11 @@ SimpleCov.start 'rails' do
   group 'Services', 'app/services'
   group 'Models', 'app/models'
   group 'Controllers', 'app/controllers'
+
+  # Baseline measured in CI on PR #58: 91.66% line coverage (3672 / 4006).
+  # Enforced only under CI so focused local runs (single files) are not failed
+  # by the total-coverage floor.
+  minimum_coverage 91 if ENV['CI']
 end
 
 # See https://rubydoc.info/gems/rspec-core/RSpec/Core/Configuration
