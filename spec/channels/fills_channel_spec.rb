@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 # #8: a subscription streams the fills for the account it names.
-RSpec.describe FillsChannel do
+RSpec.describe FillsChannel, type: :channel do
   it 'streams fills for the account named in the subscription' do
     subscribe(account_id: 'ACC-WS')
 
