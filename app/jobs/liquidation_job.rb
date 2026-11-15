@@ -7,6 +7,9 @@
 class LiquidationJob < ApplicationJob
   queue_as :risk
 
+  # Enqueued from request writes, so the job waits for the write's transaction to commit. A refused or rolled-back write queues nothing.
+  self.enqueue_after_transaction_commit = true
+
   discard_on ActiveRecord::RecordNotFound
 
   def perform(position_id, mark_price)

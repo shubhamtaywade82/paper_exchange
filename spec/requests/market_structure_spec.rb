@@ -2,7 +2,8 @@ require 'rails_helper'
 
 RSpec.describe 'Market structure API', type: :request do
   let(:api_key) { ENV.fetch('PAPER_EXCHANGE_API_KEY') }
-  let(:headers) { { 'X-API-Key' => api_key } }
+  # Structure writes are global: the feed owner names its account and presents that account's lease.
+  let(:headers) { { 'X-API-Key' => api_key, 'X-Account-Id' => 'ACC-MARKET' }.merge(lease_headers_for('ACC-MARKET')) }
 
   describe 'POST /api/market_structure' do
     it 'creates a snapshot with defaults (201)' do

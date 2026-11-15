@@ -4,7 +4,13 @@ module Api
 
     before_action :authenticate_api_key!
     before_action :set_account
+    before_action :require_account_for_writes
+    around_action :fence_live_writes
     around_action :with_replay_session
+
+    # Every write names its account, and every write to a live account presents the lease that makes it the only writer.
+    # Reads are not fenced: monitoring and the dashboard read freely.
+    MUTATING_METHODS = %w[POST PUT PATCH DELETE].freeze
 
     # Live market-data writes are global: they move every account's marks. A
     # replay account moves its own prices, only through POST /advance.
@@ -70,6 +76,41 @@ module Api
       @account_id = (request.headers["X-Account-Id"].presence ||
                      params[:account_id].presence ||
                      "default").to_s
+    end
+
+    # Every write must name its account, so a client that forgets the header cannot land on "default".
+    def require_account_for_writes
+      return unless MUTATING_METHODS.include?(request.request_method)
+      return if request.headers["X-Account-Id"].present?
+
+      render_error(:bad_request, "account_required: writes must name the account in X-Account-Id")
+    end
+
+    # The fence on live writes. The lease is checked and the write committed in one transaction. The FOR SHARE lock taken by
+    # the check holds a takeover back until this write commits, so a holder that stalls mid-request cannot commit after its
+    # lease was taken over. Simulated and replay accounts have one simulation's writer each, so they are not fenced.
+    def fence_live_writes
+      return yield unless MUTATING_METHODS.include?(request.request_method) && !lease_exempt?
+
+      AccountLease.transaction do
+        AccountLeases.assert_writable!(
+          account_id: @account_id,
+          holder_id: request.headers["X-Lease-Holder"],
+          fence: request.headers["X-Lease-Fence"],
+          lock: true
+        )
+        yield
+      end
+    rescue AccountLeases::Required => e
+      render json: { error: "lease_required", message: e.message }, status: :conflict
+    rescue AccountLeases::Lost => e
+      render json: { error: "lease_lost", message: e.message }, status: :conflict
+    end
+
+    def lease_exempt?
+      return true if Account.where(account_id: @account_id, simulated: true).exists?
+
+      Backtest::Replay.run_for_account(@account_id).present?
     end
 
     # A request on a replay account runs inside that run's simulation session:

@@ -6,7 +6,7 @@ require 'rails_helper'
 # consistency, idempotent funding, the close, and the fills stream.
 RSpec.describe 'Agent API flow (#17)', type: :request do
   let(:account_id) { 'ACC-AGENT-E2E' }
-  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => account_id } }
+  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => account_id }.merge(lease_headers_for(account_id)) }
 
   before do
     create(:account, account_id: account_id, margin: 100_000.0, currency: 'USDT')

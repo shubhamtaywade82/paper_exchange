@@ -1,6 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe Api::MarkPricesController, type: :controller do
+  # Mark prices are a global write, so they name the writer's account and present that account's lease.
+  before do
+    request.headers['X-Account-Id'] = 'ACC-MARKET'
+    lease_headers_for('ACC-MARKET').each { |name, value| request.headers[name] = value }
+  end
+
   describe 'POST #create' do
     it 'stores every pushed price and returns them normalized' do
       post :create, params: { prices: { btcusdt: '65123.45', ETHUSDT: '3200.10' } }

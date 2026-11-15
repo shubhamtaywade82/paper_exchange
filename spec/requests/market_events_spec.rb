@@ -7,7 +7,8 @@ require 'rails_helper'
 # tick_processor_spec.rb.
 RSpec.describe 'Market events API', type: :request do
   let(:api_key) { ENV.fetch('PAPER_EXCHANGE_API_KEY') }
-  let(:headers) { { 'X-API-Key' => api_key } }
+  # Tick writes are global: the feed owner names its account and presents that account's lease.
+  let(:headers) { { 'X-API-Key' => api_key, 'X-Account-Id' => 'ACC-MARKET' }.merge(lease_headers_for('ACC-MARKET')) }
 
   describe 'POST /api/market_events' do
     it 'accepts a single tick (201) with the symbol normalized' do

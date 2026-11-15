@@ -30,6 +30,9 @@
 class FundingJob < ApplicationJob
   queue_as :risk
 
+  # Enqueued from request writes, so the job waits for the write's transaction to commit. A refused or rolled-back write queues nothing.
+  self.enqueue_after_transaction_commit = true
+
   # P0-2: a position deleted between enqueue and perform (manual close,
   # account reset, liquidation) is not a retriable failure.
   discard_on ActiveRecord::RecordNotFound

@@ -5,6 +5,8 @@ info:
     **Production-grade exchange simulator and paper trading broker.**
     Supports Indian equity, F&O (via DhanHQ), and crypto futures (Binance USD-M, CoinDCX)
     through a unified REST API, real-time risk validation, ledger accounting, and deterministic backtesting.
+
+    **Writes and the account lease.** A POST, PUT or DELETE must name its account in `X-Account-Id` (400 `account_required` otherwise). A write to a live account must also present that account's lease in the `X-Lease-Holder` and `X-Lease-Fence` headers, obtained from `POST /api/v1/account/lease`: 409 `lease_required` without them, and 409 `lease_lost` once they no longer match the live lease. Reads are never fenced. Simulated accounts are not fenced, and neither are backtest admin calls that name an account which does not exist.
   version: 1.0.0
   contact:
     name: PaperExchange Support
@@ -17,6 +19,8 @@ servers:
 tags:
   - name: Accounts
     description: Wallet balances, collateral, equity, and account state
+  - name: Account Leases
+    description: Single-writer leases that fence every write to a live account
   - name: Orders
     description: Order placement, status tracking, and cancellation
   - name: Positions
@@ -151,6 +155,180 @@ paths:
                 available_balance: 10000.0
                 locked_margin: 0.0
                 equity: 10000.0
+
+  /api/v1/account/lease:
+    get:
+      operationId: getAccountLease
+      tags: [Account Leases]
+      summary: Read the account's lease
+      description: Returns the lease row for the account named in X-Account-Id. Reads are not fenced, so monitoring can see who holds an account. `live` is true while the holder's lease has not expired.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      responses:
+        '200':
+          description: Lease for the account
+          content:
+            application/json:
+              example:
+                account_id: test-account-1
+                venue: paper_exchange
+                holder_id: 6f1c2a4e-9b1d-4e7a-8c3f-2d5b7a9e0f11
+                holder_label: futures-desk
+                fence: 3
+                acquired_at: '2026-11-15T10:00:00.000Z'
+                heartbeat_at: '2026-11-15T10:00:20.000Z'
+                expires_at: '2026-11-15T10:00:50.000Z'
+                released_at: null
+                live: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No lease has ever been granted for this account
+          content:
+            application/json:
+              example:
+                error: no lease has been granted for this account
+    post:
+      operationId: acquireAccountLease
+      tags: [Account Leases]
+      summary: Acquire the account's lease
+      description: |
+        Takes the lease when it is free or expired, and advances `fence` on every new grant. The same holder asking again renews its own live lease at the same fence, so a retry after a lost response is safe. Expiry is judged on the database clock, never the caller's.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [holder_id]
+              properties:
+                holder_id:
+                  type: string
+                  maxLength: 64
+                  description: The caller's own identifier. Reuse it on retry.
+                  example: 6f1c2a4e-9b1d-4e7a-8c3f-2d5b7a9e0f11
+                holder_label:
+                  type: string
+                  maxLength: 120
+                  description: Shown to operators when the lease is held
+                  example: futures-desk
+                ttl_seconds:
+                  type: integer
+                  minimum: 10
+                  maximum: 600
+                  default: 30
+                  description: Lease length. An out-of-range value is refused, never clamped.
+      responses:
+        '201':
+          description: Lease granted, or renewed for the same holder
+          content:
+            application/json:
+              example:
+                account_id: test-account-1
+                venue: paper_exchange
+                holder_id: 6f1c2a4e-9b1d-4e7a-8c3f-2d5b7a9e0f11
+                holder_label: futures-desk
+                fence: 3
+                acquired_at: '2026-11-15T10:00:00.000Z'
+                heartbeat_at: '2026-11-15T10:00:00.000Z'
+                expires_at: '2026-11-15T10:00:30.000Z'
+                released_at: null
+                live: true
+        '400':
+          description: The account is not named, the holder_id is missing or longer than 64 characters, or ttl_seconds is outside 10 to 600
+          content:
+            application/json:
+              example:
+                error: ttl_seconds must be a whole number from 10 to 600
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/LeaseHeld'
+    put:
+      operationId: renewAccountLease
+      tags: [Account Leases]
+      summary: Renew the lease (heartbeat)
+      description: Extends a live lease under the presented holder and fence. Renew well inside the TTL. A holder that gets 409 `lease_lost` must stop writing at once, because another holder may already hold the account.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LeaseHolder'
+        - $ref: '#/components/parameters/LeaseFence'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ttl_seconds:
+                  type: integer
+                  minimum: 10
+                  maximum: 600
+                  default: 30
+      responses:
+        '200':
+          description: Lease extended under the presented fence
+          content:
+            application/json:
+              example:
+                account_id: test-account-1
+                venue: paper_exchange
+                holder_id: 6f1c2a4e-9b1d-4e7a-8c3f-2d5b7a9e0f11
+                holder_label: futures-desk
+                fence: 3
+                acquired_at: '2026-11-15T10:00:00.000Z'
+                heartbeat_at: '2026-11-15T10:00:20.000Z'
+                expires_at: '2026-11-15T10:00:50.000Z'
+                released_at: null
+                live: true
+        '400':
+          description: The account is not named, or ttl_seconds is outside 10 to 600
+          content:
+            application/json:
+              example:
+                error: 'account_required: name the account in X-Account-Id'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: '`lease_required` when the lease headers are absent, or `lease_lost` when the lease has expired, was released, or was taken over'
+          content:
+            application/json:
+              example:
+                error: lease_lost
+                message: the lease for test-account-1 is not held under fence 3
+    delete:
+      operationId: releaseAccountLease
+      tags: [Account Leases]
+      summary: Release the lease
+      description: Gives the lease back so the next holder can take it at once. A release under a superseded fence changes nothing and answers with `released` set to false.
+      security:
+        - ApiKeyAuth: []
+        - AccountIdAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LeaseHolder'
+        - $ref: '#/components/parameters/LeaseFence'
+      responses:
+        '200':
+          description: Released is true when this holder's live lease under the presented fence was given back
+          content:
+            application/json:
+              example:
+                released: true
+        '400':
+          description: The account is not named
+          content:
+            application/json:
+              example:
+                error: 'account_required: name the account in X-Account-Id'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/LeaseRequired'
 
   /api/v1/orders:
     get:
@@ -731,6 +909,24 @@ components:
       name: X-Account-Id
       description: Target account identifier (e.g. test-account-1)
 
+  parameters:
+    LeaseHolder:
+      name: X-Lease-Holder
+      in: header
+      required: true
+      description: The holder id the account's lease was granted to
+      schema:
+        type: string
+        maxLength: 64
+    LeaseFence:
+      name: X-Lease-Fence
+      in: header
+      required: true
+      description: The fence the lease was granted under. Every new grant raises it, so a superseded holder presents a stale value.
+      schema:
+        type: integer
+        minimum: 0
+
   responses:
     Unauthorized:
       description: Missing or invalid X-API-Key
@@ -744,3 +940,31 @@ components:
         application/json:
           example:
             error: Resource not found
+    AccountRequired:
+      description: A write did not name its account in X-Account-Id
+      content:
+        application/json:
+          example:
+            error: 'account_required: writes must name the account in X-Account-Id'
+    LeaseRequired:
+      description: A write to a live account, or a lease call, presented no X-Lease-Holder and X-Lease-Fence
+      content:
+        application/json:
+          example:
+            error: lease_required
+            message: X-Lease-Holder and X-Lease-Fence are required
+    LeaseLost:
+      description: The presented lease is not the live one. It has expired, was released, or was taken over. The holder must stop writing.
+      content:
+        application/json:
+          example:
+            error: lease_lost
+            message: the lease for test-account-1 is not held under fence 2
+    LeaseHeld:
+      description: Another holder has the account's lease
+      content:
+        application/json:
+          example:
+            error: lease_held
+            holder_label: futures-desk
+            expires_at: '2026-11-15T10:00:50.000Z'

@@ -1,7 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'Backtest datasets API', type: :request do
-  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY') } }
+  # Datasets belong to no account. The admin call names the research account, which need not exist, so the lease does not apply to it.
+  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => 'research-admin' } }
   let(:bars) do
     [
       { bar_at: '2026-11-02T03:45:00Z', open: 100, high: 101, low: 99, close: 100.5, volume: 10 },
@@ -15,6 +16,27 @@ RSpec.describe 'Backtest datasets API', type: :request do
     get '/api/backtest_datasets'
 
     expect(response).to have_http_status(:unauthorized)
+  end
+
+  describe 'writes name their account' do
+    it 'refuses a dataset write that names no account: 400 account_required' do
+      post '/api/backtest_datasets', params: payload, headers: { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY') }, as: :json
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)['error']).to match(/account_required/)
+      expect(Backtest::Dataset.count).to eq(0)
+    end
+
+    # The research exemption covers an account that does not exist. It never covers a live account.
+    it 'refuses a dataset write that names a live account without its lease: 409 lease_required' do
+      create(:account, account_id: 'ACC-LIVE-ADMIN', margin: 10_000.0, available_balance: 10_000.0)
+
+      post '/api/backtest_datasets', params: payload, headers: headers.merge('X-Account-Id' => 'ACC-LIVE-ADMIN'), as: :json
+
+      expect(response).to have_http_status(:conflict)
+      expect(JSON.parse(response.body)['error']).to eq('lease_required')
+      expect(Backtest::Dataset.count).to eq(0)
+    end
   end
 
   describe 'POST /api/backtest_datasets' do

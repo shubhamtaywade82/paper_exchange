@@ -5,7 +5,8 @@ require 'rails_helper'
 # the next bar's open, the replay reports the fills, and the finished run keeps
 # its trades, equity, metrics and verdict.
 RSpec.describe 'Bot-driven backtest over the API', type: :request do
-  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY') } }
+  # The admin calls name the research account, which need not exist, so the lease does not apply to it.
+  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => 'research-admin' } }
   let(:ohlc) do
     [
       [ 100, 101, 99, 100 ],
@@ -157,7 +158,8 @@ RSpec.describe 'Bot-driven backtest over the API', type: :request do
   end
 
   it 'refuses stop_loss on a live account, which uses protections' do
-    post '/api/orders', headers: headers.merge('X-Account-Id' => 'ACC-LIVE-NO-STOPS'), as: :json, params: {
+    live = headers.merge('X-Account-Id' => 'ACC-LIVE-NO-STOPS').merge(lease_headers_for('ACC-LIVE-NO-STOPS'))
+    post '/api/orders', headers: live, as: :json, params: {
       symbol: 'RELIANCE', side: 'buy', quantity: 1, order_type: 'market', instrument_type: 'EQUITY', stop_loss: 95
     }
 
