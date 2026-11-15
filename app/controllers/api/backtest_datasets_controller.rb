@@ -35,6 +35,11 @@ module Api
 
     private
 
+    # Datasets are not account-scoped; the admin call may name a research account that need not exist
+    def lease_exempt?
+      super || !Account.exists?(account_id: @account_id)
+    end
+
     def set_dataset
       @dataset = Backtest::Dataset.find_by(id: params[:id])
       render_error(:not_found, "Dataset not found") unless @dataset

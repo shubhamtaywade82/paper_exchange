@@ -8,6 +8,9 @@
 class BacktestRunJob < ApplicationJob
   queue_as :default
 
+  # Enqueued from request writes, so the job waits for the write's transaction to commit. A refused or rolled-back write queues nothing.
+  self.enqueue_after_transaction_commit = true
+
   def perform(run_id)
     run = Backtest::Run.find_by(id: run_id)
     return unless run && Backtest::RunManager.claim!(run)

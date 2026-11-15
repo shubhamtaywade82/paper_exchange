@@ -57,23 +57,26 @@ RSpec.describe 'API authentication (audit M2)', type: :request do
   end
 
   describe 'with the correct X-API-Key' do
+    # The writes below reach live accounts, so they name the writer's account and present its lease.
+    let(:writer_headers) { auth_headers.merge('X-Account-Id' => 'ACC-AUTH').merge(lease_headers_for('ACC-AUTH')) }
+
     it 'authenticates — route groups respond with their normal statuses' do
       get '/api/orders', headers: auth_headers
       expect(response).to have_http_status(:ok)
 
-      post '/api/mark_prices', params: { prices: { BTCUSDT: '65000' } }, headers: auth_headers
+      post '/api/mark_prices', params: { prices: { BTCUSDT: '65000' } }, headers: writer_headers
       expect(response).to have_http_status(:ok)
 
-      post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001', funding_time: '2026-09-20T08:00:00Z' }, headers: auth_headers
+      post '/api/funding_events', params: { symbol: 'BTCUSDT', funding_rate: '0.0001', funding_time: '2026-09-20T08:00:00Z' }, headers: writer_headers
       expect(response).to have_http_status(:accepted)
 
-      post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }, headers: auth_headers
+      post '/api/market_events', params: { symbol: 'BTCUSDT', ltp: '65000' }, headers: writer_headers
       expect(response.status).to be_in([ 201, 503 ]) # 201 when Redis stream active, 503 when down — proves auth passed in both cases
 
-      post '/api/market_structure', params: { symbol: 'BTCUSDT', trend: 'bullish' }, headers: auth_headers
+      post '/api/market_structure', params: { symbol: 'BTCUSDT', trend: 'bullish' }, headers: writer_headers
       expect(response).to have_http_status(:created)
 
-      post '/api/strategy/signals', params: { symbol: 'RELIANCE', side: 'buy', quantity: 1, ltp: '2500' }, headers: auth_headers
+      post '/api/strategy/signals', params: { symbol: 'RELIANCE', side: 'buy', quantity: 1, ltp: '2500' }, headers: writer_headers
       expect(response).to have_http_status(:ok)
 
       # No "default" account row exists in this example, so the

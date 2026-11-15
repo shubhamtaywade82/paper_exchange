@@ -4,6 +4,12 @@ RSpec.describe Api::FundingEventsController, type: :controller do
   let(:funding_time) { '2026-09-20T08:00:00Z' }
   let(:parsed_time) { Time.zone.parse(funding_time) }
 
+  # Funding is a global write, so it names its writer's account and presents that account's lease.
+  before do
+    request.headers['X-Account-Id'] = 'ACC-MARKET'
+    lease_headers_for('ACC-MARKET').each { |name, value| request.headers[name] = value }
+  end
+
   describe 'POST #create' do
     it 'enqueues FundingJob with the pushed rate and settlement time' do
       expect {

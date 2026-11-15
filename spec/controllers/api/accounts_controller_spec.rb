@@ -69,6 +69,9 @@ RSpec.describe Api::AccountsController, type: :controller do
   describe 'POST #reset' do
     let(:reset_account) { Account.find_by!(account_id: account_id) }
 
+    # Reset writes to the live account, so it presents that account's lease.
+    before { lease_headers_for(account_id).each { |name, value| request.headers[name] = value } }
+
     it 'seeds the account with the requested margin from the query string' do
       post :reset, params: { margin: 100_000 }
 

@@ -6,8 +6,8 @@ require 'rails_helper'
 # build. The docs and the code cannot drift apart silently.
 #
 # Covered: GET /api/v1/account (including the nested wallet object),
-# GET /api/v1/performance, and GET /api/v1/exchange/status. The status check
-# compares keys only, not the status code, because the endpoint answers 503
+# GET /api/v1/performance, GET /api/v1/exchange/status, and GET /api/v1/account/lease.
+# The status check compares keys only, not the status code, because the endpoint answers 503
 # when a provider is degraded. Not covered: the list endpoints, whose documented
 # examples are arrays.
 RSpec.describe 'OpenAPI response contract (#18)', type: :request do
@@ -46,5 +46,14 @@ RSpec.describe 'OpenAPI response contract (#18)', type: :request do
     get '/api/v1/exchange/status', headers: headers
 
     expect(JSON.parse(response.body).keys.sort).to eq(documented_example('/api/v1/exchange/status').keys.sort)
+  end
+
+  it 'GET /api/v1/account/lease returns exactly the documented keys' do
+    AccountLeases.acquire!(account_id: account_id, holder_id: 'contract-holder', label: 'contract', ttl_seconds: 30)
+
+    get '/api/v1/account/lease', headers: headers
+    expect(response).to have_http_status(:ok)
+
+    expect(JSON.parse(response.body).keys.sort).to eq(documented_example('/api/v1/account/lease').keys.sort)
   end
 end

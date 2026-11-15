@@ -15,6 +15,11 @@ Rails.application.routes.draw do
   concern :api_endpoints do
     get "account", to: "accounts#show"
     post "account/reset", to: "accounts#reset"
+    # The single-writer lease for the account named in X-Account-Id. See AccountLeases.
+    get "account/lease", to: "account_leases#show"
+    post "account/lease", to: "account_leases#create"
+    put "account/lease", to: "account_leases#update"
+    delete "account/lease", to: "account_leases#destroy"
     resources :orders, only: %i[index show create destroy]
     resources :positions, only: %i[index show] do
       resources :protections, only: %i[index create destroy]

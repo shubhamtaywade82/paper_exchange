@@ -117,6 +117,11 @@ module Api
 
     private
 
+    # Backtest admin calls name a research account that need not exist. They write to simulated run accounts, never to a live one
+    def lease_exempt?
+      super || !Account.exists?(account_id: @account_id)
+    end
+
     def set_run
       @run = Backtest::Run.find_by(id: params[:id])
       render_error(:not_found, "Backtest run not found") unless @run

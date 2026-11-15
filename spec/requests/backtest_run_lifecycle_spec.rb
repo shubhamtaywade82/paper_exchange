@@ -3,7 +3,8 @@ require 'rails_helper'
 # A run's lifecycle over HTTP: listing, finishing early, the answers that refuse
 # a run definition or an action on it, and a run the replay fails.
 RSpec.describe 'Backtest run lifecycle API', type: :request do
-  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY') } }
+  # The admin calls name the research account, which need not exist, so the lease does not apply to it.
+  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => 'research-admin' } }
   let(:flat) { [ 100, 101, 99, 100 ] }
   let(:dataset) { create_dataset!([ flat, flat, flat ]) }
 

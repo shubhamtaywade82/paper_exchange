@@ -6,7 +6,7 @@ require 'rails_helper'
 # gate decides only; rejection events are submit_order's job).
 RSpec.describe 'Strategy signals API', type: :request do
   let(:api_key) { ENV.fetch('PAPER_EXCHANGE_API_KEY') }
-  let(:headers) { { 'X-API-Key' => api_key, 'X-Account-Id' => 'ACC-SIGNAL' } }
+  let(:headers) { { 'X-API-Key' => api_key, 'X-Account-Id' => 'ACC-SIGNAL' }.merge(lease_headers_for('ACC-SIGNAL')) }
   let(:account) { create(:account, account_id: 'ACC-SIGNAL', margin: 10_000.0, available_balance: 10_000.0) }
 
   before { account }

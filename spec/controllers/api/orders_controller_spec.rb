@@ -12,6 +12,7 @@ RSpec.describe Api::OrdersController, type: :controller do
   before do
     create(:account, account_id: account_id)
     request.headers['X-Account-Id'] = account_id
+    lease_headers_for(account_id).each { |name, value| request.headers[name] = value }
   end
 
   describe 'POST #create' do

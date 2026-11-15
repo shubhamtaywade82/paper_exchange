@@ -1,7 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe 'Backtest runs API', type: :request do
-  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY') } }
+  # The admin calls name the research account, which need not exist, so the lease does not apply to it.
+  let(:headers) { { 'X-API-Key' => ENV.fetch('PAPER_EXCHANGE_API_KEY'), 'X-Account-Id' => 'research-admin' } }
   let(:ohlc) do
     [
       [ 100, 101, 99, 100 ],
