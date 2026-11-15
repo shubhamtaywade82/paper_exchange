@@ -22,6 +22,10 @@
 |--------|------|---------|-------|
 | GET | `/api/account` | Wallet + equity snapshot | balance, locked, equity, PnL |
 | POST | `/api/account/reset` | Wipe & re-seed account | dev/test only; atomic (one transaction, S11); the only deleter of ledger rows |
+| GET | `/api/account/lease` | Lease for the account in `X-Account-Id` | open to any authenticated caller; 404 when never granted; `live` judged on the database clock |
+| POST | `/api/account/lease` | Acquire, or renew the caller's own live lease | body `holder_id`, `holder_label`, `ttl_seconds` (10–600, default 30); 201; 409 `lease_held` naming the holder and its expiry |
+| PUT | `/api/account/lease` | Renew under the presented fence | `X-Lease-Holder` + `X-Lease-Fence`; 409 `lease_required` or `lease_lost` |
+| DELETE | `/api/account/lease` | Release under the presented fence | 200 `{released: bool}`; a stale fence releases nothing; 409 `lease_required` without headers |
 | GET | `/api/orders` | Orders, newest first | keyset paginated (N6): `{data, next_cursor}`, `?cursor=` + `?limit=` (1–500, default 100) |
 | POST | `/api/orders` | Submit order | 201 + order JSON; idempotent on `client_order_id` |
 | GET | `/api/orders/:id` | Order detail | |
@@ -71,6 +75,8 @@ Replay accounts (`X-Account-Id` of a backtest run) run every request inside the 
 **Authentication (M2/T1.2, shipped):** every request must send `X-API-Key: <PAPER_EXCHANGE_API_KEY>` — 401 otherwise; production refuses to boot without the key.
 
 **Account selection (within the authenticated boundary):** header `X-Account-Id` (or `params[:account_id]`), defaulting to `"default"`. Treat the account id as case-sensitive string.
+
+**Writes and the account lease:** every write must name its account (a write without `X-Account-Id` is 400 `account_required`). A write to a live account must also present `X-Lease-Holder` and `X-Lease-Fence` from the lease it holds, or it is refused: `409 lease_required` when none is presented, `409 lease_lost` when the presented fence is no longer the live one. Simulated and replay accounts are not fenced. Operator recovery of a stuck lease is host-side only (see README).
 
 ## 3. Status codes & error semantics (fixed contract — see `rules.md` §3)
 

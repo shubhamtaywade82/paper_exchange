@@ -271,6 +271,26 @@ Wallet split (`available_balance`/`locked_margin`) plus live equity — sync
 from this on startup and after any gap in connectivity rather than
 computing balance/margin locally.
 
+### Account lease
+```
+GET    /api/account/lease
+POST   /api/account/lease    # holder_id, holder_label, ttl_seconds (10–600, default 30)
+PUT    /api/account/lease    # renew; X-Lease-Holder + X-Lease-Fence
+DELETE /api/account/lease    # release; X-Lease-Holder + X-Lease-Fence
+```
+Every write names its account in `X-Account-Id`. A write to a live account also presents the `X-Lease-Holder` and `X-Lease-Fence` of the lease its writer holds, and the venue checks both in the same transaction that commits the write. Refusals: `409 lease_required` (no lease presented), `409 lease_lost` (not the live lease under that fence), and `409 lease_held` on acquire (naming the holder and its expiry). Simulated and replay accounts are not fenced. Liveness is judged on the database clock.
+
+#### Operator: recovering a stuck lease
+Run on the host with database access. The HTTP API has no force-release on purpose: every agent holds the same API key.
+```
+ACCOUNT_ID=acc-1 bin/rails account_leases:status
+ACCOUNT_ID=acc-1 OPERATOR=jane REASON="pid 4123 wedged; confirmed dead on host" bin/rails account_leases:force_release
+```
+- Wait for the TTL first. A crashed holder lapses within its TTL (30 s by default, 600 s at most) after its last heartbeat, and needs no force.
+- Force only when the holder must not write again and waiting is too slow. The release waits up to 10 s for in-flight writes to commit. If a write still holds the row, nothing is released and the command says so. The account must have a row, because the audit event references it.
+- From the commit, the evicted holder's next write or heartbeat is refused. The fence is kept, so the next grant is higher.
+- Each force release writes a `LEASE_FORCE_RELEASED` risk event (reason, operator, evicted holder and fence), listed under Risk Events.
+
 ### Positions
 ```
 GET /api/positions
