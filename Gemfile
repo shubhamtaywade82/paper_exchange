@@ -113,3 +113,5 @@ end
 # ask-ruby-harness 0.4.1 references Ask::Tools::Shell without requiring it; load it first.
 gem "ask-tools-shell", require: "ask/tools/shell", group: :development
 gem "ask-rails-harness-mcp", "~> 0.2.9", group: :development
+# Stable .localhost dev URLs for rails-harness dev_url (optional but recommended).
+gem "yamine", group: :development

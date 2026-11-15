@@ -544,6 +544,8 @@ GEM
       base64
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
+    yamine (0.23.1)
+      base64 (~> 0.2)
     zeitwerk (2.8.3)
 
 PLATFORMS
@@ -591,6 +593,7 @@ DEPENDENCIES
   tzinfo-data
   vcr
   webmock
+  yamine
 
 CHECKSUMS
   DhanHQ (4.1.1) sha256=c47738d615c818f3c892f179255d7914cf43505d9c0e2512d8aa5865bb36b6a5
@@ -794,6 +797,7 @@ CHECKSUMS
   websocket-client-simple (0.3.1) sha256=79c6e0b3b467cd282693c99eff1b1d40eacef28ff60d804a89229b5a8a33ade7
   websocket-driver (0.8.2) sha256=97c556b019bf3410b4961002ac501621e9322d3f8a7bc02161a09301cc4c4146
   websocket-extensions (0.1.5) sha256=1c6ba63092cda343eb53fc657110c71c754c56484aad42578495227d717a8241
+  yamine (0.23.1) sha256=7e32d0f9fda04ecb911f261a5ea70b6f95150adc45b244092d6849f3dea22384
   zeitwerk (2.8.3) sha256=2c85125a8467ce069e20123d1e709a08955c9d29c118c25b46b7b7fafdbb92e5
 
 BUNDLED WITH

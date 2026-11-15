@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve repository root so script can be invoked from any working directory
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+if [[ ! -f .env ]]; then
+  echo "Error: .env file not found. Copy .env.example to .env before running." >&2
+  exit 1
+fi
+
+wait_for_health() {
+  local retries=30
+  until curl -fsS http://localhost:3100/health >/dev/null 2>&1; do
+    retries=$((retries - 1))
+    if [[ $retries -le 0 ]]; then
+      echo "Error: API failed to become healthy within 30 seconds." >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+echo "== 1. Ensuring containers are running =="
+docker compose up -d
+
+echo "== 2. Waiting for API and service dependencies to become healthy =="
+wait_for_health
+
+echo "== 3. Preparing development and test databases =="
+docker compose exec -T api bin/rails db:prepare
+docker compose exec -T \
+  -e RAILS_ENV=test \
+  -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test \
+  api bin/rails db:prepare
+
+echo "== 4. Running broker accounting smoke test =="
+docker compose exec -T api npm run smoke-test
+
+echo "== 5. Running trading lifecycle simulation smoke test =="
+docker compose exec -T api npm run smoke-test:simulation
+
+echo "🎉 All smoke tests completed successfully!"
