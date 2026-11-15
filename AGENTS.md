@@ -15,7 +15,7 @@ docker compose exec -T \
   api bundle exec rspec [path]
 ```
 
-Expected: 692 examples, 0 failures. Lint: `docker compose exec -T api bin/rubocop`. Security: `bin/brakeman`.
+Expected: 775 examples, 0 failures. Lint: `docker compose exec -T api bin/rubocop`. Security: `bin/brakeman`.
 
 ## MCP servers (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `opencode.json`)
 
@@ -30,5 +30,6 @@ Expected: 692 examples, 0 failures. Lint: `docker compose exec -T api bin/ruboco
 ## Conventions
 
 - Money paths go through `Ledger::MarginLedger`; ledger entries are append-only.
+- Live-account writes are fenced by the account lease: present `X-Lease-Holder` and `X-Lease-Fence` (`POST /api/account/lease`). Operator force-release is host-side only: `ACCOUNT_ID=... OPERATOR=... REASON=... bin/rails account_leases:force_release`.
 - Validate external input at controller boundaries (see `MarkPricesController`).
 - Do not commit without being asked.

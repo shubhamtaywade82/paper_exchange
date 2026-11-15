@@ -11,6 +11,10 @@ module AccountLeases
   MAX_TTL_SECONDS = 600
   DEFAULT_TTL_SECONDS = 30
 
+  # How long a force release waits for in-flight writes to commit. Bounded, so a write wedged inside its transaction cannot hang
+  # the operator's shell: the release gives up and changes nothing.
+  FORCE_RELEASE_LOCK_TIMEOUT_SECONDS = 10
+
   # Another holder has the account. The caller learns who holds it, and until when.
   class Held < StandardError
     attr_reader :holder_label, :expires_at
@@ -27,6 +31,13 @@ module AccountLeases
 
   # A write arrived with no holder or fence at all.
   class Required < StandardError; end
+
+  # There is no live lease to release. An expired or released lease needs no force: the next acquire takes it.
+  class NotHeld < StandardError; end
+
+  # The account has no row. An eviction is audited against the account (risk_events references accounts), so it cannot be
+  # recorded, and the lease lapses on its own within its TTL.
+  class UnknownAccount < StandardError; end
 
   module_function
 
@@ -83,6 +94,52 @@ module AccountLeases
       .positive?
   end
 
+  # Operator eviction of the live holder, for a lease that will not lapse in time: a writer that crashed while its heartbeat kept
+  # running, or one that is wedged and cannot be reached to release. Host-side only (lib/tasks/account_leases.rake): every agent
+  # holds the same API key, so an HTTP route would let any agent evict another.
+  #
+  # The row is taken FOR UPDATE, so the release waits for every fenced write already in flight to commit under the fence it
+  # checked. That wait is bounded: a write wedged inside its transaction raises ActiveRecord::LockWaitTimeout and releases nothing.
+  # From the moment the release commits, the evicted holder's next write or heartbeat finds no lease under its fence.
+  #
+  # The fence is kept, so the next grant is fence + 1. The release and its LEASE_FORCE_RELEASED audit event commit together, and
+  # the audit event references the account, so an account with no row cannot be evicted.
+  def force_release!(account_id:, reason:, operator:, lock_timeout: FORCE_RELEASE_LOCK_TIMEOUT_SECONDS)
+    reason = reason.to_s.strip
+    operator = operator.to_s.strip
+    raise ArgumentError, "a force release needs a reason" if reason.empty?
+    raise ArgumentError, "a force release needs an operator" if operator.empty?
+    raise ArgumentError, "lock_timeout must be a positive number of seconds" unless lock_timeout.to_f.positive?
+
+    AccountLease.transaction do
+      timeout_ms = (lock_timeout.to_f * 1000).round
+      AccountLease.connection.execute(AccountLease.sanitize_sql_array([ "SET LOCAL lock_timeout = ?", "#{timeout_ms}ms" ]))
+      row = AccountLease.lock("FOR UPDATE").find_by(venue: VENUE, account_id: account_id)
+      raise NotHeld, "no live lease to release for #{account_id}" unless row && holder_live?(row.id)
+
+      account_exists = Account.exists?(account_id: account_id)
+      raise UnknownAccount, "#{account_id} has no account row, so the eviction cannot be audited" unless account_exists
+
+      AccountLease.where(id: row.id).update_all(
+        "holder_id = NULL, holder_label = NULL, released_at = clock_timestamp(), expires_at = clock_timestamp(), updated_at = clock_timestamp()"
+      )
+      RiskEvent.create!(
+        account_id: account_id,
+        event_type: "LEASE_FORCE_RELEASED",
+        details: {
+          venue: VENUE,
+          reason: reason,
+          operator: operator,
+          released_holder_id: row.holder_id,
+          released_holder_label: row.holder_label,
+          released_fence: row.fence,
+          acquired_at: row.acquired_at&.iso8601(3),
+          expires_at_before_release: row.expires_at&.iso8601(3)
+        }
+      )
+    end
+  end
+
   # The guard every write to a live account passes through. Returns the live lease row, or raises Required or Lost.
   #
   # With lock: true the row is taken FOR SHARE, and the call must sit inside the transaction that makes the write. A takeover
@@ -112,6 +169,19 @@ module AccountLeases
 
   def current!(account_id)
     AccountLease.find_by!(venue: VENUE, account_id: account_id)
+  end
+
+  # The lease as the database judges it. Nil when no lease was ever granted for the account.
+  def status(account_id:)
+    row = AccountLease.find_by(venue: VENUE, account_id: account_id)
+    return unless row
+
+    { lease: row, live: holder_live?(row.id) }
+  end
+
+  # A holder is named and the lease has not lapsed. Both are judged on the database clock.
+  def holder_live?(lease_id)
+    AccountLease.where(id: lease_id).where.not(holder_id: nil).where("expires_at > clock_timestamp()").exists?
   end
 
   def presented_fence(holder_id, fence)

@@ -201,6 +201,8 @@ sequenceDiagram
     C-->>A: 201 + order JSON
 ```
 
+**Lease fence (wraps every API write to a live account).** `Api::BaseController#fence_live_writes` opens one transaction, runs `AccountLeases.assert_writable!` with a `FOR SHARE` lock on the account's `account_leases` row, and only then runs the action. The presented `X-Lease-Holder` and `X-Lease-Fence` must match the live lease, judged on `clock_timestamp()`. A takeover (`acquire!` on an expired lease, or the operator's `force_release!`) waits for in-flight writes to commit, so a stalled holder cannot commit after it has been replaced. The fence covers API writes only. The venue's own jobs (matching, liquidation, funding, protections, expiry) act on venue state, and they serialise with API writes on the account row lock.
+
 **Autonomous matching path (target architecture):** when a market event arrives (via the `market_data` process or `POST /api/market_events`), the `MatchingWorker` consumes it from the Redis tick stream, updates `QuoteStore`, scans open orders, and calls `PaperExchange#match_and_fill` to fill marketable orders at the live book price. This path bypasses the risk gate (margin was already locked at submit time) but runs the same fill + position + ledger sequence under a row lock.
 
 ## 5. Liquidation pipeline
@@ -269,6 +271,7 @@ flowchart TD
 | `OptionExpiryJob` | Daily option expiry settlement (cash settlement) | `perform` |
 | `Projections::*` | Read-side: position/portfolio/performance (REALIZED_PNL stream, P1-4) | `portfolio_projection.rb` |
 | `Strategy::*` | Pre-trade assessment (`POST /api/strategy/signals`); indicator compute still Roadmap | `strategy_engine.rb` |
+| `AccountLeases` | Single-writer account lease: acquire, renew, release, the write fence, and operator `force_release!` (audited as `LEASE_FORCE_RELEASED`) | `account_leases.rb` (`assert_writable!`, `force_release!`); host-side tools in `lib/tasks/account_leases.rake` |
 
 ## 9. Accounting model (P0-1 fix)
 
