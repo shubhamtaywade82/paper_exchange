@@ -33,3 +33,18 @@ Expected: 775 examples, 0 failures. Lint: `docker compose exec -T api bin/ruboco
 - Live-account writes are fenced by the account lease: present `X-Lease-Holder` and `X-Lease-Fence` (`POST /api/account/lease`). Operator force-release is host-side only: `ACCOUNT_ID=... OPERATOR=... REASON=... bin/rails account_leases:force_release`.
 - Validate external input at controller boundaries (see `MarkPricesController`).
 - Do not commit without being asked.
+
+## Ruby/Rails MCP Tooling Policy (verified 2026-11-16)
+
+Escalation order for connected MCP servers — static/structured first, arbitrary execution last:
+
+1. **`rails-context`** (rails-mcp-server 2.0, read-only; 3 bootstrap tools: `switch_project`, `search_tools`, `execute_tool`):
+   - Load house rules first: `execute_tool("load_guide", { library: "custom", guide: "paper-exchange-architecture" })`.
+   - DB + route ground truth via `execute_tool("get_schema", ...)` / `execute_tool("get_routes", ...)` — never infer schema from migrations.
+   - `analyze_models` only sees `app/models`; it does NOT see anything under `app/services/`, `app/jobs/`, `lib/`. Use `rg`/read for those.
+   - RailsForge MCP overlaps on `list_routes`/`get_project_guidelines` — prefer `rails-context` for database truth.
+2. **Verification loop stays in-shell** per test instructions above (`docker compose exec -T -e RAILS_ENV=test -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test api bundle exec rspec`). `rails-harness` (ask-rails-harness-mcp: `run_tests`, `read_log`, `query_database`, `run_command`, `schema_graph`, `route_inspector`) runs inside the `api` container. Do NOT use its `run_tests`: it assumes `bin/rails test`, runs 0 tests, and reports success.
+3. **`ruby-console`** (ruby-console-mcp) — persistent PTY REPL, arbitrary Ruby eval via `docker compose exec api bin/rails c --sandbox`. Enabled in all clients, yet last resort in this escalation order; never used against live-trading state; never prints tokens/ENV.
+4. **`ruby-debug` / `debug`** (debug-mcp) — attaches to rdbg on port 12345 when `RUBY_DEBUG_OPEN=true`. Use only for live debugging; never in production.
+
+Trading safety overrides all tooling: money paths go through `Ledger::MarginLedger` (append-only); live-account writes are fenced by `X-Lease-Holder` and `X-Lease-Fence`; index cash trading is permanently prohibited; never print secrets or `.env` contents.

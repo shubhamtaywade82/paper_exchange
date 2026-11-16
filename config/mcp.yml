@@ -1,0 +1,44 @@
+# ActionMCP Configuration for PaperExchange
+
+shared:
+  # Bearer MCP_API_TOKEN (app/mcp/application_gateway.rb)
+  authentication: ["mcp_token"]
+
+  server_instructions:
+    - "Read-only view of the PaperExchange broker and simulation engine"
+    - "Tools provide inspectable state for accounts, open positions, closed trades, mark prices, risk status, and system health"
+    - "No tool places, modifies, or cancels orders — write operations require authenticated API calls with account leases"
+
+  profiles:
+    primary:
+      tools:
+        - all
+      prompts:
+        - all
+      resources:
+        - all
+      options:
+        list_changed: false
+        logging_enabled: true
+        resources_subscribe: false
+
+    minimal:
+      tools: []
+      prompts: []
+      resources: []
+      options:
+        list_changed: false
+        logging_enabled: false
+        logging_level: warn
+        resources_subscribe: false
+
+development:
+  # Volatile sessions in development for fast restarts
+  # session_store_type: volatile
+
+test:
+  authentication: ["mcp_token"]
+
+production:
+  authentication: ["mcp_token"]
+  session_store_type: active_record

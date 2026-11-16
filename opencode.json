@@ -1,15 +1,57 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "servers": {
-      "rails-harness": {
-        "type": "local",
-        "command": ["docker", "compose", "exec", "-T", "api", "bundle", "exec", "ask-rails-harness-mcp"]
-      },
-      "debug": {
-        "type": "local",
-        "command": ["debug-mcp"]
+    "rails-context": {
+      "type": "local",
+      "command": [
+        "/home/nemesis/.rvm/gems/ruby-4.0.6/bin/rails-mcp-server",
+        "--single-project"
+      ],
+      "enabled": true
+    },
+    "railsforge": {
+      "type": "local",
+      "command": [
+        "node",
+        "/home/nemesis/.vscode-server/extensions/shubhamtaywade.railsforge-0.1.4/dist/mcp/server.js"
+      ],
+      "enabled": true
+    },
+    "rails-harness": {
+      "type": "local",
+      "command": [
+        "docker",
+        "compose",
+        "-f",
+        "/home/nemesis/projects/apps/paper_exchange/docker-compose.yml",
+        "exec",
+        "-T",
+        "api",
+        "bundle",
+        "exec",
+        "ask-rails-harness-mcp"
+      ],
+      "enabled": true
+    },
+    "ruby-console": {
+      "type": "local",
+      "command": [
+        "/home/nemesis/.nvm/versions/node/v20.19.0/bin/node",
+        "/home/nemesis/.local/share/ruby-console-mcp-host/node_modules/ruby-console-mcp/build/index.js"
+      ],
+      "enabled": true,
+      "environment": {
+        "RUBY_APP_PATH": "/home/nemesis/projects/apps/paper_exchange",
+        "RUBY_CONSOLE_COMMAND": "docker compose exec api bin/rails c --sandbox",
+        "COMMAND_TIMEOUT": "60000"
       }
+    },
+    "ruby-debug": {
+      "type": "local",
+      "command": [
+        "/home/nemesis/.rvm/gems/ruby-4.0.6/bin/debug-mcp"
+      ],
+      "enabled": true
     }
   }
 }

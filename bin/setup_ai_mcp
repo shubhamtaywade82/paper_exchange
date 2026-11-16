@@ -1,0 +1,376 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# One-command portable setup for the Ruby/Rails MCP stack wired for PaperExchange.
+#
+#   ./bin/setup_ai_mcp [--skip-validate]
+#
+# Configures five MCP servers for four AI clients (OpenCode, Claude Code, Cursor,
+# Antigravity) plus house rules (AGENTS.md / CLAUDE.md / Cursor rules) and the
+# custom rails-mcp-server architecture guide.
+
+require "json"
+require "fileutils"
+require "open3"
+require "timeout"
+
+REPO_ROOT           = File.expand_path("..", __dir__)
+HOME                = Dir.home
+DOCKER_COMPOSE_FILE = File.join(REPO_ROOT, "docker-compose.yml")
+CONSOLE_HOST_DIR    = File.join(HOME, ".local/share/ruby-console-mcp-host")
+CONSOLE_JS          = File.join(CONSOLE_HOST_DIR, "node_modules/ruby-console-mcp/build/index.js")
+GUIDE_DEST_DIR      = File.join(HOME, ".config/rails-mcp/resources/custom")
+RAILSFORGE_EXT_GLOB = File.join(HOME, "{.cursor-server,.vscode-server}/extensions/shubhamtaywade.railsforge-*/dist/mcp/server.js")
+
+SKIP_VALIDATE = ARGV.include?("--skip-validate")
+FAILED = []
+
+def say(msg)
+  $stdout.puts "[setup_ai_mcp] #{msg}"
+end
+
+def find_in_path(name)
+  out, = Open3.capture2("sh", "-c", "command -v #{name} 2>/dev/null")
+  out.strip.empty? ? nil : out.strip
+end
+
+def gem_bin(name)
+  found = find_in_path(name)
+  return found if found
+
+  say("gem '#{name}' not found — installing…")
+  system("gem", "install", name, "--no-document")
+  find_in_path(name).tap do |p|
+    say("  ✗ could not install gem '#{name}'") unless p
+  end
+end
+
+def node_version(path)
+  out, = Open3.capture2(path, "-v")
+  out[/v?(\d+)\.(\d+)\.(\d+)/, 1].to_i
+rescue StandardError
+  999
+end
+
+def pick_node
+  candidates = [find_in_path("node"), *Dir[File.join(HOME, ".nvm/versions/node/v*/bin/node")]].compact.uniq
+  return nil if candidates.empty?
+
+  current = candidates.first
+  return current if node_version(current) < 22
+
+  under22 = candidates.select { |c| node_version(c) < 22 }.max_by { |c| node_version(c) }
+  under22 || current
+end
+
+def build_console_host(node_path)
+  return CONSOLE_JS if File.exist?(CONSOLE_JS)
+
+  node_bin = File.dirname(node_path)
+  npm = File.exist?(File.join(node_bin, "npm")) ? File.join(node_bin, "npm") : "npm"
+  env = { "PATH" => "#{node_bin}:#{ENV.fetch('PATH', nil)}" }
+  FileUtils.mkdir_p(CONSOLE_HOST_DIR)
+  File.write(File.join(CONSOLE_HOST_DIR, "package.json"), <<~JSON)
+    {
+      "name": "ruby-console-mcp-host",
+      "private": true,
+      "overrides": { "node-pty": "1.0.0" }
+    }
+  JSON
+  ok = system(env, npm, "i", "ruby-console-mcp", "--ignore-scripts", chdir: CONSOLE_HOST_DIR)
+  ok &&= system(env, npm, "rebuild", "node-pty", chdir: CONSOLE_HOST_DIR)
+  unless ok && File.exist?(CONSOLE_JS)
+    say("  ✗ ruby-console build failed")
+    return nil
+  end
+  CONSOLE_JS
+end
+
+def find_railsforge_server
+  paths = Dir[RAILSFORGE_EXT_GLOB].sort_by { |p| p[/railsforge-([\d.]+)/, 1].to_f }.reverse
+  return paths.first if paths.any?
+
+  %w[cursor code].each do |cli|
+    next unless find_in_path(cli)
+
+    say("installing railsforge extension via #{cli}…")
+    system(cli, "--install-extension", "shubhamtaywade.railsforge", out: File::NULL, err: File::NULL)
+    retry_glob = Dir[RAILSFORGE_EXT_GLOB].sort_by { |p| p[/railsforge-([\d.]+)/, 1].to_f }.reverse
+    return retry_glob.first if retry_glob.any?
+  end
+  nil
+end
+
+def merge_client_config(path, root_key, servers)
+  data = File.exist?(path) ? (begin; JSON.parse(File.read(path)); rescue JSON::ParserError; {}; end) : {}
+  data[root_key] ||= {}
+  changed = false
+  servers.each do |name, entry|
+    if entry.nil?
+      say("  – #{File.basename(path)}: skipping '#{name}' (dependency missing)")
+    else
+      data[root_key][name] = entry
+      changed = true
+      say("  + #{File.basename(path)}: configured '#{name}'")
+    end
+  end
+  return unless changed || !File.exist?(path)
+
+  FileUtils.mkdir_p(File.dirname(path))
+  File.write(path, "#{JSON.pretty_generate(data)}\n")
+end
+
+def ensure_block(path, guard, content)
+  if File.exist?(path)
+    body = File.read(path)
+    if body.include?(guard)
+      say("  = #{File.basename(path)}: policy already present — skipping")
+      return
+    end
+    File.write(path, "#{body.rstrip}\n\n#{content}")
+  else
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, content)
+  end
+  say("  + #{File.basename(path)}: appended")
+end
+
+CONSOLE_ENV = lambda { |root|
+  {
+    "RUBY_APP_PATH" => root,
+    "RUBY_CONSOLE_COMMAND" => "docker compose exec api bin/rails c --sandbox",
+    "COMMAND_TIMEOUT" => "60000"
+  }
+}
+
+def probe_stdio(name, cmd, env: {}, chdir: REPO_ROOT)
+  Open3.popen3(env, *cmd, chdir: chdir) do |stdin, stdout, _stderr, wait_thr|
+    Timeout.timeout(30) do
+      stdin.puts '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}'
+      init = loop do
+        line = stdout.gets
+        break nil if line.nil?
+        parsed = (JSON.parse(line) rescue nil)
+        break parsed if parsed&.key?("result")
+      end
+      return { name: name, status: "✗ no initialize reply" } unless init
+
+      stdin.puts '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
+      stdin.puts '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+      list = loop do
+        line = stdout.gets
+        break nil if line.nil?
+        parsed = (JSON.parse(line) rescue nil)
+        break parsed if parsed&.key?("result")
+      end
+      tools = list&.dig("result", "tools")&.size
+      { name: name, status: tools ? "✓ connected, #{tools} tools" : "✓ initialized" }
+    end
+  rescue Timeout::Error, EOFError, IOError
+    { name: name, status: "✗ probe timeout" }
+  ensure
+    begin
+      stdin.close
+    rescue StandardError
+      nil
+    end
+    wait_thr.value
+  end
+end
+
+# ---------- main ----------
+say("Repo: #{REPO_ROOT}")
+say("Detecting/installing gem-provided servers…")
+rails_mcp = gem_bin("rails-mcp-server") || (FAILED << "rails-mcp-server"; nil)
+debug_mcp = gem_bin("debug-mcp") || (FAILED << "debug-mcp"; nil)
+
+say("Selecting Node for ruby-console-mcp (needs <= 20 when g++ < 10)…")
+node_path = pick_node
+console_js = node_path ? build_console_host(node_path) : nil
+FAILED << "ruby-console-mcp" if node_path.nil? || console_js.nil?
+say("  node: #{node_path || 'NOT FOUND'}") if node_path
+
+say("Locating RailsForge MCP server (VS Code/Cursor extension bundle)…")
+railsforge_js = find_railsforge_server
+FAILED << "railsforge extension" if railsforge_js.nil?
+say("  server.js: #{railsforge_js || 'NOT FOUND (skipping railsforge entries)'}")
+
+say("Configuring docker-backed rails-harness command…")
+harness_docker_cmd = [
+  "docker", "compose", "-f", DOCKER_COMPOSE_FILE,
+  "exec", "-T", "api", "bundle", "exec", "ask-rails-harness-mcp"
+]
+
+say("Writing client configs…")
+console_opencode = console_js && {
+  "type" => "local",
+  "command" => [node_path, console_js],
+  "enabled" => true,
+  "environment" => CONSOLE_ENV.call(REPO_ROOT)
+}
+console_env_style = console_js && {
+  "command" => node_path,
+  "args" => [console_js],
+  "env" => CONSOLE_ENV.call(REPO_ROOT)
+}
+console_cwd_style = console_js && {
+  "command" => node_path,
+  "args" => [console_js],
+  "cwd" => REPO_ROOT,
+  "env" => CONSOLE_ENV.call(REPO_ROOT)
+}
+
+merge_client_config(File.join(REPO_ROOT, "opencode.json"), "mcp", {
+  "rails-context" => rails_mcp && { "type" => "local", "command" => [rails_mcp, "--single-project"], "enabled" => true },
+  "railsforge" => railsforge_js && { "type" => "local", "command" => ["node", railsforge_js], "enabled" => true },
+  "rails-harness" => { "type" => "local", "command" => harness_docker_cmd, "enabled" => true },
+  "ruby-console" => console_opencode,
+  "ruby-debug" => debug_mcp && { "type" => "local", "command" => [debug_mcp], "enabled" => true }
+})
+
+merge_client_config(File.join(REPO_ROOT, ".mcp.json"), "mcpServers", {
+  "rails-context" => rails_mcp && { "command" => rails_mcp, "args" => ["--single-project"] },
+  "railsforge" => railsforge_js && { "command" => "node", "args" => [railsforge_js], "env" => { "RAILSFORGE_WORKSPACE_ROOT" => REPO_ROOT } },
+  "rails-harness" => { "command" => harness_docker_cmd.first, "args" => harness_docker_cmd[1..] },
+  "debug" => debug_mcp && { "command" => debug_mcp },
+  "ruby-console" => console_env_style
+})
+
+merge_client_config(File.join(REPO_ROOT, ".cursor/mcp.json"), "mcpServers", {
+  "rails-context" => rails_mcp && { "command" => rails_mcp, "args" => ["--single-project"] },
+  "railsforge" => railsforge_js && { "command" => "node", "args" => [railsforge_js], "env" => { "RAILSFORGE_WORKSPACE_ROOT" => REPO_ROOT } },
+  "rails-harness" => { "command" => harness_docker_cmd.first, "args" => harness_docker_cmd[1..] },
+  "ruby-console" => console_env_style,
+  "ruby-debug" => debug_mcp && { "command" => debug_mcp }
+})
+
+merge_client_config(File.join(REPO_ROOT, ".agents/mcp_config.json"), "mcpServers", {
+  "rails-context" => rails_mcp && { "command" => rails_mcp, "args" => ["--single-project"], "cwd" => REPO_ROOT },
+  "railsforge" => railsforge_js && { "command" => "node", "args" => [railsforge_js], "cwd" => REPO_ROOT },
+  "rails-harness" => { "command" => harness_docker_cmd.first, "args" => harness_docker_cmd[1..], "cwd" => REPO_ROOT },
+  "ruby-console" => console_cwd_style,
+  "ruby-debug" => debug_mcp && { "command" => debug_mcp }
+})
+
+say("Writing house rules…")
+ensure_block(File.join(REPO_ROOT, ".cursor/rules/mcp-tooling.mdc"), "Ruby/Rails MCP Tooling Policy", <<~MDC)
+  ---
+  description: Ruby/Rails MCP tool escalation policy for this repository
+  alwaysApply: true
+  ---
+
+  Follow the escalation order defined in `AGENTS.md` → "Ruby/Rails MCP Tooling Policy":
+
+  1. **`rails-context`** (read-only) — load house rules first via `execute_tool("load_guide", { library: "custom", guide: "paper-exchange-architecture" })`, then `get_schema` / `get_routes` for database and route ground truth before generating model or controller code.
+  2. Verification runs in-shell: `docker compose exec -T -e RAILS_ENV=test -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test api bundle exec rspec` (+ `rubocop`, `brakeman`).
+  3. `ruby-console` / `ruby-debug` are enabled but are **last resort** in this escalation order — never run them against live-trading state.
+
+  Trading safety overrides all tooling: paper-first; ledger entries are append-only; live writes are fenced by single-writer account lease (`X-Lease-Holder`, `X-Lease-Fence`); index cash trading is permanently prohibited; never print secrets or `.env` contents.
+MDC
+
+ensure_block(File.join(REPO_ROOT, "AGENTS.md"), "Ruby/Rails MCP Tooling Policy", <<~MD)
+  ## Ruby/Rails MCP Tooling Policy (verified 2026-11-16)
+
+  Escalation order for connected MCP servers — static/structured first, arbitrary execution last:
+
+  1. **`rails-context`** (rails-mcp-server 2.0, read-only; 3 bootstrap tools: `switch_project`, `search_tools`, `execute_tool`):
+     - Load house rules first: `execute_tool("load_guide", { library: "custom", guide: "paper-exchange-architecture" })`.
+     - DB + route ground truth via `execute_tool("get_schema", ...)` / `execute_tool("get_routes", ...)` — never infer schema from migrations.
+     - `analyze_models` only sees `app/models`; it does NOT see anything under `app/services/`, `app/jobs/`, `lib/`. Use `rg`/read for those.
+     - RailsForge MCP overlaps on `list_routes`/`get_project_guidelines` — prefer `rails-context` for database truth.
+  2. **Verification loop stays in-shell** per test instructions above (`docker compose exec -T -e RAILS_ENV=test -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test api bundle exec rspec`). `rails-harness` (ask-rails-harness-mcp: `run_tests`, `read_log`, `query_database`, `run_command`, `schema_graph`, `route_inspector`) runs inside the `api` container. Do NOT use its `run_tests`: it assumes `bin/rails test`, runs 0 tests, and reports success.
+  3. **`ruby-console`** (ruby-console-mcp) — persistent PTY REPL, arbitrary Ruby eval via `docker compose exec api bin/rails c --sandbox`. Enabled in all clients, yet last resort in this escalation order; never used against live-trading state; never prints tokens/ENV.
+  4. **`ruby-debug` / `debug`** (debug-mcp) — attaches to rdbg on port 12345 when `RUBY_DEBUG_OPEN=true`. Use only for live debugging; never in production.
+
+  Trading safety overrides all tooling: money paths go through `Ledger::MarginLedger` (append-only); live-account writes are fenced by `X-Lease-Holder` and `X-Lease-Fence`; index cash trading is permanently prohibited; never print secrets or `.env` contents.
+MD
+
+ensure_block(File.join(REPO_ROOT, "CLAUDE.md"), "Ruby/Rails MCP Tooling Policy", <<~MD)
+  ## MCP Tooling
+
+  Follow the "Ruby/Rails MCP Tooling Policy" section in `AGENTS.md` — escalation order: `rails-context` (read-only) → in-shell `rspec` verification → `ruby-console` / `ruby-debug` (enabled but last resort, never against live-trading state).
+MD
+
+say("Installing custom rails-mcp-server guide…")
+FileUtils.mkdir_p(GUIDE_DEST_DIR)
+File.write(File.join(GUIDE_DEST_DIR, "paper-exchange-architecture.md"), <<~GUIDE)
+  # PaperExchange — Architecture & Agent Rules
+
+  > **AGENT OVERRIDE:** This repository is an exchange simulator and paper trading engine.
+  > Everything runs in Docker (`api`, `db`, `redis`, `jobs`).
+  > Rules here supersede default Rails idioms. Verify claims with §5 workflow before writing code.
+
+  ## 1. Directory Topology
+
+  `analyze_models` only indexes `app/models`. Domain logic lives in `app/services/`:
+
+  - `app/models/` — Persisted ActiveRecord entities only: `Account`, `AccountLease`, `FundingPayment`, `LedgerEntry`, `PaperExchange::PaperOrder`, `PaperExchange::PaperPosition`, `PaperExchange::PaperTrade`, `RiskEvent`, `BacktestRun`, `PositionProtection`. No business logic in models!
+  - `app/services/` — **The real domain layer**:
+    - `exchange/` — matching, fill, slippage, brokerage, position management, order validation, catalogs. `PaperExchange.submit_order` is single entrypoint.
+    - `risk/` — `RiskManager`, `LiquidationEngine`, `MarginValidator`, `CurrencyValidator`, `PositionLimitValidator`, `MaxDrawdownValidator`, `VixGateValidator`.
+    - `ledger/` — immutable financial audit trail (`Ledger::MarginLedger`).
+    - `market_data/` — tick processing, candle building, greeks, option chain caching, provider adapters.
+    - `projections/` — read models (`PortfolioProjection`, `PositionProjection`, `PerformanceMetrics`).
+    - `strategy/` — `IndicatorEngine`, `MarketStructureEngine`, `StrategyEngine`, `OptionSelector`.
+    - `backtest/` — historical replay engine.
+  - `app/jobs/` — Solid Queue background jobs (`FundingJob`, `LiquidationJob`, `BacktestRunJob`, `OptionExpiryJob`).
+  - `app/channels/` — ActionCable channels (`FillsChannel`).
+  - `app/controllers/api/` — Thin REST API layer.
+  - `spec/` — RSpec test suite run in container against `paper_exchange_test`.
+
+  ## 2. Banned / Discouraged Patterns
+
+  1. No business logic in controllers — thin controllers only.
+  2. No index cash trading — index orders MUST route through F&O derivatives (FUTIDX / OPTIDX).
+  3. No unhedged floating point for money — all money fields carry full `decimal(36,18)` precision.
+  4. Never bypass `Ledger::MarginLedger` — ledger entries are strictly append-only.
+  5. Never bypass the single-writer account lease for live writes — present `X-Lease-Holder` and `X-Lease-Fence`.
+  6. Never commit automatically — always ask before committing.
+  7. Do not hand-edit `db/schema.rb`; write migrations.
+
+  ## 3. Trading Safety & Invariants
+
+  1. **Paper-first**: simulated exchange execution.
+  2. **Single-writer lease**: live account mutations are fenced by `AccountLeases`.
+  3. **Never print secrets**: `PAPER_EXCHANGE_API_KEY`, `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, Dhan credentials.
+  4. **Ledger reconciliation**: wallet cash must always equal initial + realized PnL - fees.
+
+  ## 4. Ground-Truth Rules
+
+  1. Schema: always `get_schema` (columns, nullability, foreign keys, indexes). Migrations are history, not truth.
+  2. Routes: `get_routes` for the compiled table (`/api` and `/api/v1` namespaces).
+  3. Test verification: always run RSpec inside container with `RAILS_ENV=test` and `DATABASE_URL` pointing to `paper_exchange_test`.
+
+  ## 5. rails-mcp-server Workflow
+
+  1. Load this guide: `execute_tool("load_guide", { library: "custom", guide: "paper-exchange-architecture" })`.
+  2. `get_schema` / `get_routes` before generating any model or controller code.
+  3. `analyze_models` only for ActiveRecord models in `app/models`.
+  4. `list_files` / `get_file` for `app/services/`, `app/jobs/`, `lib/`.
+GUIDE
+say("  + guide installed to #{GUIDE_DEST_DIR}")
+
+unless SKIP_VALIDATE
+  say("Validating servers (cheap stdio probes)…")
+  results = []
+  results << probe_stdio("rails-context", [rails_mcp, "--single-project"]) if rails_mcp
+  results << probe_stdio("railsforge", ["node", railsforge_js], env: { "RAILSFORGE_WORKSPACE_ROOT" => REPO_ROOT }) if railsforge_js
+  results << probe_stdio("rails-harness", harness_docker_cmd)
+  results << probe_stdio("ruby-console", [node_path, console_js], chdir: REPO_ROOT) if console_js && node_path
+  results << probe_stdio("ruby-debug", [debug_mcp]) if debug_mcp
+  results.each { |r| say("  #{r[:name]}: #{r[:status]}") }
+  FAILED << "server validation" if results.any? { |r| r[:status].start_with?("✗") }
+end
+
+say("")
+if FAILED.empty?
+  say("DONE. Setup complete and verified.")
+else
+  say("DONE WITH WARNINGS — unresolved: #{FAILED.uniq.join(', ')}")
+end
+say("Next steps:")
+say("  • OpenCode: restart or just start a session in this repo (config is project-scoped, hot-reloads).")
+say("  • Claude Code: start a session here and approve servers via /mcp if prompted.")
+say("  • Cursor: Settings → MCP & Integrations → verify configured servers.")
+say("  • Antigravity: auto-discovers .agents/mcp_config.json on next session.")
+exit(FAILED.empty? ? 0 : 1)

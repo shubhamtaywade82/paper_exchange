@@ -2,10 +2,46 @@
   "mcpServers": {
     "rails-harness": {
       "command": "docker",
-      "args": ["compose", "-f", "/home/nemesis/projects/apps/paper_exchange/docker-compose.yml", "exec", "-T", "api", "bundle", "exec", "ask-rails-harness-mcp"]
+      "args": [
+        "compose",
+        "-f",
+        "/home/nemesis/projects/apps/paper_exchange/docker-compose.yml",
+        "exec",
+        "-T",
+        "api",
+        "bundle",
+        "exec",
+        "ask-rails-harness-mcp"
+      ]
     },
     "debug": {
-      "command": "debug-mcp"
+      "command": "/home/nemesis/.rvm/gems/ruby-4.0.6/bin/debug-mcp"
+    },
+    "rails-context": {
+      "command": "/home/nemesis/.rvm/gems/ruby-4.0.6/bin/rails-mcp-server",
+      "args": [
+        "--single-project"
+      ]
+    },
+    "railsforge": {
+      "command": "node",
+      "args": [
+        "/home/nemesis/.vscode-server/extensions/shubhamtaywade.railsforge-0.1.4/dist/mcp/server.js"
+      ],
+      "env": {
+        "RAILSFORGE_WORKSPACE_ROOT": "/home/nemesis/projects/apps/paper_exchange"
+      }
+    },
+    "ruby-console": {
+      "command": "/home/nemesis/.nvm/versions/node/v20.19.0/bin/node",
+      "args": [
+        "/home/nemesis/.local/share/ruby-console-mcp-host/node_modules/ruby-console-mcp/build/index.js"
+      ],
+      "env": {
+        "RUBY_APP_PATH": "/home/nemesis/projects/apps/paper_exchange",
+        "RUBY_CONSOLE_COMMAND": "docker compose exec api bin/rails c --sandbox",
+        "COMMAND_TIMEOUT": "60000"
+      }
     }
   }
 }

@@ -115,3 +115,7 @@ gem "ask-tools-shell", require: "ask/tools/shell", group: :development
 gem "ask-rails-harness-mcp", "~> 0.2.9", group: :development
 # Stable .localhost dev URLs for rails-harness dev_url (optional but recommended).
 gem "yamine", group: :development
+
+# Standalone ActionMCP server for exposing read-only domain tools to AI clients
+gem "actionmcp", "~> 0.203"
+

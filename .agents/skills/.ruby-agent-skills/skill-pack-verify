@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "optparse"
+require "yaml"
+
+options = { root: nil }
+OptionParser.new do |opts|
+  opts.banner = "usage: ruby bin/skill-pack-verify --root PATH"
+  opts.on("--root PATH", "Agent skills directory containing .ruby-agent-skills") { |v| options[:root] = File.expand_path(v) }
+end.parse!
+
+root = options[:root] || ENV["RUBY_AGENT_SKILLS_ROOT"].to_s
+abort "--root is required (or set RUBY_AGENT_SKILLS_ROOT)" if root.empty?
+metadata_path = File.join(root, ".ruby-agent-skills", "INSTALLATION.json")
+manifest_path = File.join(root, ".ruby-agent-skills", "skill-manifest.yml")
+routing_path = File.join(root, ".ruby-agent-skills", "ROUTING.md")
+patterns_root = File.join(root, ".ruby-agent-skills", "patterns")
+tools_root = File.join(root, ".ruby-agent-skills", "bin")
+
+abort "installation record not found: #{metadata_path}" unless File.file?(metadata_path)
+abort "installed manifest not found: #{manifest_path}" unless File.file?(manifest_path)
+abort "installed routing contract not found: #{routing_path}" unless File.file?(routing_path)
+
+metadata = JSON.parse(File.read(metadata_path, encoding: "UTF-8"))
+manifest = YAML.safe_load(File.read(manifest_path, encoding: "UTF-8"), permitted_classes: [], aliases: false)
+
+errors = []
+errors << "unsupported installation protocol" unless metadata["protocol_version"].to_i == 1
+errors << "manifest SHA-256 mismatch" unless Digest::SHA256.file(manifest_path).hexdigest == metadata.dig("integrity", "skill_manifest_sha256")
+errors << "routing contract SHA-256 mismatch" unless Digest::SHA256.file(routing_path).hexdigest == metadata.dig("integrity", "routing_contract_sha256")
+
+expected_skills = manifest.fetch("skills")
+expected_skills.each do |name, entry|
+  skill_path = File.join(root, name, "SKILL.md")
+  errors << "missing installed skill: #{name}" unless File.file?(skill_path)
+end
+
+installed_skill_dirs = Dir.children(root)
+                          .select { |name| File.file?(File.join(root, name, "SKILL.md")) }
+                          .sort
+errors << "installed skill count mismatch" unless installed_skill_dirs.length == expected_skills.length
+errors << "installed skill set mismatch" unless installed_skill_dirs.sort == expected_skills.keys.sort
+
+expected_patterns = manifest.fetch("patterns").values.flat_map { |entry| Array(entry.fetch("paths")) }.uniq
+expected_pattern_files = expected_patterns.map { |relative| File.join(patterns_root, relative.delete_prefix("patterns/")) }.sort
+expected_pattern_files.each do |path|
+  relative = path.delete_prefix(patterns_root + "/")
+  errors << "missing installed pattern: #{relative}" unless File.file?(path)
+end
+installed_pattern_files = Dir[File.join(patterns_root, "**", "*.md")]
+                          .reject { |p| p.end_with?("/README.md") }
+                          .sort
+errors << "installed pattern count mismatch" unless installed_pattern_files.length == expected_pattern_files.length
+errors << "installed pattern set mismatch" unless installed_pattern_files == expected_pattern_files
+
+tool_entries = Array(metadata.dig("integrity", "tools"))
+unless tool_entries.empty?
+  tool_entries.each do |entry|
+    relative = entry.fetch("path")
+    path = File.expand_path(File.join(tools_root, relative.delete_prefix("bin/")))
+    root_prefix = File.expand_path(tools_root) + File::SEPARATOR
+    raise "invalid tool path: #{relative}" unless path.start_with?(root_prefix)
+    raise "missing tool: #{relative}" unless File.file?(path)
+
+    actual = Digest::SHA256.file(path).hexdigest
+    raise "tool SHA-256 mismatch: #{relative}" unless actual == entry.fetch("sha256")
+  end
+  errors << "tool inventory missing stack-minimality" unless tool_entries.any? { |entry| entry["path"] == "bin/stack-minimality" }
+end
+
+reported_skills = metadata.dig("inventory", "skills").to_i
+reported_patterns = metadata.dig("inventory", "patterns").to_i
+errors << "installation skill inventory mismatch" unless reported_skills == expected_skills.length
+errors << "installation pattern inventory mismatch" unless reported_patterns == installed_pattern_files.length
+
+def verify_file_hashes(metadata_entries, root:, label:)
+  entries = Array(metadata_entries)
+  expected = entries.to_h do |entry|
+    [entry.fetch("path"), entry.fetch("sha256")]
+  end
+
+  actual = {}
+  expected.each do |relative, digest|
+    path = File.expand_path(File.join(root, relative))
+    root_prefix = File.expand_path(root) + File::SEPARATOR
+    raise "invalid #{label} path: #{relative}" unless path.start_with?(root_prefix)
+    raise "missing #{label}: #{relative}" unless File.file?(path)
+
+    actual[relative] = Digest::SHA256.file(path).hexdigest
+    raise "#{label} SHA-256 mismatch: #{relative}" unless actual[relative] == digest
+  end
+  actual
+rescue KeyError, TypeError
+  raise "invalid #{label} integrity metadata"
+end
+
+begin
+  skill_hashes = verify_file_hashes(metadata.dig("integrity", "skill_files"), root: root, label: "skill file")
+  installed_skill_hash_paths = expected_skills.keys.map { |name| "#{name}/SKILL.md" }.sort
+  errors << "skill integrity set mismatch" unless skill_hashes.keys.sort == installed_skill_hash_paths
+
+  pattern_entries = Array(metadata.dig("integrity", "pattern_files")).map do |entry|
+    entry.merge("path" => entry.fetch("path").delete_prefix("patterns/"))
+  end
+  pattern_hashes = verify_file_hashes(pattern_entries, root: patterns_root, label: "pattern file")
+  installed_pattern_hash_paths = pattern_hashes.keys.map { |path| "patterns/#{path}" }.sort
+  errors << "pattern integrity set mismatch" unless installed_pattern_hash_paths == expected_patterns.sort
+rescue RuntimeError => e
+  errors << e.message
+end
+
+if errors.any?
+  errors.each { |error| warn "ERROR: #{error}" }
+  abort "#{errors.length} installed skill-pack verification error(s)"
+end
+
+puts "Ruby Agent Skills installation verified"
+puts "  source: #{metadata.dig("source", "repository")}"
+puts "  requested ref: #{metadata.dig("source", "requested_ref")}"
+puts "  resolved Git SHA: #{metadata.dig("source", "resolved_git_sha")}"
+puts "  skills: #{reported_skills}"
+puts "  patterns: #{reported_patterns}"

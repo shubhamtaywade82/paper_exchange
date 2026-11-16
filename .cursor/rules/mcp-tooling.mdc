@@ -1,0 +1,12 @@
+---
+description: Ruby/Rails MCP tool escalation policy for this repository
+alwaysApply: true
+---
+
+Follow the escalation order defined in `AGENTS.md` → "Ruby/Rails MCP Tooling Policy":
+
+1. **`rails-context`** (read-only) — load house rules first via `execute_tool("load_guide", { library: "custom", guide: "paper-exchange-architecture" })`, then `get_schema` / `get_routes` for database and route ground truth before generating model or controller code.
+2. Verification runs in-shell: `docker compose exec -T -e RAILS_ENV=test -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test api bundle exec rspec` (+ `rubocop`, `brakeman`).
+3. `ruby-console` / `ruby-debug` are enabled but are **last resort** in this escalation order — never run them against live-trading state.
+
+Trading safety overrides all tooling: paper-first; ledger entries are append-only; live writes are fenced by single-writer account lease (`X-Lease-Holder`, `X-Lease-Fence`); index cash trading is permanently prohibited; never print secrets or `.env` contents.

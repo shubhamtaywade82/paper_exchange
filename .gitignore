@@ -28,5 +28,7 @@
 coverage
 /node_modules
 .railsforge
-/.agents
+/.agents/*
+!/.agents/mcp_config.json
+!/.agents/skills
 .omc

@@ -1,0 +1,29 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+
+if ARGV.first == "dev"
+  require "actionmcp"
+  require "action_mcp/dev/runner"
+  exit ActionMCP::Dev::Runner.new(root: Dir.pwd, argv: ARGV.drop(1)).run
+end
+
+ARGV.shift if ARGV.first == "server"
+port = ARGV[0] || 62_770
+rackup = File.expand_path("../mcp/config.ru", __dir__)
+
+begin
+  Gem::Specification.find_by_name("falcon")
+  puts "Starting ActionMCP server with Falcon on port #{port}..."
+  exec("bundle", "exec", "falcon", "serve",
+       "--bind", "http://127.0.0.1:#{port}",
+       "--config", rackup)
+rescue Gem::MissingSpecError
+  puts "Starting ActionMCP server with Puma on port #{port}..."
+  exec("bundle", "exec", "rails", "server",
+       "-c", rackup,
+       "-b", "127.0.0.1",
+       "-p", port.to_s,
+       "-P", "tmp/pids/mcp.pid")
+end

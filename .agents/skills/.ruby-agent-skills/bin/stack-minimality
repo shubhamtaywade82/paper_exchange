@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+
+USAGE = <<~TEXT
+  Usage: bin/stack-minimality <command> [repository]
+
+  Commands:
+    help       Show this reference.
+    debt       List stack-minimality: shortcut markers.
+    evidence   Report observable Git diff size for a repository.
+TEXT
+
+def run_git(root, *args)
+  stdout, stderr, status = Open3.capture3("git", *args, chdir: root)
+  abort stderr unless status.success?
+  stdout
+rescue Errno::ENOENT
+  abort "git is required"
+end
+
+def repository_root(path)
+  File.expand_path(path || Dir.pwd)
+end
+
+def debt_report(root)
+  skip = %w[.git node_modules vendor tmp log build dist coverage public/assets]
+  markers = []
+
+  Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).sort.each do |path|
+    next unless File.file?(path)
+
+    relative_parts = path.delete_prefix(root + "/").split("/")
+    next if relative_parts.any? { |part| skip.include?(part) }
+
+    File.foreach(path, encoding: "UTF-8").with_index(1) do |line, number|
+      next unless line.include?("stack-minimality:")
+
+      trigger = line.split("stack-minimality:", 2).last.to_s
+      markers << {
+        "file" => path.delete_prefix(root + "/"),
+        "line" => number,
+        "text" => trigger.strip,
+        "no_trigger" => !trigger.match?(/\brevisit\s+when\b/i)
+      }
+    rescue ArgumentError, EncodingError
+      break
+    end
+  end
+
+  puts JSON.pretty_generate(
+    {
+      "schema_version" => 1,
+      "repository" => root,
+      "markers" => markers,
+      "marker_count" => markers.length,
+      "no_trigger_count" => markers.count { |marker| marker["no_trigger"] }
+    }
+  )
+end
+
+def evidence_report(root)
+  numstat = run_git(root, "diff", "--numstat", "HEAD").lines.filter_map do |line|
+    added, deleted, path = line.chomp.split("\t", 3)
+    next unless path
+
+    {
+      "path" => path,
+      "added" => Integer(added, exception: false) || 0,
+      "deleted" => Integer(deleted, exception: false) || 0
+    }
+  end
+
+  {
+    "schema_version" => 1,
+    "repository" => root,
+    "changed_files" => numstat.length,
+    "added_lines" => numstat.sum { |entry| entry["added"] },
+    "deleted_lines" => numstat.sum { |entry| entry["deleted"] },
+    "file_delta" => numstat.length,
+    "files" => numstat
+  }.tap { |report| puts JSON.pretty_generate(report) }
+end
+
+command = ARGV.shift || "help"
+
+case command
+when "help", "--help", "-h"
+  puts USAGE
+when "debt"
+  debt_report(repository_root(ARGV.shift))
+when "evidence"
+  evidence_report(repository_root(ARGV.shift))
+else
+  warn "unknown command: #{command}"
+  warn USAGE
+  exit 1
+end

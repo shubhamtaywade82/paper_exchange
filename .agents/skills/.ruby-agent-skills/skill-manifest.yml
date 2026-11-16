@@ -1,0 +1,1612 @@
+version: 2
+name: ruby-agent-skills
+
+installation:
+  installer: bin/install
+  verifier: bin/skill-pack-verify
+  doctor: bin/skill-pack-doctor
+  metadata: .ruby-agent-skills/INSTALLATION.json
+
+defaults:
+  agent_workflow: agent-workflow
+  always_consider:
+    - ruby-clean-code
+    - ruby-tdd-refactoring
+    - stack-minimality
+  require_repository_inspection: true
+  require_tests_for_behavior_changes: true
+  prefer_existing_conventions: true
+  require_version_awareness: true
+
+routing:
+  contract: router/ROUTING.md
+  cases: router/ROUTING_CASES.yml
+  audit: scripts/audit_skill_routing.rb
+  result_schema: docs/ROUTING_EVAL_RESULT_SCHEMA.md
+  evaluation_runner: bin/routing-eval
+  campaign_manifest: router/ROUTING_CAMPAIGN.yml
+  ollama_adapter: bin/routing-agent-ollama
+  campaign_runner: bin/routing-campaign
+  campaign_analyzer: bin/routing-analyze
+  remediation_policy: router/ROUTING_REMEDIATION.yml
+  remediation_comparator: bin/routing-compare
+  experiment_runner: bin/routing-experiment
+  evidence_packager: bin/routing-evidence
+  evidence_verifier: bin/routing-evidence-verify
+  evidence_archiver: bin/routing-archive
+  evidence_archive_schema: docs/ROUTING_EVIDENCE_ARCHIVE_SCHEMA.md
+  campaign_verifier: bin/routing-campaign-verify
+  campaign_intake_schema: docs/ROUTING_CAMPAIGN_INTAKE_SCHEMA.md
+  campaign_evidence_packager: bin/routing-campaign-evidence
+  campaign_evidence_schema: docs/ROUTING_CAMPAIGN_EVIDENCE_SCHEMA.md
+  campaign_evidence_verifier: bin/routing-campaign-evidence-verify
+  campaign_evidence_verification_schema: docs/ROUTING_CAMPAIGN_EVIDENCE_VERIFICATION_SCHEMA.md
+  campaign_preflight: bin/routing-campaign-preflight
+  campaign_preflight_schema: docs/ROUTING_CAMPAIGN_PREFLIGHT_SCHEMA.md
+  external_handoff: bin/routing-campaign-handoff
+  external_handoff_schema: docs/ROUTING_EXTERNAL_CAMPAIGN_SCHEMA.md
+  external_handoff_verifier: bin/routing-campaign-handoff-verify
+  hidden_benchmark_contract: router/ROUTING_HIDDEN_BENCHMARK.yml
+  model_matrix_contract: router/ROUTING_MODEL_MATRIX.yml
+  model_matrix_schema: docs/ROUTING_MODEL_MATRIX_SCHEMA.md
+  model_matrix_campaign_runner: bin/routing-model-matrix-campaign
+  hidden_benchmark_intake: bin/routing-hidden-benchmark-intake
+  hidden_benchmark_intake_schema: docs/ROUTING_HIDDEN_BENCHMARK_INTAKE.md
+  campaign_preflight_verifier: bin/routing-campaign-preflight-verify
+  campaign_provenance_verifier: bin/routing-campaign-provenance-verify
+  campaign_provenance_schema: docs/ROUTING_CAMPAIGN_PROVENANCE_BINDING.md
+  campaign_intake_v2: bin/routing-campaign-import
+  campaign_intake_v2_schema: docs/ROUTING_CAMPAIGN_INTAKE_V2.md
+  evidence_schema: docs/ROUTING_EVIDENCE_SCHEMA.md
+
+# Retired skill names and the skill that absorbed them. Upgrading an
+# installation removes the retired directory and reports this mapping.
+retired_skills:
+  rails-activerecord: rails-active-record
+  rails-controllers: rails-action-controller
+  rails-views: rails-action-view
+  rails-testing: rails-test-engineering
+  rails-best-practices: rails-architecture
+  rails-deployment: rails-release-engineering
+
+skills:
+
+  typescript-core-engineering:
+    family: typescript
+    path: skills/typescript-core-engineering/SKILL.md
+    triggers: [TypeScript language, strictness, modules, type narrowing, generics, public type contracts]
+  typescript-type-design:
+    family: typescript
+    path: skills/typescript-type-design/SKILL.md
+    triggers: [TypeScript type design, discriminated unions, branded identifiers, utility types, generic API design]
+  typescript-runtime-contracts:
+    family: typescript
+    path: skills/typescript-runtime-contracts/SKILL.md
+    triggers: [TypeScript runtime validation, JSON, HTTP responses, environment values, browser storage, dynamic values]
+  react-component-engineering:
+    family: react-typescript
+    path: skills/react-component-engineering/SKILL.md
+    triggers: [React components, props, composition, controlled inputs, reusable UI boundaries]
+  react-state-effects:
+    family: react-typescript
+    path: skills/react-state-effects/SKILL.md
+    triggers: [React state, reducers, context, refs, effects, subscriptions, stale closures, lifecycle]
+  react-data-fetching:
+    family: react-typescript
+    path: skills/react-data-fetching/SKILL.md
+    triggers: [React data fetching, server state, query caches, mutations, optimistic updates, request races]
+  react-testing-engineering:
+    family: react-typescript
+    path: skills/react-testing-engineering/SKILL.md
+    triggers: [React component testing, hooks testing, user interactions, async UI, Testing Library]
+  react-accessibility-performance:
+    family: react-typescript
+    path: skills/react-accessibility-performance/SKILL.md
+    triggers: [React accessibility, keyboard, focus, render performance, memoization, virtualization]
+  react-architecture:
+    family: react-typescript
+    path: skills/react-architecture/SKILL.md
+    triggers: [React architecture, feature modules, dependency direction, shared state, frontend boundaries]
+  rails-test-engineering:
+    family: rails-quality
+    path: skills/rails-test-engineering/SKILL.md
+    triggers: [test engineering, Rails test suite, flaky test, flaky tests, parallel tests, parallelize, test isolation, test performance, slow tests, system tests, integration tests, request tests, job tests, test database, transactional tests, test helpers, fixtures, factories, deterministic tests, CI tests, config/ci.rb, bin/ci, local CI, request test, model test, system test, integration test, Rails test]
+  rails-production-runtime:
+    family: rails
+    path: skills/rails-production-runtime/SKILL.md
+    triggers: [production runtime, Puma, puma.rb, WEB_CONCURRENCY, RAILS_MAX_THREADS, workers, threads, graceful shutdown, zero downtime deploy, rolling deploy, phased restart, hot restart, Solid Queue process, bin/jobs, container lifecycle, PID 1, readiness, release process, runtime configuration, RAILS_MASTER_KEY, production boot]
+  rails-database-engineering:
+    family: rails
+    path: skills/rails-database-engineering/SKILL.md
+    triggers: [database migration, Active Record migration, schema change, index, unique constraint, foreign key, check constraint, database constraint, backfill, transaction, isolation, row lock, pessimistic locking, deadlock, connection pool, pool exhaustion, query plan, EXPLAIN, zero downtime migration, expand contract, PostgreSQL]
+  rails-observability:
+    family: rails
+    path: skills/rails-observability/SKILL.md
+    triggers: [observability, Rails.error, error reporting, ActiveSupport::Notifications, instrumentation, request ID, correlation ID, logging, log tags, health check, readiness, liveness, API error handling, rescue_from, Rails.event, Event Reporter, structured event reporting]
+  rails-active-job:
+    family: rails
+    path: skills/rails-active-job/SKILL.md
+    triggers: [Active Job, ApplicationJob, background job, perform_later, perform_now, perform_all_later, retry_on, discard_on, job retry, job queue, Solid Queue, concurrency controls, recurring jobs, scheduled jobs, idempotency, transactional enqueue, ActiveJob::Continuable, job continuation]
+  rails-zeitwerk:
+    family: rails
+    path: skills/rails-zeitwerk/SKILL.md
+    triggers: [Zeitwerk, autoloading, eager loading, reloading, autoload paths, constant loading, Zeitwerk::NameError, zeitwerk:check, Rails autoloader, inflections, namespaces]
+  ruby-performance:
+    family: performance
+    path: skills/ruby-performance/SKILL.md
+    triggers: [performance, profiling, benchmark, benchmarking, latency, throughput, allocations, memory, GC, YJIT, slow query, N+1, caching, performance regression]
+  rails-api-integration:
+    family: rails
+    path: skills/rails-api-integration/SKILL.md
+    triggers: [API contract, API versioning, API compatibility, JSON API, content negotiation, serialization contract, external API integration, HTTP integration, outbound HTTP client, retry policy, HTTP timeout, rate limit, webhook, webhook signature, webhook replay, idempotency key, idempotent request, provider adapter, integration testing]
+  rails-reliability-engineering:
+    family: reliability
+    path: skills/rails-reliability-engineering/SKILL.md
+    triggers: [reliability engineering, resilience, SRE, SLI, SLO, error budget, availability target, latency target, dependency failure, circuit breaker, bulkhead, load shedding, overload protection, graceful degradation, fallback, stale data, retry storm, cascading failure, RTO, RPO, disaster recovery, failover, restore test, resilience testing, fault injection, game day]
+  rails-incident-engineering:
+    family: operations
+    path: skills/rails-incident-engineering/SKILL.md
+    triggers: [incident engineering, incident response, production incident, incident triage, operational runbook, runbook, alert actionability, alert fatigue, diagnostic context, incident timeline, safe production debugging, mitigation, recovery verification, post-incident review, operational debugging]
+  rails-release-engineering:
+    family: operations
+    path: skills/rails-release-engineering/SKILL.md
+    triggers: [release engineering, release management, release readiness, CI/CD release, artifact promotion, artifact provenance, deployment gate, release gate, progressive delivery, canary release, staged rollout, environment parity, rollback, roll-forward, release health, release evidence, deployment verification, deployment, hosting, production, environment, release, Kamal, Kamal 2, registry-free deploy, Thruster]
+  rails-event-driven-messaging:
+    family: rails
+    path: skills/rails-event-driven-messaging/SKILL.md
+    triggers: [event-driven architecture, event-driven messaging, events, domain events, integration events, commands, message broker, message queue, stream processing, topic, queue, routing key, partition, consumer group, message schema, event schema, schema evolution, dead-letter queue, dead letter, poison message, replay, message tracing, consumer lag, broker capacity, message acknowledgement, ack semantics]
+  rails-distributed-systems:
+    family: rails
+    path: skills/rails-distributed-systems/SKILL.md
+    triggers: [distributed systems, distributed architecture, service boundary, service ownership, service decomposition, event-driven architecture, asynchronous integration, message delivery, at-least-once, exactly-once, outbox, inbox, message deduplication, eventual consistency, saga, compensation, distributed transaction, distributed lock, lease, fencing token, cross-service consistency, replay, reconciliation]
+  rails-performance:
+    family: performance
+    path: skills/rails-performance/SKILL.md
+    triggers: [Rails performance, Rails performance regression, N+1, query plan, EXPLAIN, slow Rails endpoint, slow Active Record query, Active Record performance, cache stampede, cache key, connection pool, pool exhaustion, Puma capacity, web concurrency, job throughput, Rails allocations, Rails memory]
+  rails-caching:
+    family: performance
+    path: skills/rails-caching/SKILL.md
+    triggers: [Rails caching, cache engineering, cache key, cache key isolation, cache invalidation, cache freshness, cache store, cache stampede, cache warming, cache failure, cache eviction, cache capacity, fragment cache, low-level cache, response cache, stale cache, Solid Cache, database-backed cache]
+  rails-active-support:
+    family: rails
+    path: skills/rails-active-support/SKILL.md
+    triggers: [Active Support, ActiveSupport, ActiveSupport::Concern, ActiveSupport::CurrentAttributes, ActiveSupport::Notifications, ActiveSupport::Callbacks, class_attribute, Active Support instrumentation, Active Support core extensions, Active Support loading, CurrentAttributes, Time.zone, Active Support inflection, safe_constantize, Active Support concern]
+
+  rails-active-model:
+    family: rails
+    path: skills/rails-active-model/SKILL.md
+    triggers: [Active Model, ActiveModel, ActiveModel::Model, ActiveModel::API, ActiveModel::Attributes, ActiveModel::Validations, ActiveModel::Dirty, ActiveModel::Callbacks, ActiveModel::Serialization, ActiveModel::Translation, Active Model lint, ActiveModel::Lint, model-like object, non-persisted model, form model]
+
+  rails-action-view:
+    family: rails
+    path: skills/rails-action-view/SKILL.md
+    triggers: [Action View, ActionView, view rendering, Action View rendering, partial contract, partials, strict locals, locals signature, layout contract, view helpers, helper boundary, output safety, html_safe, raw HTML, sanitize, localized views, collection rendering, view rendering performance, markdown rendering, render markdown, ERB, view, partial, helper, form, presentation]
+
+  rails-action-mailbox:
+    family: rails
+    path: skills/rails-action-mailbox/SKILL.md
+    triggers: [Action Mailbox, ActionMailbox, inbound email, inbound emails, InboundEmail, ApplicationMailbox, mailbox routing, mailbox, inbound mail, email ingress, ingress, inbound email ingress, receive email, incoming email, Action Mailbox testing, bounce_with, inbound email replay, email quarantine]
+
+  rails-action-mailer:
+    family: rails
+    path: skills/rails-action-mailer/SKILL.md
+    triggers: [Action Mailer, Rails mailer, ApplicationMailer, mailer, email delivery, deliver_later, deliver_now, mailer preview, mailer testing, mailer provider, SMTP, email security, email observability]
+  rails-action-cable:
+    family: rails
+    path: skills/rails-action-cable/SKILL.md
+    triggers: [Action Cable, ActionCable, WebSocket, WebSockets, realtime Rails, realtime, ApplicationCable::Connection, ApplicationCable::Channel, cable connection, cable channel, channel authorization, subscription, stream_from, stream_for, broadcast_to, broadcasting, pub/sub realtime, Redis pubsub, Action Cable testing, reconnect, resubscribe, realtime capacity, Solid Cable, database-backed pubsub]
+  rails-i18n:
+    family: rails
+    path: skills/rails-i18n/SKILL.md
+    triggers: [I18n, i18n, internationalization, localization, locale, locales, translation, translations, I18n.t, I18n.translate, I18n.l, I18n.localize, available_locales, default_locale, enforce_available_locales, translation keys, pluralization, interpolation, localized routes, localized views, locale negotiation, translation backend, missing translation, locale fallback]
+  rails-action-text:
+    family: rails
+    path: skills/rails-action-text/SKILL.md
+    triggers: [Action Text, ActionText, has_rich_text, RichText, rich text, rich-text content, Trix, rich_textarea, rich text editor, sanitized rich text, action-text-attachment, Signed Global ID attachable, attachable, rich text attachment, rich text rendering, rich text API, Action Text N+1]
+  rails-active-storage:
+    family: rails
+    path: skills/rails-active-storage/SKILL.md
+    triggers: [Active Storage, ActiveStorage, has_one_attached, has_many_attached, file upload, file uploads, direct upload, Active Storage direct upload, storage service, S3 upload, GCS upload, blob, attachment, file serving, signed blob URL, authenticated file access, file variant, image variant, preview file, file analysis, purge attachment, purge blob, unattached blobs, storage mirror, storage migration]
+  rails-security-engineering:
+    family: security
+    path: skills/rails-security-engineering/SKILL.md
+    triggers: [security engineering, threat model, threat modeling, security architecture, trust boundary, authorization matrix, tenant isolation, secret management, secret rotation, SSRF architecture, outbound network security, dependency supply chain, CI security, build security, abuse case, security regression, defense in depth, residual risk]
+  rails-security:
+    family: security
+    path: skills/rails-security/SKILL.md
+    triggers: [security, Rails security, Brakeman, bundler-audit, authentication security, authorization security, CSRF, XSS, SQL injection, SSRF, command injection, security review]
+  ruby-concurrency:
+    family: concurrency
+    path: skills/ruby-concurrency/SKILL.md
+    triggers: [concurrency, threads, Thread, Mutex, Monitor, Queue, thread pool, race condition, deadlock, thread safety, Fibers, scheduler, parallel I/O]
+  ruby-runtime-compatibility:
+    family: runtime
+    path: skills/ruby-runtime-compatibility/SKILL.md
+    triggers: [Ruby version, Rails version, Bundler version, runtime compatibility, version compatibility, Ruby upgrade, Rails upgrade, deprecation compatibility]
+  rubocop:
+    family: quality
+    path: skills/rubocop/SKILL.md
+    triggers: [RuboCop, RuboCop plugin, linting, Ruby lint, static analysis, rubocop.yml, cop]
+  agent-workflow:
+    family: meta
+    path: skills/agent-workflow/SKILL.md
+    triggers: [agent workflow, skill selection, repository agent process, context management, implementation workflow]
+  stack-minimality:
+    family: architecture-quality
+    path: skills/stack-minimality/SKILL.md
+    triggers: [minimal solution, simplest solution, less code, minimality, YAGNI, over-engineering, unnecessary abstraction, unnecessary dependency, simplify, reduce indirection, Ruby Rails React PostgreSQL minimality]
+  stack-minimality-review:
+    family: architecture-quality
+    path: skills/stack-minimality-review/SKILL.md
+    triggers: [minimality review, over-engineering review, simplify diff, delete list, unnecessary complexity]
+  stack-minimality-audit:
+    family: architecture-quality
+    path: skills/stack-minimality-audit/SKILL.md
+    triggers: [repo bloat audit, over-engineering audit, simplify repository, what can we delete]
+  stack-minimality-debt:
+    family: architecture-quality
+    path: skills/stack-minimality-debt/SKILL.md
+    triggers: [minimality debt, deferred simplification, stack-minimality markers, shortcuts ledger]
+  stack-minimality-evidence:
+    family: architecture-quality
+    path: skills/stack-minimality-evidence/SKILL.md
+    triggers: [minimality evidence, measure diff, actual savings, dependency delta, change size, performance evidence]
+  stack-minimality-help:
+    family: architecture-quality
+    path: skills/stack-minimality-help/SKILL.md
+    triggers: [minimality help, minimality skills, simplification commands]
+  ruby-core:
+    family: ruby
+    path: skills/ruby-core/SKILL.md
+    triggers: [Ruby syntax, Ruby semantics, object model, truthiness, method dispatch]
+  ruby-data-types:
+    family: ruby
+    path: skills/ruby-data-types/SKILL.md
+    triggers: [strings, symbols, numbers, nil, ranges, hashes, data representation]
+  ruby-control-flow:
+    family: ruby
+    path: skills/ruby-control-flow/SKILL.md
+    triggers: [if, unless, case, loops, boolean logic, branching]
+  ruby-collections:
+    family: ruby
+    path: skills/ruby-collections/SKILL.md
+    triggers: [arrays, hashes, Enumerable, map, select, grouping, deduplication, sorting]
+  ruby-blocks-procs-lambdas:
+    family: ruby
+    path: skills/ruby-blocks-procs-lambdas/SKILL.md
+    triggers: [blocks, yield, Proc, lambda, callbacks, ampersand operator]
+  ruby-enumerables:
+    family: ruby
+    path: skills/ruby-enumerables/SKILL.md
+    triggers: [Enumerable pipeline, each_with_object, reduce, group_by, tally, lazy]
+  ruby-api-design:
+    family: design
+    path: skills/ruby-api-design/SKILL.md
+    triggers: [public API, return contract, keyword arguments, compatibility, library boundary]
+  ruby-poro:
+    family: design
+    path: skills/ruby-poro/SKILL.md
+    triggers: [PORO, plain Ruby object, domain object, object extraction, framework-independent behavior]
+  ruby-service-objects:
+    family: design
+    path: skills/ruby-service-objects/SKILL.md
+    triggers: [service object, application service, application workflow, action object, command service]
+  ruby-domain-modeling:
+    family: design
+    path: skills/ruby-domain-modeling/SKILL.md
+    triggers: [domain modeling, business rule, invariant ownership, domain concept, rich domain object]
+  ruby-dependency-injection:
+    family: design
+    path: skills/ruby-dependency-injection/SKILL.md
+    triggers: [dependency injection, injected collaborator, dependency boundary, test double, replaceable collaborator]
+  ruby-object-composition:
+    family: design
+    path: skills/ruby-object-composition/SKILL.md
+    triggers: [composition, composition over inheritance, collaborator, replace inheritance, delegation]
+  ruby-boolean-logic:
+    family: design
+    path: skills/ruby-boolean-logic/SKILL.md
+    triggers: [boolean expression, predicate, guard clause, truthiness, conditional refactor]
+  ruby-method-design:
+    family: design
+    path: skills/ruby-method-design/SKILL.md
+    triggers: [new method, method refactor, parameters, return contract, guard clause]
+  ruby-oop:
+    family: design
+    path: skills/ruby-oop/SKILL.md
+    triggers: [class design, encapsulation, inheritance, polymorphism, composition]
+  ruby-modules-mixins:
+    family: design
+    path: skills/ruby-modules-mixins/SKILL.md
+    triggers: [module, mixin, include, extend, prepend, namespace]
+  ruby-metaprogramming:
+    family: ruby
+    path: skills/ruby-metaprogramming/SKILL.md
+    triggers: [reflection, define_method, method_missing, runtime method creation]
+  ruby-gems-io-services:
+    family: integration
+    path: skills/ruby-gems-io-services/SKILL.md
+    triggers: [gem, dependency, file I/O, CSV, HTTP client, service object]
+  ruby-debugging:
+    family: debugging
+    path: skills/ruby-debugging/SKILL.md
+    triggers: [bug, exception, stack trace, logging, debugging, production issue]
+  ruby-clean-code:
+    family: quality
+    path: skills/ruby-clean-code/SKILL.md
+    triggers: [code review, refactor, readability, naming, simplicity, maintainability]
+  ruby-tdd-refactoring:
+    family: quality
+    path: skills/ruby-tdd-refactoring/SKILL.md
+    triggers: [test, TDD, regression, refactor, behavior change]
+
+  rails-architecture:
+    family: rails
+    path: skills/rails-architecture/SKILL.md
+    triggers: [Rails feature, MVC, resource, REST, application structure, Rails best practices, Rails code quality, rails_best_practices, Rails review, Rails maintainability]
+  rails-routing:
+    family: rails
+    path: skills/rails-routing/SKILL.md
+    triggers: [routes, route, resources, HTTP verb, URL helper, dispatch, nested routes, shallow routes, namespace, scope, route constraints, subdomain, host constraint, format routing, polymorphic route, direct route, resolve route, routing concern, catch-all route, mounted endpoint, mounted Rack, localized routes, route precedence]
+  rails-action-controller:
+    family: rails
+    path: skills/rails-action-controller/SKILL.md
+    triggers: [Action Controller, ActionController, ActionController::Base, strong parameters, params.expect, params.permit, params.require, request object, response object, session, cookies, flash, controller callbacks, before_action, after_action, around_action, content negotiation, respond_to, ETag, Last-Modified, conditional GET, 304 Not Modified, streaming, send_data, send_file, ActionController::Live, render markdown, Markdown rendering, rescue_from, controller exception handling, controller action, params, render, redirect, response]
+  rails-active-record:
+    family: rails
+    path: skills/rails-active-record/SKILL.md
+    triggers: [Active Record, ActiveRecord, ActiveRecord::Base, ApplicationRecord, ActiveRecord::Relation, relation, query composition, scope, default_scope, unscoped, preload, eager_load, includes, strict_loading, pluck, pick, persistence lifecycle, save, update, destroy, delete, update_all, delete_all, destroy_all, upsert, after_commit, after_rollback, Active Record callbacks, bulk write, model, migration, query, persistence]
+  rails-associations:
+    family: rails
+    path: skills/rails-associations/SKILL.md
+    triggers: [belongs_to, has_one, has_many, through, has_many :through, HABTM, relationship, association cardinality, association ownership, inverse_of, class_name, foreign_key, primary_key, polymorphic, dependent, destroy_async, restrict_with_exception, restrict_with_error, nullify, autosave, nested attributes, counter_cache, touch, association callbacks, before_add, after_add, before_remove, after_remove, association extension, deprecated association, association deprecation]
+  rails-validations:
+    family: rails
+    path: skills/rails-validations/SKILL.md
+    triggers: [validation, validations, errors, validation context, validation contexts, validation lifecycle, validates_associated, validates_with, validation callbacks, conditional validation, allow_nil, allow_blank, except_on, strict validation, strict validations, custom validator, validation bypass, uniqueness, invariant, model validation]
+  rails-authentication:
+    family: rails
+    path: skills/rails-authentication/SKILL.md
+    triggers: [authentication, session, sign in, sign out, protected route, password reset, session fixation, session revocation, remember me, bearer token, account lockout, login throttling, current user, reauthentication, authentication generator, Rails authentication generator, sign, fixation, rotation, in, out, protected, route, password, reset, revocation, remember, me, bearer, token, account, lockout]
+  rails-authorization:
+    family: rails
+    path: skills/rails-authorization/SKILL.md
+    triggers: [authorization, policy, Pundit, CanCanCan, authorization policy, authorized scope, object-level authorization, IDOR, tenant isolation, role, permission, capability, ownership authorization, policy scope, access control, tenant]
+  rails-cross-boundary-authorization-security:
+    family: security
+    path: skills/rails-cross-boundary-authorization-security/SKILL.md
+    triggers: [cross-boundary authorization, authorization composition, authorization context, decision boundary, authorized resource, service authorization, controller service authorization, background re-authorization, API authorization, Action Cable authorization, realtime authorization, engine authorization, operational authorization, event authorization, capability propagation, authorization denial, authorization cache, authorization audit, authorization, cross-boundary, policy, tenant, service, job, API, Action, Cable, engine, operational, command, event, capability, denial, cache, audit]
+  rails-asset-build-engineering:
+    family: rails
+    path: skills/rails-asset-build-engineering/SKILL.md
+    triggers: [asset, assets, build, asset pipeline, Importmap, importmap-rails, jsbundling, jsbundling-rails, cssbundling, cssbundling-rails, Propshaft, Sprockets, bin/dev, Procfile.dev, precompile, JavaScript build, CSS build, pipeline, JavaScript, CSS]
+  rails-rack-middleware-engineering:
+    family: rails
+    path: skills/rails-rack-middleware-engineering/SKILL.md
+    triggers: [Rack, rack, middleware, request, ID, trusted, proxy, config.middleware, config.ru, bin/rails, bin/rails middleware, call(env), short-circuit, request ID, trusted proxy]
+  rails-encryption-credentials-engineering:
+    family: rails
+    path: skills/rails-encryption-credentials-engineering/SKILL.md
+    triggers: [credentials, config/credentials.yml.enc, config/credentials, master.key, RAILS_MASTER_KEY, credentials:edit, credentials:show, secret_key_base, Active Record Encryption, ActiveRecord::Encryption, encrypts, deterministic encryption, encrypted attribute, db:encryption:init, key rotation, rails credentials:fetch, credential fetch, Active, Record, Encryption, deterministic, encrypted, attribute, key, rotation, encryption]
+  rails-serialization-globalid-engineering:
+    family: rails
+    path: skills/rails-serialization-globalid-engineering/SKILL.md
+    triggers: [serialization, serializable_hash, as_json, to_json, ActiveModel::Serialization, ActiveModel::Serializers::JSON, JSON representation, serializer, nested serialization, GlobalID, GlobalId, SignedGlobalID, Global ID, GlobalID::Locator, to_global_id, to_signed_global_id, to_sgid, Active Job arguments, custom serializer, deserialization, Active, Job, arguments, custom]
+  rails-operational-tasks-maintenance:
+    family: rails
+    path: skills/rails-operational-tasks-maintenance/SKILL.md
+    triggers: [Rake, task, lib/tasks, bin/rails runner, runner, maintenance, cleanup, backfill, repair, reconciliation, data repair, dry-run, idempotent, checkpoint, batch, lock, runbook, operational task, bin/rails]
+  rails-staff-principal-architecture:
+    family: architecture
+    path: skills/rails-staff-principal-architecture/SKILL.md
+    triggers: [architecture, staff architecture, principal architecture, architectural decision, modular monolith, bounded context, dependency direction, data ownership, shared kernel, change coupling, service extraction, distributed boundary, architecture migration, ADR, architecture fitness, architecture tradeoff, architecture ownership, staff, principal, modular, monolith, bounded, context, dependency, direction, data, ownership, coupling, extraction, migration, fitness, tradeoff]
+  rails-initialization-configuration-engineering:
+    family: rails
+    path: skills/rails-initialization-configuration-engineering/SKILL.md
+    triggers: [initializer, config.initializers, config/application.rb, config/environment.rb, config/boot.rb, config.ru, config.x, before_initialize, after_initialize, to_prepare, load_defaults]
+  rails-engines-railties-engineering:
+    family: rails
+    path: skills/rails-engines-railties-engineering/SKILL.md
+    triggers: [Rails::Engine, Rails::Railtie, Engine, Railtie, plugin, mountable, isolate_namespace, routes, engine routes, engine, engine.rb, railtie.rb, generators, gemspec, engine gemspec]
+  rails-hotwire:
+    family: rails
+    path: skills/rails-hotwire/SKILL.md
+    triggers: [Hotwire, Turbo, turbo-rails, Turbo Drive, Turbo Frames, Turbo Streams, Turbo Frame, Turbo Stream, Turbo morphing, morphing, Stimulus, stimulus controller, Stimulus target, Stimulus value, progressive enhancement, turbo form, Turbo navigation, Turbo refresh, Drive, Frames, Streams]
+  rails-generators:
+    family: rails
+    path: skills/rails-generators/SKILL.md
+    triggers: [generator, scaffold, rails generate, CRUD scaffold]
+
+
+
+patterns:
+  react-typescript:
+    paths:
+      - patterns/react-typescript/typescript-discriminated-union.md
+      - patterns/react-typescript/typescript-branded-identifier.md
+      - patterns/react-typescript/typescript-generic-result.md
+      - patterns/react-typescript/typescript-public-api-boundary.md
+      - patterns/react-typescript/typescript-runtime-schema-boundary.md
+      - patterns/react-typescript/typescript-async-error-normalization.md
+      - patterns/react-typescript/react-component-boundary.md
+      - patterns/react-typescript/react-composition-over-boolean-props.md
+      - patterns/react-typescript/react-controlled-input.md
+      - patterns/react-typescript/react-state-ownership.md
+      - patterns/react-typescript/react-effect-synchronization.md
+      - patterns/react-typescript/react-hook-dependency.md
+      - patterns/react-typescript/react-reducer-state-machine.md
+      - patterns/react-typescript/react-context-scope.md
+      - patterns/react-typescript/react-server-state-boundary.md
+      - patterns/react-typescript/react-query-key-cache.md
+      - patterns/react-typescript/react-optimistic-rollback.md
+      - patterns/react-typescript/react-async-ui-state.md
+      - patterns/react-typescript/react-user-interaction-test.md
+      - patterns/react-typescript/react-network-mock-boundary.md
+      - patterns/react-typescript/react-accessible-interaction.md
+      - patterns/react-typescript/react-focus-management.md
+      - patterns/react-typescript/react-render-performance-budget.md
+      - patterns/react-typescript/react-memoization-evidence-gate.md
+  stack-minimality:
+    paths:
+      - patterns/stack-minimality/rails-convention-before-abstraction.md
+      - patterns/stack-minimality/active-record-before-repository.md
+      - patterns/stack-minimality/postgres-constraint-before-application-check.md
+      - patterns/stack-minimality/postgres-index-from-query-evidence.md
+      - patterns/stack-minimality/postgres-query-before-cache.md
+      - patterns/stack-minimality/react-local-state-before-context.md
+      - patterns/stack-minimality/react-derived-state-in-render.md
+      - patterns/stack-minimality/react-native-before-dependency.md
+      - patterns/stack-minimality/typescript-type-before-wrapper.md
+      - patterns/stack-minimality/fullstack-existing-boundary-before-adapter.md
+      - patterns/stack-minimality/existing-dependency-before-new-gem-package.md
+      - patterns/stack-minimality/modular-monolith-before-service-split.md
+      - patterns/stack-minimality/minimal-change-at-shared-root.md
+      - patterns/stack-minimality/deliberate-simplification-marker.md
+
+  ruby-design:
+    paths:
+      - patterns/ruby-design/value-object.md
+      - patterns/ruby-design/service-object.md
+      - patterns/ruby-design/strategy-object.md
+      - patterns/ruby-design/composition-over-inheritance.md
+      - patterns/ruby-design/adapter.md
+      - patterns/ruby-design/external-api-client.md
+      - patterns/ruby-design/resilient-http-client.md
+      - patterns/ruby-design/ruby-gem.md
+      - patterns/ruby-design/metaprogramming-boundary.md
+      - patterns/ruby-design/application-service.md
+      - patterns/ruby-design/command-object.md
+      - patterns/ruby-design/policy-object.md
+      - patterns/ruby-design/null-object.md
+      - patterns/ruby-design/factory.md
+      - patterns/ruby-design/builder.md
+      - patterns/ruby-design/decorator.md
+      - patterns/ruby-design/facade.md
+      - patterns/ruby-design/repository.md
+      - patterns/ruby-design/specification.md
+      - patterns/ruby-design/state-object.md
+      - patterns/ruby-design/dependency-injection.md
+      - patterns/ruby-design/bounded-concurrency.md
+      - patterns/ruby-design/performance-investigation.md
+      - patterns/ruby-design/service-composition.md
+      - patterns/ruby/rubocop-review.md
+    triggers: [value object, service object, strategy, composition, inheritance, adapter, external interface, external API client, gem boundary, metaprogramming boundary, RuboCop review, application service, command object, policy object, null object, factory, builder, decorator, facade, repository, specification, state object, dependency injection, service composition]
+
+  rails:
+    paths:
+      - patterns/rails/authentication-mechanism-boundary.md
+      - patterns/rails/credential-storage-contract.md
+      - patterns/rails/session-lifecycle-contract.md
+      - patterns/rails/session-fixation-rotation.md
+      - patterns/rails/session-revocation-contract.md
+      - patterns/rails/password-recovery-contract.md
+      - patterns/rails/login-abuse-controls.md
+      - patterns/rails/remember-me-contract.md
+      - patterns/rails/browser-api-auth-boundary.md
+      - patterns/rails/authentication-context-propagation.md
+      - patterns/rails/authentication-freshness-boundary.md
+      - patterns/rails/query-object.md
+      - patterns/rails/form-object.md
+      - patterns/rails/policy-boundary.md
+      - patterns/rails/transaction-boundary.md
+      - patterns/rails/request-flow.md
+      - patterns/rails/rest-resource.md
+      - patterns/rails/scaffold-lifecycle.md
+      - patterns/rails/presenter.md
+      - patterns/rails/rails-best-practice-review.md
+      - patterns/rails/threat-model.md
+      - patterns/rails/trust-boundary.md
+      - patterns/rails/authorization-matrix.md
+      - patterns/rails/tenant-isolation-review.md
+      - patterns/rails/secret-management-boundary.md
+      - patterns/rails/ssrf-outbound-boundary.md
+      - patterns/rails/dependency-supply-chain.md
+      - patterns/rails/security-regression.md
+      - patterns/rails/security-boundary-review.md
+      - patterns/rails/cache-boundary.md
+      - patterns/rails/api-contract-versioning.md
+      - patterns/rails/webhook-ingestion.md
+      - patterns/rails/idempotent-request.md
+      - patterns/rails/n-plus-one-review.md
+      - patterns/rails/query-plan-evidence.md
+      - patterns/rails/connection-pool-capacity.md
+      - patterns/rails/cache-stampede-control.md
+      - patterns/rails/cache-key-isolation.md
+      - patterns/rails/cache-invalidation-contract.md
+      - patterns/rails/cache-failure-boundary.md
+      - patterns/rails/cache-warming-strategy.md
+      - patterns/rails/cache-capacity-review.md
+      - patterns/rails/slo-error-budget.md
+      - patterns/rails/dependency-failure-boundary.md
+      - patterns/rails/circuit-breaker.md
+      - patterns/rails/bulkhead-isolation.md
+      - patterns/rails/load-shedding.md
+      - patterns/rails/graceful-degradation.md
+      - patterns/rails/recovery-objectives.md
+      - patterns/rails/resilience-testing.md
+      - patterns/rails/event-envelope.md
+      - patterns/rails/event-schema-evolution.md
+      - patterns/rails/consumer-group-partitioning.md
+      - patterns/rails/dead-letter-replay.md
+      - patterns/rails/message-observability.md
+      - patterns/rails/broker-capacity.md
+      - patterns/rails/message-handler-boundary.md
+      - patterns/rails/distributed-service-boundary.md
+      - patterns/rails/message-delivery-contract.md
+      - patterns/rails/outbox-publication.md
+      - patterns/rails/inbox-deduplication.md
+      - patterns/rails/saga-orchestration.md
+      - patterns/rails/distributed-lock.md
+      - patterns/rails/multi-region-data-boundary.md
+      - patterns/rails/eventual-consistency.md
+      - patterns/rails/zeitwerk-structure-review.md
+      - patterns/rails/puma-capacity.md
+      - patterns/rails/graceful-shutdown.md
+      - patterns/rails/zero-downtime-release.md
+      - patterns/rails/runtime-config-contract.md
+      - patterns/rails/release-migration-gate.md
+      - patterns/rails/expand-contract-migration.md
+      - patterns/rails/production-index.md
+      - patterns/rails/database-constraint.md
+      - patterns/rails/batched-backfill.md
+      - patterns/rails/transaction-lock-boundary.md
+      - patterns/rails/request-error-boundary.md
+      - patterns/rails/request-observability.md
+      - patterns/rails/health-endpoint.md
+      - patterns/rails/instrumentation-event.md
+      - patterns/rails/idempotent-job.md
+      - patterns/rails/job-retry-policy.md
+      - patterns/rails/transactional-job-enqueue.md
+      - patterns/rails/concurrency-controlled-job.md
+      - patterns/rails/incident-triage.md
+      - patterns/rails/operational-runbook.md
+      - patterns/rails/alert-actionability.md
+      - patterns/rails/diagnostic-context.md
+      - patterns/rails/incident-timeline.md
+      - patterns/rails/safe-production-debugging.md
+      - patterns/rails/recovery-verification.md
+      - patterns/rails/post-incident-review.md
+      - patterns/rails/mailer-contract.md
+      - patterns/rails/mailer-delivery-semantics.md
+      - patterns/rails/mailer-provider-boundary.md
+      - patterns/rails/mailer-security-boundary.md
+      - patterns/rails/mailer-observability.md
+      - patterns/rails/active-storage-boundary.md
+      - patterns/rails/active-storage-upload-security.md
+      - patterns/rails/active-storage-direct-upload.md
+      - patterns/rails/active-storage-serving.md
+      - patterns/rails/active-storage-processing.md
+      - patterns/rails/active-storage-purge.md
+      - patterns/rails/action-cable-connection-auth.md
+      - patterns/rails/action-cable-channel-authorization.md
+      - patterns/rails/action-cable-stream-contract.md
+      - patterns/rails/action-cable-broadcast-contract.md
+      - patterns/rails/action-cable-reconciliation.md
+      - patterns/rails/action-cable-capacity.md
+      - patterns/rails/action-cable-failure-boundary.md
+      - patterns/rails/i18n-locale-resolution.md
+      - patterns/rails/i18n-translation-key-contract.md
+      - patterns/rails/i18n-pluralization-formatting.md
+      - patterns/rails/i18n-localized-routing.md
+      - patterns/rails/i18n-context-propagation.md
+      - patterns/rails/i18n-cache-identity.md
+      - patterns/rails/i18n-security-boundary.md
+      - patterns/rails/action-text-content-contract.md
+      - patterns/rails/action-text-sanitization-security.md
+      - patterns/rails/action-text-attachment-authorization.md
+      - patterns/rails/action-text-rendering.md
+      - patterns/rails/action-text-api-boundary.md
+      - patterns/rails/action-text-preload-performance.md
+      - patterns/rails/action-text-lifecycle.md
+      - patterns/rails/action-text-attachable-contract.md
+      - patterns/rails/active-support-loading-boundary.md
+      - patterns/rails/active-support-concern-composition.md
+      - patterns/rails/active-support-class-configuration.md
+      - patterns/rails/active-support-current-context.md
+      - patterns/rails/active-support-notifications-contract.md
+      - patterns/rails/active-support-callback-boundary.md
+      - patterns/rails/active-support-time-semantics.md
+      - patterns/rails/active-support-inflection-boundary.md
+      - patterns/rails/active-model-boundary.md
+      - patterns/rails/active-model-attributes-contract.md
+      - patterns/rails/active-model-validation-contract.md
+      - patterns/rails/active-model-dirty-lifecycle.md
+      - patterns/rails/active-model-callback-boundary.md
+      - patterns/rails/active-model-conversion-contract.md
+      - patterns/rails/active-model-serialization-contract.md
+      - patterns/rails/action-view-partial-contract.md
+      - patterns/rails/action-view-strict-locals.md
+      - patterns/rails/action-view-output-safety.md
+      - patterns/rails/action-view-layout-contract.md
+      - patterns/rails/action-view-helper-boundary.md
+      - patterns/rails/action-view-render-performance.md
+      - patterns/rails/action-view-localized-template.md
+      - patterns/rails/action-controller-request-boundary.md
+      - patterns/rails/strong-parameters-contract.md
+      - patterns/rails/controller-response-contract.md
+      - patterns/rails/controller-session-cookie-boundary.md
+      - patterns/rails/action-controller-callback-contract.md
+      - patterns/rails/controller-content-negotiation.md
+      - patterns/rails/conditional-response-cache.md
+      - patterns/rails/controller-streaming-download.md
+      - patterns/rails/controller-exception-boundary.md
+      - patterns/rails/action-mailbox-ingress-boundary.md
+      - patterns/rails/active-record-model-boundary.md
+      - patterns/rails/active-record-query-contract.md
+      - patterns/rails/active-record-relation-composition.md
+      - patterns/rails/active-record-scope-contract.md
+      - patterns/rails/active-record-persistence-lifecycle.md
+      - patterns/rails/active-record-callback-contract.md
+      - patterns/rails/active-record-bulk-write-boundary.md
+      - patterns/rails/active-record-strict-loading.md
+      - patterns/rails/active-record-deletion-contract.md
+      - patterns/rails/association-cardinality-contract.md
+      - patterns/rails/association-inverse-contract.md
+      - patterns/rails/through-association-contract.md
+      - patterns/rails/polymorphic-association-boundary.md
+      - patterns/rails/association-dependent-lifecycle.md
+      - patterns/rails/association-autosave-contract.md
+      - patterns/rails/association-counter-touch-contract.md
+      - patterns/rails/association-callback-contract.md
+      - patterns/rails/association-loading-contract.md
+      - patterns/rails/validation-boundary.md
+      - patterns/rails/validation-context-contract.md
+      - patterns/rails/validation-condition-contract.md
+      - patterns/rails/validation-uniqueness-database-contract.md
+      - patterns/rails/validation-associated-graph.md
+      - patterns/rails/validation-custom-validator.md
+      - patterns/rails/validation-strict-failure.md
+      - patterns/rails/validation-error-contract.md
+      - patterns/rails/validation-callback-boundary.md
+      - patterns/rails/validation-bypass-audit.md
+      - patterns/rails/route-precedence-contract.md
+      - patterns/rails/nested-route-boundary.md
+      - patterns/rails/route-scope-namespace-contract.md
+      - patterns/rails/route-constraint-contract.md
+      - patterns/rails/route-helper-contract.md
+      - patterns/rails/route-concern-contract.md
+      - patterns/rails/direct-route-resolution.md
+      - patterns/rails/mounted-endpoint-boundary.md
+      - patterns/rails/catch-all-route-boundary.md
+      - patterns/rails/action-mailbox-routing-contract.md
+      - patterns/rails/action-mailbox-authenticity-security.md
+      - patterns/rails/action-mailbox-idempotency.md
+      - patterns/rails/action-mailbox-processing-lifecycle.md
+      - patterns/rails/action-mailbox-tenant-association.md
+      - patterns/rails/action-mailbox-failure-quarantine.md
+      - patterns/rails/release-risk-classification.md
+      - patterns/rails/artifact-provenance.md
+      - patterns/rails/deployment-gate.md
+      - patterns/rails/progressive-delivery.md
+      - patterns/rails/environment-parity.md
+      - patterns/rails/rollback-rollforward.md
+      - patterns/rails/release-health-verification.md
+      - patterns/rails/release-evidence.md
+      - patterns/rails/authorization-mechanism-boundary.md
+      - patterns/rails/policy-object-boundary.md
+      - patterns/rails/authorized-scope-boundary.md
+      - patterns/rails/tenant-isolation-authorization.md
+      - patterns/rails/role-capability-boundary.md
+      - patterns/rails/contextual-authorization.md
+      - patterns/rails/authorization-service-boundary.md
+      - patterns/rails/background-authorization-boundary.md
+      - patterns/rails/api-authorization-boundary.md
+      - patterns/rails/action-cable-authorization-boundary.md
+      - patterns/rails/authorization-cache-identity.md
+      - patterns/rails/authorization-audit-contract.md
+      - patterns/rails/authorization-context-contract.md
+      - patterns/rails/authorization-decision-boundary.md
+      - patterns/rails/authorized-resource-resolution.md
+      - patterns/rails/controller-service-authorization-composition.md
+      - patterns/rails/background-reauthorization-composition.md
+      - patterns/rails/api-authorization-composition.md
+      - patterns/rails/realtime-authorization-composition.md
+      - patterns/rails/engine-authorization-composition.md
+      - patterns/rails/operational-authorization-composition.md
+      - patterns/rails/event-consumer-authorization-contract.md
+      - patterns/rails/capability-propagation-contract.md
+      - patterns/rails/authorization-denial-contract.md
+      - patterns/rails/authorization-cache-composition.md
+      - patterns/rails/authorization-audit-composition.md
+      - patterns/rails/architecture-problem-statement.md
+      - patterns/rails/dependency-direction-contract.md
+      - patterns/rails/bounded-context-contract.md
+      - patterns/rails/modular-monolith-boundary.md
+      - patterns/rails/data-ownership-contract.md
+      - patterns/rails/shared-kernel-contract.md
+      - patterns/rails/application-service-boundary.md
+      - patterns/rails/cross-cutting-ownership-contract.md
+      - patterns/rails/change-coupling-contract.md
+      - patterns/rails/distributed-boundary-readiness.md
+      - patterns/rails/architectural-migration-contract.md
+      - patterns/rails/architecture-decision-record-contract.md
+      - patterns/rails/architecture-fitness-check.md
+      - patterns/rails/architecture-tradeoff-contract.md
+      - patterns/rails/architecture-ownership-contract.md
+      - patterns/rails/turbo-drive-navigation-contract.md
+      - patterns/rails/turbo-frame-contract.md
+      - patterns/rails/turbo-stream-response-contract.md
+      - patterns/rails/turbo-stream-broadcast-contract.md
+      - patterns/rails/turbo-morph-identity.md
+      - patterns/rails/turbo-form-contract.md
+      - patterns/rails/stimulus-controller-boundary.md
+      - patterns/rails/stimulus-target-value-contract.md
+      - patterns/rails/stimulus-lifecycle-boundary.md
+      - patterns/rails/hotwire-progressive-enhancement.md
+      - patterns/rails/hotwire-csrf-security.md
+      - patterns/rails/rails-asset-pipeline-contract.md
+      - patterns/rails/importmap-contract.md
+      - patterns/rails/jsbundling-contract.md
+      - patterns/rails/cssbundling-contract.md
+      - patterns/rails/bin-dev-process-contract.md
+      - patterns/rails/asset-build-reproducibility.md
+      - patterns/rails/asset-build-production-parity.md
+      - patterns/rails/asset-dependency-boundary.md
+      - patterns/rails/engine-boundary-contract.md
+      - patterns/rails/engine-namespace-isolation.md
+      - patterns/rails/engine-mount-routing-contract.md
+      - patterns/rails/engine-configuration-boundary.md
+      - patterns/rails/railtie-initialization-boundary.md
+      - patterns/rails/engine-autoloading-contract.md
+      - patterns/rails/engine-dependency-compatibility.md
+      - patterns/rails/engine-host-override-contract.md
+      - patterns/rails/engine-generator-task-contract.md
+      - patterns/rails/engine-dummy-app-testing.md
+      - patterns/rails/engine-asset-integration-contract.md
+      - patterns/rails/engine-cross-engine-composition.md
+      - patterns/rails/credentials-store-contract.md
+      - patterns/rails/credentials-environment-selection.md
+      - patterns/rails/master-key-boundary.md
+      - patterns/rails/credentials-editing-workflow.md
+      - patterns/rails/secret-key-base-contract.md
+      - patterns/rails/credentials-redaction-contract.md
+      - patterns/rails/active-record-encryption-contract.md
+      - patterns/rails/deterministic-encryption-query-contract.md
+      - patterns/rails/encrypted-storage-capacity-contract.md
+      - patterns/rails/encrypted-data-migration-contract.md
+      - patterns/rails/encryption-key-rotation-contract.md
+      - patterns/rails/credentials-testing-contract.md
+      - patterns/rails/serialization-boundary-contract.md
+      - patterns/rails/serializable-hash-allowlist.md
+      - patterns/rails/json-representation-contract.md
+      - patterns/rails/nested-serialization-boundary.md
+      - patterns/rails/sensitive-serialization-contract.md
+      - patterns/rails/serialization-versioning-contract.md
+      - patterns/rails/operational-task-boundary.md
+      - patterns/rails/task-namespace-contract.md
+      - patterns/rails/environment-gate-contract.md
+      - patterns/rails/operational-dry-run-contract.md
+      - patterns/rails/idempotent-maintenance-contract.md
+      - patterns/rails/batch-checkpoint-contract.md
+      - patterns/rails/maintenance-lock-contract.md
+      - patterns/rails/mutation-invariant-contract.md
+      - patterns/rails/partial-failure-contract.md
+      - patterns/rails/operational-observability-contract.md
+      - patterns/rails/scheduled-maintenance-overlap-contract.md
+      - patterns/rails/data-repair-verification-contract.md
+      - patterns/rails/production-runbook-command-contract.md
+      - patterns/rails/globalid-identity-contract.md
+      - patterns/rails/signed-globalid-integrity-contract.md
+      - patterns/rails/globalid-locator-allowlist.md
+      - patterns/rails/globalid-resolution-failure-contract.md
+      - patterns/rails/activejob-argument-serialization-contract.md
+      - patterns/rails/custom-activejob-serializer-contract.md
+
+      - patterns/rails/rack-request-response-contract.md
+      - patterns/rails/middleware-stack-ordering.md
+      - patterns/rails/custom-rack-middleware-contract.md
+      - patterns/rails/middleware-short-circuit-contract.md
+      - patterns/rails/middleware-exception-propagation.md
+      - patterns/rails/middleware-thread-safety.md
+      - patterns/rails/request-id-correlation-boundary.md
+      - patterns/rails/middleware-security-boundary.md
+      - patterns/rails/middleware-rate-limit-boundary.md
+      - patterns/rails/trusted-proxy-header-contract.md
+      - patterns/rails/configuration-ownership-contract.md
+      - patterns/rails/configuration-precedence-contract.md
+      - patterns/rails/initializer-dependency-contract.md
+      - patterns/rails/lifecycle-hook-contract.md
+      - patterns/rails/reload-safe-initializer.md
+      - patterns/rails/boot-external-dependency-boundary.md
+      - patterns/rails/environment-configuration-contract.md
+      - patterns/rails/boot-failure-contract.md
+      - patterns/rails/application-config-contract.md
+      - patterns/rails/boot-performance-contract.md
+      - patterns/rails/initializer-testing-contract.md
+      - patterns/rails/middleware-observability-boundary.md
+      - patterns/rails/middleware-testing.md
+    triggers: [query object, form object, authorization policy, transaction boundary, request flow, REST resource, scaffold lifecycle, presenter, Rails best-practice review, security boundary review, idempotent job, job retry policy, transactional job enqueue, concurrency-controlled job, N+1 review, query plan evidence, connection pool capacity, cache stampede, distributed service boundary, message delivery contract, outbox, inbox, saga, distributed lock, multi-region, data residency, region failover, cross-region replication, RPO, RTO, eventual consistency, incident triage, operational runbook, alert actionability, diagnostic context, incident timeline, safe production debugging, recovery verification, post-incident review]
+
+  testing:
+    paths:
+      - patterns/testing/authentication-testing.md
+      - patterns/testing/test-boundary-selection.md
+      - patterns/testing/deterministic-async-test.md
+      - patterns/testing/parallel-safe-test.md
+      - patterns/testing/flaky-test-diagnosis.md
+      - patterns/testing/test-performance-budget.md
+      - patterns/testing/system-test-contract.md
+      - patterns/testing/request-contract.md
+      - patterns/testing/parallel-database-test.md
+      - patterns/testing/regression-test.md
+      - patterns/rails/mailer-testing.md
+      - patterns/rails/active-storage-testing.md
+      - patterns/rails/action-cable-testing.md
+      - patterns/rails/i18n-testing.md
+      - patterns/rails/action-text-testing.md
+      - patterns/rails/action-view-testing.md
+      - patterns/rails/action-controller-testing.md
+      - patterns/rails/active-record-testing.md
+      - patterns/rails/association-testing.md
+      - patterns/rails/validation-testing.md
+      - patterns/rails/active-model-testing.md
+      - patterns/rails/active-support-testing.md
+      - patterns/rails/action-mailbox-testing.md
+      - patterns/testing/route-testing.md
+      - patterns/testing/authorization-testing.md
+      - patterns/testing/hotwire-testing.md
+      - patterns/testing/asset-build-testing.md
+      - patterns/rails/middleware-testing.md
+      - patterns/rails/initializer-testing-contract.md
+      - patterns/rails/credentials-testing-contract.md
+      - patterns/rails/engine-dummy-app-testing.md
+    triggers: [test boundary, deterministic async test, parallel-safe test, flaky test diagnosis, test performance budget, system test contract, request contract, parallel database test, regression test, bug fix, regression coverage]
+
+  algorithms:
+    paths:
+      - patterns/algorithms/two-pointers.md
+      - patterns/algorithms/frequency-map.md
+    triggers: [two pointers, pair sum, frequency map, counting, membership lookup]
+
+
+runner:
+  command: bin/eval
+  agent_benchmark: bin/agent-benchmark
+  adapter_examples: docs/AGENT_ADAPTER_EXAMPLES.md
+  result_schema: docs/EVAL_RESULT_SCHEMA.md
+  documentation: docs/BENCHMARK_RUNNER.md
+
+benchmarks:
+  test-engineering:
+    fixture_registry: benchmarks/test-engineering/fixtures.yml
+    fixture_root: benchmarks/test-engineering/fixtures
+    verifier: scripts/verify_test_engineering_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/test-engineering/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  runtime:
+    fixture_registry: benchmarks/production-runtime/fixtures.yml
+    fixture_root: benchmarks/production-runtime/fixtures
+    verifier: scripts/verify_production_runtime_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/production-runtime/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  database:
+    fixture_registry: benchmarks/database-engineering/fixtures.yml
+    fixture_root: benchmarks/database-engineering/fixtures
+    verifier: scripts/verify_database_engineering_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/database-engineering/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  observability:
+    fixture_registry: benchmarks/observability/fixtures.yml
+    fixture_root: benchmarks/observability/fixtures
+    verifier: scripts/verify_observability_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/observability/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  active-job:
+    fixture_registry: benchmarks/active-job/fixtures.yml
+    fixture_root: benchmarks/active-job/fixtures
+    verifier: scripts/verify_active_job_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/active-job/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  zeitwerk:
+    fixture_registry: benchmarks/zeitwerk/fixtures.yml
+    fixture_root: benchmarks/zeitwerk/fixtures
+    verifier: scripts/verify_zeitwerk_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/zeitwerk/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  performance:
+    fixture_registry: benchmarks/performance/fixtures.yml
+    fixture_root: benchmarks/performance/fixtures
+    verifier: scripts/verify_performance_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/performance/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  ruby-training:
+    fixture_registry: benchmarks/ruby-training/fixtures.yml
+    fixture_root: benchmarks/ruby-training/fixtures
+    verifier: scripts/verify_training_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/ruby-training/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  ruby-workshop:
+    fixture_registry: benchmarks/ruby-workshop/fixtures.yml
+    fixture_root: benchmarks/ruby-workshop/fixtures
+    verifier: scripts/verify_workshop_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/ruby-workshop/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  concurrency:
+    fixture_registry: benchmarks/concurrency/fixtures.yml
+    fixture_root: benchmarks/concurrency/fixtures
+    verifier: scripts/verify_concurrency_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/concurrency/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+  security:
+    fixture_registry: benchmarks/security/fixtures.yml
+    fixture_root: benchmarks/security/fixtures
+    verifier: scripts/verify_security_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/security/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+
+  rails:
+    fixture_registry: benchmarks/rails/fixtures.yml
+    fixture_root: benchmarks/rails/fixtures
+    verifier: scripts/verify_rails_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/rails/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+
+  design-patterns:
+    fixture_registry: benchmarks/design-patterns/fixtures.yml
+    fixture_root: benchmarks/design-patterns/fixtures
+    verifier: scripts/verify_design_pattern_eval.rb
+    campaign_documentation: docs/BENCHMARK_CAMPAIGN.md
+    comparison_schema: docs/BENCHMARK_COMPARISON_SCHEMA.md
+    campaign_result_schema: docs/BENCHMARK_CAMPAIGN_RESULT_SCHEMA.md
+    campaign_manifest: benchmarks/design-patterns/campaign.yml
+    adapter_protocol: docs/AGENT_ADAPTER_PROTOCOL.md
+evaluations:
+  react-typescript-typescript-core:
+    source: react-typescript-core-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/typescript-core-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-typescript-type-design:
+    source: react-typescript-type-design-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/typescript-type-design-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-typescript-runtime-contracts:
+    source: react-typescript-runtime-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/typescript-runtime-contracts.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-component-engineering:
+    source: react-component-engineering-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-component-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-state-effects:
+    source: react-state-effects-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-state-effects-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-data-fetching:
+    source: react-data-fetching-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-data-fetching-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-testing-engineering:
+    source: react-testing-engineering-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-testing-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-accessibility-performance:
+    source: react-accessibility-performance-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-accessibility-performance-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  react-architecture:
+    source: react-architecture-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/react-typescript/react-architecture-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+  rails-repository-completeness:
+    source: rails-repository-completeness-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/repository-completeness-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-staff-principal-architecture:
+    source: rails-staff-principal-architecture-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/staff-principal-architecture-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-cross-boundary-authorization-security:
+    source: rails-cross-boundary-authorization-security-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/cross-boundary-authorization-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-operational-tasks-maintenance:
+    source: rails-operational-tasks-maintenance-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/operational-tasks-maintenance-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-engines-railties-engineering:
+    source: rails-engines-railties-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/engines-railties-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  test-engineering:
+    source: rails-test-engineering-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/test-engineering/boundary-selection.yml
+      - evals/test-engineering/deterministic-job.yml
+      - evals/test-engineering/parallel-safety.yml
+      - evals/test-engineering/flaky-diagnosis.yml
+      - evals/test-engineering/system-contract.yml
+      - evals/test-engineering/test-performance.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  production-runtime:
+    source: rails-production-runtime-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/runtime/puma-capacity.yml
+      - evals/runtime/graceful-shutdown.yml
+      - evals/runtime/zero-downtime-release.yml
+      - evals/runtime/config-contract.yml
+      - evals/runtime/migration-gate.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  database-engineering:
+    source: rails-database-engineering-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/database/expand-contract.yml
+      - evals/database/concurrent-index.yml
+      - evals/database/constraint.yml
+      - evals/database/batched-backfill.yml
+      - evals/database/transaction-lock.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  observability:
+    source: rails-observability-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/observability/error-boundary.yml
+      - evals/observability/request-correlation.yml
+      - evals/observability/instrumentation-event.yml
+      - evals/observability/health-semantics.yml
+    checks:
+      - functional
+      - tests
+      - contract
+
+  active-job:
+    source: active-job-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/active-job/idempotent-side-effect.yml
+      - evals/active-job/retry-policy.yml
+      - evals/active-job/transactional-enqueue.yml
+      - evals/active-job/concurrency-control.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  zeitwerk:
+    source: zeitwerk-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/zeitwerk/path-constant-contract.yml
+      - evals/zeitwerk/initializer-reload-boundary.yml
+    checks:
+      - functional
+      - tests
+      - contract
+
+  performance:
+    source: performance-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/performance/performance-allocation-boundary.yml
+      - evals/performance/cache-key-boundary.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - performance
+
+  ruby-training:
+    source: allerin-ruby-set-2
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/ruby-training/selection-sort.yml
+      - evals/ruby-training/recursive-selection-sort.yml
+      - evals/ruby-training/smallest-missing.yml
+      - evals/ruby-training/shopping-cart.yml
+      - evals/ruby-training/triplet-sum.yml
+      - evals/ruby-training/majority-element.yml
+      - evals/ruby-training/distinct-elements.yml
+      - evals/ruby-training/power-of-two.yml
+      - evals/ruby-training/chocolate-feast.yml
+    checks:
+      - functional
+      - oop
+      - tests
+
+  rails-active-support:
+    source: rails-active-support-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/active-support-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-active-model:
+    source: rails-active-model-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/active-model-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-view:
+    source: rails-action-view-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-view-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-controller:
+    source: rails-action-controller-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-controller-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-active-record:
+    source: rails-active-record-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/active-record-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-associations:
+    source: rails-associations-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/associations-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-validations:
+    source: rails-validations-v2
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/validations-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-authentication:
+    source: rails-authentication-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/authentication-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-authorization:
+    source: rails-authorization-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/authorization-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-asset-build-engineering:
+    source: rails-asset-build-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/asset-build-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-rack-middleware-engineering:
+    source: rails-rack-middleware-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/rack-middleware-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-serialization-globalid-engineering:
+    source: rails-serialization-globalid-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/serialization-globalid-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-encryption-credentials-engineering:
+    source: rails-encryption-credentials-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/encryption-credentials-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-initialization-configuration-engineering:
+    source: rails-initialization-configuration-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/initialization-configuration-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-hotwire:
+    source: rails-hotwire-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/hotwire-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-routing:
+    source: rails-routing-v2
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/routing-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-mailbox:
+    source: rails-action-mailbox-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-mailbox-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-mailer:
+    source: rails-action-mailer-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-mailer-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-text:
+    source: rails-action-text-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-text-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-i18n:
+    source: rails-i18n-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/i18n-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-action-cable:
+    source: rails-action-cable-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/action-cable-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  rails-active-storage:
+    source: rails-active-storage-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/rails/active-storage-contract.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control
+
+  ruby-workshop:
+    source: book-integration-v2
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/ruby-workshop/enumerable-transform.yml
+      - evals/ruby-workshop/method-contract.yml
+      - evals/ruby-workshop/voting-application.yml
+      - evals/ruby-workshop/service-object.yml
+      - evals/ruby-workshop/external-api-client.yml
+      - evals/ruby-workshop/ruby-gem-boundary.yml
+      - evals/ruby-workshop/rails-rest-contract.yml
+      - evals/ruby-workshop/rails-authentication-boundary.yml
+    checks:
+      - functional
+      - tests
+
+  concurrency:
+    source: concurrency-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/concurrency/concurrency-counter.yml
+    checks:
+      - functional
+      - tests
+      - contract
+
+  security:
+    source: rails-security-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/security/parameterized-query-boundary.yml
+      - evals/security/authorization-boundary.yml
+    checks:
+      - functional
+      - tests
+      - contract
+
+  design-patterns:
+    source: design-pattern-system-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/design-patterns/poro-extraction.yml
+      - evals/design-patterns/service-object-selection.yml
+      - evals/design-patterns/command-object.yml
+      - evals/design-patterns/strategy-selection.yml
+      - evals/design-patterns/adapter-boundary.yml
+      - evals/design-patterns/policy-object.yml
+      - evals/design-patterns/dependency-injection.yml
+      - evals/design-patterns/factory-selection.yml
+      - evals/design-patterns/builder-selection.yml
+      - evals/design-patterns/null-object.yml
+      - evals/design-patterns/decorator.yml
+      - evals/design-patterns/facade.yml
+      - evals/design-patterns/repository-boundary.yml
+      - evals/design-patterns/specification.yml
+      - evals/design-patterns/state-object.yml
+      - evals/design-patterns/composition-over-inheritance.yml
+      - evals/design-patterns/presenter.yml
+      - evals/design-patterns/pattern-restraint.yml
+      - evals/design-patterns/service-object-not-needed.yml
+      - evals/design-patterns/strategy-not-needed.yml
+      - evals/design-patterns/factory-not-needed.yml
+      - evals/design-patterns/repository-not-needed.yml
+      - evals/design-patterns/value-object-not-needed.yml
+      - evals/design-patterns/presenter-not-needed.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - pattern_selection
+      - scope_control
+
+  stack-minimality:
+    source: ponytail-stack-adaptation-v1
+    schema: docs/EVAL_SCHEMA.md
+    paths:
+      - evals/stack-minimality/stack-minimality-rails-direct-boundary.yml
+      - evals/stack-minimality/stack-minimality-postgres-invariant.yml
+      - evals/stack-minimality/stack-minimality-react-state-boundary.yml
+      - evals/stack-minimality/stack-minimality-native-before-dependency.yml
+      - evals/stack-minimality/stack-minimality-fullstack-boundary.yml
+      - evals/stack-minimality/stack-minimality-minimal-change-root.yml
+      - evals/stack-minimality/stack-minimality-abstraction-restraint.yml
+      - evals/stack-minimality/stack-minimality-security-boundary.yml
+      - evals/stack-minimality/stack-minimality-accessibility-boundary.yml
+      - evals/stack-minimality/stack-minimality-performance-evidence.yml
+      - evals/stack-minimality/stack-minimality-migration-safety.yml
+      - evals/stack-minimality/stack-minimality-service-boundary.yml
+      - evals/stack-minimality/stack-minimality-derived-state.yml
+    checks:
+      - functional
+      - tests
+      - contract
+      - scope_control

@@ -57,6 +57,13 @@ Rails.application.routes.draw do
     post "market-structure", to: "market_structure#create"
     post "strategy/signals", to: "strategy#create"
     post "strategy-signals", to: "strategy#create"
+
+    namespace :mcp do
+      resources :tools, only: %i[index] do
+        resources :calls, only: %i[create], controller: "tool_calls"
+      end
+      resources :questions, only: %i[create]
+    end
   end
 
   namespace :api do
