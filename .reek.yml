@@ -1,0 +1,21 @@
+---
+# Tuned for paper_exchange.
+#
+# Structural-noise detectors disabled:
+#   - IrresponsibleModule flags every class without a top comment.
+#   - Uncommunicative* duplicates RuboCop's Naming cops, which are already enforced.
+# Real-smell detectors (FeatureEnvy, TooManyStatements, NilCheck,
+# RepeatedConditional, ...) stay enabled at their defaults.
+detectors:
+  DuplicateMethodCall:
+    max_calls: 3
+  IrresponsibleModule:
+    enabled: false
+  UncommunicativeVariableName:
+    enabled: false
+  UncommunicativeParameterName:
+    enabled: false
+  UncommunicativeMethodName:
+    enabled: false
+  UncommunicativeModuleName:
+    enabled: false

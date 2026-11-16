@@ -9,10 +9,18 @@ RSpec.describe ApplicationMCPTool do
 
   it "exposes only the reviewed read-only tools" do
     expect(ActionMCP::ToolsRegistry.tools.keys).to contain_exactly(
+      "get_account_lease",
       "get_account_summary",
-      "get_open_positions",
       "get_closed_positions",
+      "get_exchange_config",
+      "get_ledger_entries",
       "get_mark_prices",
+      "get_market_structure",
+      "get_open_positions",
+      "get_option_chain",
+      "get_position_details",
+      "get_recent_orders",
+      "get_risk_events",
       "get_risk_status",
       "get_system_health"
     )
@@ -44,6 +52,41 @@ RSpec.describe ApplicationMCPTool do
       payload = JSON.parse(response.contents.first.text)
       expect(payload["account_id"]).to eq("test-account-1")
       expect(payload["wallet"]["equity"]).to eq("10000.0")
+    end
+  end
+
+  describe GetExchangeConfigTool do
+    it "returns exchange risk limits and rules without secrets" do
+      response = described_class.new.call
+      payload = JSON.parse(response.contents.first.text)
+      expect(payload["risk_limits"]).to be_present
+      expect(payload["trading_rules"]).to be_present
+    end
+  end
+
+  describe GetPositionDetailsTool do
+    it "returns position not found when position does not exist" do
+      response = described_class.new(position_id: 999_999).call
+      payload = JSON.parse(response.contents.first.text)
+      expect(payload["error"]).to eq("position_not_found")
+    end
+  end
+
+  describe GetRecentOrdersTool do
+    it "returns order array for account" do
+      response = described_class.new(account_id: "test-account-1").call
+      payload = JSON.parse(response.contents.first.text)
+      expect(payload["account_id"]).to eq("test-account-1")
+      expect(payload["orders"]).to be_an(Array)
+    end
+  end
+
+  describe GetLedgerEntriesTool do
+    it "returns ledger entries array for account" do
+      response = described_class.new(account_id: "test-account-1").call
+      payload = JSON.parse(response.contents.first.text)
+      expect(payload["account_id"]).to eq("test-account-1")
+      expect(payload["entries"]).to be_an(Array)
     end
   end
 

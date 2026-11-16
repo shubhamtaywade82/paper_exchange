@@ -16,7 +16,7 @@ class GetClosedPositionsTool < ApplicationMCPTool
     trades = ::PaperExchange::PaperTrade
       .joins(:paper_order)
       .where(paper_exchange_orders: { account_id: acc_id })
-      .order(executed_at: :desc)
+      .order(traded_at: :desc)
       .limit(max_records)
       .map do |t|
         {
@@ -26,8 +26,8 @@ class GetClosedPositionsTool < ApplicationMCPTool
           side: t.paper_order.side,
           quantity: t.quantity.to_s,
           price: t.price.to_s,
-          brokerage: t.brokerage.to_s,
-          executed_at: t.executed_at&.iso8601
+          total_charges: t.total_charges.to_s,
+          traded_at: t.traded_at&.iso8601
         }
       end
 
