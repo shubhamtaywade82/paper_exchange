@@ -12,7 +12,7 @@ class GetClosedPositionsTool < ApplicationMCPTool
     account = Account.find_by(account_id: acc_id)
     return render_json(error: "account_not_found", account_id: acc_id) unless account
 
-    max_records = limit.present? ? [limit.to_i, 100].min : 20
+    max_records = limit.present? ? [ limit.to_i, 100 ].min : 20
     trades = ::PaperExchange::PaperTrade
       .joins(:paper_order)
       .where(paper_exchange_orders: { account_id: acc_id })

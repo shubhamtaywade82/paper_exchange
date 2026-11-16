@@ -12,13 +12,14 @@ class GetPositionDetailsTool < ApplicationMCPTool
   def perform
     acc_id = account_id.presence || "test-account-1"
     scope = ::PaperExchange::PaperPosition.where(account_id: acc_id)
-    position = if position_id.present?
-                 scope.find_by(id: position_id)
-               elsif symbol.present?
-                 scope.where(symbol: symbol.upcase).order(updated_at: :desc).first
-               else
-                 scope.order(updated_at: :desc).first
-               end
+    position =
+      if position_id.present?
+        scope.find_by(id: position_id)
+      elsif symbol.present?
+        scope.where(symbol: symbol.upcase).order(updated_at: :desc).first
+      else
+        scope.order(updated_at: :desc).first
+      end
 
     return render_json(error: "position_not_found", account_id: acc_id) unless position
 
