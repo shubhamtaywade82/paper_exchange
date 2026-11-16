@@ -40,8 +40,19 @@ function assertEqual(actual: string | number, expected: string | number, message
 async function runSmokeTest() {
   console.log('🚀 Starting Paper-Exchange Smoke Test...\n');
 
-  // Auto-reset test account to baseline
-  await http.post('/account/reset');
+  // Acquire single-writer account lease
+  const holderId = 'smoke-test-runner';
+  const leaseRes = await http.post('/account/lease', {
+    holder_id: holderId,
+    holder_label: 'smoke-test',
+    ttl_seconds: 60
+  });
+  http.defaults.headers.common['X-Lease-Holder'] = holderId;
+  http.defaults.headers.common['X-Lease-Fence'] = String(leaseRes.data.fence);
+
+  try {
+    // Auto-reset test account to baseline
+    await http.post('/account/reset');
 
   // 1. INITIAL STATE
   console.log('--- Step 1: Initial State ---');
@@ -146,6 +157,13 @@ async function runSmokeTest() {
   assertEqual(totalCash.toFixed(8), '10291.025', 'Total Wallet Cash Invariant (Initial + PnL - Fees)');
 
   console.log('\n🎉 ALL SMOKE TESTS PASSED! The broker accounting engine is mathematically correct.');
+  } finally {
+    try {
+      await http.delete('/account/lease');
+    } catch {
+      // Ignore cleanup error
+    }
+  }
 }
 
 runSmokeTest().catch(err => {

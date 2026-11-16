@@ -25,15 +25,15 @@ wait_for_health() {
 echo "== 1. Ensuring containers are running =="
 docker compose up -d
 
-echo "== 2. Waiting for API and service dependencies to become healthy =="
-wait_for_health
-
-echo "== 3. Preparing development and test databases =="
+echo "== 2. Preparing development and test databases =="
 docker compose exec -T api bin/rails db:prepare
 docker compose exec -T \
   -e RAILS_ENV=test \
   -e DATABASE_URL=postgres://paper_user:paper_password@db:5432/paper_exchange_test \
   api bin/rails db:prepare
+
+echo "== 3. Waiting for API and service dependencies to become healthy =="
+wait_for_health
 
 echo "== 4. Running broker accounting smoke test =="
 docker compose exec -T api npm run smoke-test
