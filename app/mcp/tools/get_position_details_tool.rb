@@ -36,6 +36,9 @@ class GetPositionDetailsTool < ApplicationMCPTool
       }
     end
 
+    # The live mark, the same one the open-positions projection uses; the stored column is only the fallback.
+    mark = MarketData::MarkPriceStore.get(position.symbol) || position.current_price
+
     render_json(
       id: position.id,
       account_id: position.account_id,
@@ -43,12 +46,12 @@ class GetPositionDetailsTool < ApplicationMCPTool
       side: position.side,
       quantity: position.quantity.to_s,
       avg_price: position.avg_price&.to_s,
-      current_price: position.current_price&.to_s,
+      current_price: mark&.to_s,
       leverage: position.leverage,
       margin_type: position.margin_type,
       initial_margin: position.initial_margin.to_s,
       liquidation_price: position.liquidation_price&.to_s,
-      unrealized_pnl: position.unrealized_pnl&.to_s,
+      unrealized_pnl: ::Ledger::Ledger.compute_pnl(position, mark).to_s,
       protections: protections,
       updated_at: position.updated_at&.iso8601
     )

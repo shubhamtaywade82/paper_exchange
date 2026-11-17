@@ -48,7 +48,7 @@ module MCP
     def ask(question)
       open_session!
       @tools_used = []
-      messages = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: question }]
+      messages = [ { role: "system", content: SYSTEM_PROMPT }, { role: "user", content: question } ]
       tools = list_tools.map { |tool| ollama_tool(tool) }
 
       MAX_TOOL_ROUNDS.times do

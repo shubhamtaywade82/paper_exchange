@@ -90,6 +90,114 @@ RSpec.describe ApplicationMCPTool do
     end
   end
 
+  describe GetRiskStatusTool do
+    around do |example|
+      keys = %w[PAPER_EXCHANGE_MAX_POSITIONS PAPER_EXCHANGE_MAX_DRAWDOWN]
+      saved = keys.to_h { |key| [ key, ENV.fetch(key, nil) ] }
+      keys.each { |key| ENV.delete(key) }
+      example.run
+      saved.each do |key, value|
+        if value.nil?
+          ENV.delete(key)
+        else
+          ENV[key] = value
+        end
+      end
+    end
+
+    before do
+      create(:account, account_id: "test-account-1")
+      allow(Projections::PortfolioProjection).to receive(:summary).with("test-account-1").and_return({
+        drawdown: 2.5, positions_count: 3
+      })
+    end
+
+    it "reports drawdown and position limits against the defaults, and no lease" do
+      payload = JSON.parse(described_class.new.call.contents.first.text)
+      expect(payload["account_id"]).to eq("test-account-1")
+      expect(payload["risk"]).to include(
+        "drawdown_pct" => 2.5, "max_drawdown_limit_pct" => 20.0, "drawdown_breached" => false,
+        "positions_count" => 3, "max_positions_limit" => 10, "position_limit_reached" => false
+      )
+      expect(payload["lease"]).to eq("held" => false, "holder_id" => nil, "fence" => nil, "expires_at" => nil)
+    end
+
+    it "flags a breached drawdown and a reached position limit, and reports a live lease" do
+      allow(Projections::PortfolioProjection).to receive(:summary).with("test-account-1").and_return({
+        drawdown: 25.0, positions_count: 10
+      })
+      AccountLeases.acquire!(account_id: "test-account-1", holder_id: "agent-a", label: "Agent A", ttl_seconds: 60)
+
+      payload = JSON.parse(described_class.new(account_id: "test-account-1").call.contents.first.text)
+      expect(payload["risk"]).to include("drawdown_breached" => true, "position_limit_reached" => true)
+      expect(payload["lease"]).to include("held" => true, "holder_id" => "agent-a", "fence" => 1)
+      expect(payload["lease"]["expires_at"]).to be_present
+    end
+
+    it "does not report an expired lease as held" do
+      AccountLeases.acquire!(account_id: "test-account-1", holder_id: "agent-a", label: "Agent A", ttl_seconds: 60)
+      AccountLease.where(venue: AccountLeases::VENUE, account_id: "test-account-1")
+        .update_all("expires_at = now() - interval '1 second'")
+
+      payload = JSON.parse(described_class.new(account_id: "test-account-1").call.contents.first.text)
+      expect(payload["lease"]).to include("held" => false, "holder_id" => nil)
+    end
+
+    it "reports an unknown account rather than inventing one" do
+      payload = JSON.parse(described_class.new(account_id: "missing").call.contents.first.text)
+      expect(payload).to eq("error" => "account_not_found", "account_id" => "missing")
+    end
+  end
+
+  describe GetSystemHealthTool do
+    around do |example|
+      keys = %w[PAPER_EXCHANGE_ENABLE_BINANCE PAPER_EXCHANGE_ENABLE_COINDCX]
+      saved = keys.to_h { |key| [ key, ENV.fetch(key, nil) ] }
+      ENV["PAPER_EXCHANGE_ENABLE_BINANCE"] = "true"
+      ENV.delete("PAPER_EXCHANGE_ENABLE_COINDCX")
+      example.run
+      saved.each do |key, value|
+        if value.nil?
+          ENV.delete(key)
+        else
+          ENV[key] = value
+        end
+      end
+    end
+
+    before do
+      allow(MarketData::MarkPriceStore).to receive(:redis_healthy?).and_return(true)
+    end
+
+    it "reports ok when postgres and redis answer, with the provider flags" do
+      payload = JSON.parse(described_class.new.call.contents.first.text)
+      expect(payload).to include(
+        "status" => "ok", "checks" => { "postgres" => true, "redis" => true, "solid_queue" => true },
+        "environment" => "test", "providers" => { "binance_enabled" => true, "coindcx_enabled" => false }
+      )
+    end
+
+    it "reports degraded when redis is down" do
+      allow(MarketData::MarkPriceStore).to receive(:redis_healthy?).and_return(false)
+      payload = JSON.parse(described_class.new.call.contents.first.text)
+      expect(payload["status"]).to eq("degraded")
+      expect(payload["checks"]).to include("redis" => false, "postgres" => true)
+    end
+
+    it "treats a redis error as unhealthy rather than raising" do
+      allow(MarketData::MarkPriceStore).to receive(:redis_healthy?).and_raise(StandardError, "connection refused")
+      payload = JSON.parse(described_class.new.call.contents.first.text)
+      expect(payload["checks"]).to include("redis" => false)
+    end
+
+    it "treats a postgres error as unhealthy rather than raising" do
+      allow(ActiveRecord::Base).to receive(:connection).and_raise(StandardError, "no database")
+      payload = JSON.parse(described_class.new.call.contents.first.text)
+      expect(payload["status"]).to eq("degraded")
+      expect(payload["checks"]).to include("postgres" => false)
+    end
+  end
+
   describe ApplicationGateway do
     def gateway_for(authorization, remote_addr: "10.0.0.5", **headers)
       env = Rack::MockRequest.env_for("/", "HTTP_AUTHORIZATION" => authorization, "REMOTE_ADDR" => remote_addr, **headers)

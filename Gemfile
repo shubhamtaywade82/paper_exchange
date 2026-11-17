@@ -118,4 +118,3 @@ gem "yamine", group: :development
 
 # Standalone ActionMCP server for exposing read-only domain tools to AI clients
 gem "actionmcp", "~> 0.203"
-

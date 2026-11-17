@@ -6,7 +6,7 @@ module Api
       skip_before_action :require_account_for_writes
       skip_around_action :fence_live_writes
 
-      UNREACHABLE_ERRORS = [Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL, Net::OpenTimeout, Net::ReadTimeout].freeze
+      UNREACHABLE_ERRORS = [ Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL, Net::OpenTimeout, Net::ReadTimeout ].freeze
 
       private
 

@@ -4,7 +4,7 @@ require "rails_helper"
 
 RSpec.describe "Api::MCP::Questions", type: :request do
   let(:headers) { { "X-API-Key" => ENV.fetch("PAPER_EXCHANGE_API_KEY") } }
-  let(:mock_bridge) { instance_double(MCP::OllamaBridge, model: "test-model", tools_used: ["get_account_summary"]) }
+  let(:mock_bridge) { instance_double(MCP::OllamaBridge, model: "test-model", tools_used: [ "get_account_summary" ]) }
 
   before do
     allow(MCP::OllamaBridge).to receive(:new).and_return(mock_bridge)
@@ -30,7 +30,7 @@ RSpec.describe "Api::MCP::Questions", type: :request do
       post "/api/v1/mcp/questions", params: { question: "How is the account?" }, headers: headers, as: :json
       expect(response).to have_http_status(:created)
       expect(response.parsed_body["answer"]).to eq("Account is healthy.")
-      expect(response.parsed_body["tools_used"]).to eq(["get_account_summary"])
+      expect(response.parsed_body["tools_used"]).to eq([ "get_account_summary" ])
     end
 
     it "rejects blank questions" do

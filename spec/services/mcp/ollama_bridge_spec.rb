@@ -19,15 +19,15 @@ RSpec.describe MCP::OllamaBridge do
   it "lists tools from the MCP server" do
     stub_request(:post, "http://127.0.0.1:62770/")
       .with(body: hash_including("method" => "tools/list"))
-      .to_return(status: 200, body: { result: { tools: [{ "name" => "get_account_summary" }] } }.to_json)
+      .to_return(status: 200, body: { result: { tools: [ { "name" => "get_account_summary" } ] } }.to_json)
 
-    expect(bridge.list_tools).to eq([{ "name" => "get_account_summary" }])
+    expect(bridge.list_tools).to eq([ { "name" => "get_account_summary" } ])
   end
 
   it "calls a tool on the MCP server and returns the text content" do
     stub_request(:post, "http://127.0.0.1:62770/")
       .with(body: hash_including("method" => "tools/call", "params" => hash_including("name" => "get_account_summary")))
-      .to_return(status: 200, body: { result: { content: [{ "type" => "text", "text" => '{"equity":"10000.0"}' }] } }.to_json)
+      .to_return(status: 200, body: { result: { content: [ { "type" => "text", "text" => '{"equity":"10000.0"}' } ] } }.to_json)
 
     expect(bridge.call_tool("get_account_summary")).to eq('{"equity":"10000.0"}')
   end
