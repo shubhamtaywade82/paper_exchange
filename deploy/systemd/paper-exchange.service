@@ -1,0 +1,21 @@
+# Template for the paper_exchange stack (db, redis, api, jobs, market_data) under Docker Compose. Copy it, replace the
+# /path/to placeholder with this repository's path, then install with systemctl. `npm` is not needed here, but `docker`
+# must be on this unit's PATH.
+#
+# Start brings the stack up detached; stop runs `docker compose down`, which keeps the named volumes (postgres_data,
+# redis_data). Run the fleet unit only after this one is active: the fleet reads PAPER_EXCHANGE_URL from its environment file.
+[Unit]
+Description=paper_exchange (Docker Compose stack)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/path/to/paper_exchange
+ExecStart=/usr/bin/env docker compose up -d
+ExecStop=/usr/bin/env docker compose down
+
+[Install]
+WantedBy=multi-user.target
