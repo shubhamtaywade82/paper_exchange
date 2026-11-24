@@ -6,7 +6,7 @@ gem "rails", "~> 8.1.4"
 gem "pg", "~> 1.7"
 # Use the Puma web server [https://github.com/puma/puma]
 # >= 8.0.2: CVE-2026-47736 / CVE-2026-47737 (High) — PROXY protocol v1 issues.
-gem "puma", "~> 8.0"
+gem "puma", "~> 8.1"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
